@@ -166,8 +166,30 @@ SK_Proxy_MouseProc   (
       }
     }
 
-    if (SK_ImGui_WantMouseCapture ())
+    bool bCaptureMouse =
+      SK_ImGui_WantMouseCapture ();
+
+    // The performance of doing this on every mouse message hasn't been tested,
+    //   I'd really prefer not to let this go out into the wild before it only
+    //     does the expensive API calls when the foreground window changes
+    //       between messages.
+#if 0
+    // Opt-out of mouse capture for some truly bizarely designed software that puts windows
+    //   owned by other processes on top of the game and then handles that window's input
+    //     in the context of -this- process.
+    if (bCaptureMouse && !game_window.active)
     {
+      wchar_t                                        wszForegroundWindowClass [128] = {};
+      RealGetWindowClass (SK_GetForegroundWindow (), wszForegroundWindowClass, 127);
+
+      //HwndWrapper[Overwolf.exe;UI;bc980bf5-646b-4a10-8766-4e561ed4281e]
+      bCaptureMouse =
+        (! StrStrIW (wszForegroundWindowClass, L"Overwolf.exe"));
+    }
+#endif
+
+    if (bCaptureMouse)
+    {      
       SK_WinHook_Backend->markHidden (sk_input_dev_type::Mouse);
 
       return
