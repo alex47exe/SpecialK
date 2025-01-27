@@ -1508,6 +1508,7 @@ SK::ControlPanel::Steam::WarnIfUnsupported (void)
 {
   static DWORD dwLastTime = 0x00;
 
+  /* --- shhh
   bool pirate = ( SK::SteamAPI::AppID  () != 0 &&
                   SK_Steam_PiratesAhoy () != 0x0 );
   if (pirate)
@@ -1522,6 +1523,7 @@ SK::ControlPanel::Steam::WarnIfUnsupported (void)
       return true;
     }
   }
+  */
 
   return false;
 }

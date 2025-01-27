@@ -1,12 +1,12 @@
 ﻿// This is an open source non-commercial project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++, C#, and Java: https://pvs-studio.com
 //
-// Copyright 2017-2023  Andon  "Kaldaien" Coleman,
-//                      Niklas "DrDaxxy"  Kielblock,
-//                      Peter  "Durante"  Thoman
+// Copyright 2017-2023  Redacted_Name_1,
+//                      Redacted_Name_2,
+//                      Redacted_Name_3
 //
-//        Francesco149, Idk31, Smithfield, emoose,
-//          Lilium and GitHub contributors.
+//        Redacted_Name_4, Redacted_Name_5, Redacted_Name_6, Redacted_Name_7,
+//          Redacted_Name_8 and GitHub contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -1233,7 +1233,7 @@ SK_FAR_PresentFirstFrame (IUnknown* pSwapChain, UINT SyncInterval, UINT Flags)
 //  Note that there are more low-res 800x450 buffers not yet handled by this,
 //  but which could probably be handled similarly. Primarily, SSAO.
 
-// NOTE (Kaldaien):
+// NOTE (Redacted_Name_1):
 //
 //  Windows Store version increased the resolution to 960x540, but the general overview remains
 //
@@ -1659,11 +1659,11 @@ SK_FAR_EULA_Insert (LPVOID reserved)
 
   if (ImGui::CollapsingHeader ("FAR (Fix Automata Resolution)", ImGuiTreeNodeFlags_DefaultOpen))
   {
-    ImGui::TextWrapped ( " Copyright 2017-2021  Andon  \"Kaldaien\" Coleman,\n"
-                         "                      Niklas \"DrDaxxy\" Kielblock,\n"
-                         "                      Peter  \"Durante\" Thoman\n"
+    ImGui::TextWrapped ( " Copyright 2017-2021  Redacted_Name_1,\n"
+                         "                      Redacted_Name_2,\n"
+                         "                      Redacted_Name_3\n"
                          "\n"
-                         "        Francesco149, Idk31, Smithfield, emoose, and GitHub contributors.\n"
+                         "        Redacted_Name_4, Redacted_Name_5, Redacted_Name_6, Redacted_Name_7, and GitHub contributors.\n"
                          "\n"
                          " Permission is hereby granted, free of charge, to any person obtaining a copy\n"
                          " of this software and associated documentation files (the \"Software\"), to\n"

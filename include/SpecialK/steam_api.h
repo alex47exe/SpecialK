@@ -529,7 +529,7 @@ SK_Steam_ScrubRedistributables (int& total_files, bool erase = false);
 
 // Certain Steam Overlay functionality requires a connection;
 //
-//   This function bypasses SteamAPI and can establish a Seam client connection
+//   This function bypasses SteamAPI and can establish a Steam client connection
 bool
 SK_Steam_ConnectUserIfNeeded (CSteamID user);
 

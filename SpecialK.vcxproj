@@ -128,7 +128,7 @@
     <LinkIncremental>false</LinkIncremental>
     <TargetName>SpecialK64</TargetName>
     <OutDir>C:\Program Files (x86)\Steam\steamapps\common\Special K\</OutDir>
-    <IntDir>C:\Users\amcol\Documents\My Mods\SpecialK\x64</IntDir>
+    <IntDir>$(USERPROFILE)\Documents\My Mods\SpecialK\x64</IntDir>
     <IncludePath>$(SolutionDir)include;$(VC_IncludePath);$(WindowsSDK_IncludePath);$(SolutionDir)\depends\include;$(SolutionDir)\depends\build\x64;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include;$(SolutionDir)include\SpecialK;$(UniversalCRT_IncludePath);$(SolutionDir)packages\Tobii.StreamEngine.Native.2.2.2.363\build\native\include\</IncludePath>
     <LibraryPath>$(LibraryPath);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);$(NETFXKitsDir)Lib\um\x64;$(SolutionDir)\depends\lib\CEGUI\x64;$(SolutionDir)\depends\lib;C:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Lib\x64</LibraryPath>
     <CodeAnalysisRuleSet>SpecialK.ruleset</CodeAnalysisRuleSet>
@@ -364,7 +364,7 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>DebugFastLink</GenerateDebugInformation>
-      <OutputFile>C:\Users\amcol\Documents\My Mods\SpecialK\SpecialK64.dll</OutputFile>
+      <OutputFile>$(USERPROFILE)\Documents\My Mods\SpecialK\SpecialK64.dll</OutputFile>
       <ModuleDefinitionFile>SpecialK.def</ModuleDefinitionFile>
       <DelayLoadDLLs>tobii_stream_engine_sk64.dll;comctl32.dll</DelayLoadDLLs>
       <OptimizeReferences>true</OptimizeReferences>

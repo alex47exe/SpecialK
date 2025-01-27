@@ -143,9 +143,10 @@ SK_ImGui_DrawEULA (LPVOID reserved)
     //  goto END_POPUP;
     //}
 
+    /* --- shhh
     bool pirate = ( SK_SteamAPI_AppID    () != 0 &&
                     SK_Steam_PiratesAhoy () != 0x0 );
-
+    */
 
     ImGui::BeginGroup ();
 
@@ -179,8 +180,11 @@ SK_ImGui_DrawEULA (LPVOID reserved)
     ImGui::BeginGroup ();
     ImGui::BeginChild ("EULA_Body2",  ImVec2 (0.0f, ImGui::GetFrameHeightWithSpacing () * 13.666f), false, ImGuiWindowFlags_NavFlattened);
 
+    /* --- shhh
     if (ImGui::CollapsingHeader (pirate ? "Overview of Products Unsupported" :
                                           "Overview of Products Licensed"))
+    */
+    if (ImGui::CollapsingHeader ("Overview of Products Licensed"))
     {
       SK_ImGui_AutoFont fixed_font (
         ImGui::GetIO ().Fonts->Fonts [1]
@@ -308,6 +312,7 @@ SK_ImGui_DrawEULA (LPVOID reserved)
     ImGui::TreePop    ();
     ImGui::NextColumn ();
 
+    /* --- shhh 
     if (! pirate)
     {
       ImGui::Checkbox ("I agree ... never show me this again!", &((show_eula_s *)reserved)->never_show_again);
@@ -315,6 +320,11 @@ SK_ImGui_DrawEULA (LPVOID reserved)
     }
 
     if (ImGui::Button (" Accept ") && (! pirate))
+    */
+    ImGui::Checkbox ("I agree ... never show me this again!", &((show_eula_s *)reserved)->never_show_again);
+    ImGui::SameLine ();
+
+    if (ImGui::Button (" Accept "))
     {
       ImGui::CloseCurrentPopup ();
 
@@ -339,6 +349,7 @@ SK_ImGui_DrawEULA (LPVOID reserved)
 
     ImGui::SetItemDefaultFocus ();
 
+    /* --- shhh
     if (pirate && ImGui::IsItemHovered ())
     {
       ImGui::BeginTooltip ();
@@ -358,6 +369,7 @@ SK_ImGui_DrawEULA (LPVOID reserved)
 
       ImGui::EndTooltip  ();
     }
+    */
 
     ImGui::EndChild (); // EULA_Inset
     ImGui::EndGroup ();

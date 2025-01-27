@@ -1,7 +1,7 @@
 //
-// Copyright 2017  Andon  "Kaldaien" Coleman,
-//                 Niklas "DrDaxxy"  Kielblock,
-//                 Peter  "Durante"  Thoman
+// Copyright 2017  Redacted_Name_1,
+//                 Redacted_Name_2,
+//                 Redacted_Name_3
 //
 //        Francesco149, Idk31, Smithfield, and GitHub contributors.
 //

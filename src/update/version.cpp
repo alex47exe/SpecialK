@@ -418,15 +418,15 @@ SK_FetchVersionInfo1 (const wchar_t* wszProduct, bool force)
 
   if (! lstrcmpW (wszProduct, L"SpecialK"))
     swprintf_s ( wszRemoteRepoURL, INTERNET_MAX_PATH_LENGTH,
-                 L"/Kaldaien/%s/0.10.x/version.ini",
+                 L"/alex47exe/%s/0.10.x/version.ini",
                    wszProduct );
   else if (wcschr (wszProduct, L'/'))
     swprintf_s ( wszRemoteRepoURL, INTERNET_MAX_PATH_LENGTH,
-                 L"/Kaldaien/%s/version.ini",
+                 L"/alex47exe/%s/version.ini",
                    wszProduct );
   else
     swprintf_s ( wszRemoteRepoURL, INTERNET_MAX_PATH_LENGTH,
-                 L"/Kaldaien/%s/master/version.ini",
+                 L"/alex47exe/%s/master/version.ini",
                    *wszProduct != L'\0' ?
                     wszProduct          : L"SpecialK" );
 
@@ -906,15 +906,15 @@ SK_FetchVersionInfo2 ( const wchar_t* wszProduct,
 
   if (! lstrcmpW (wszProduct, L"SpecialK"))
     swprintf_s ( wszRemoteRepoURL, INTERNET_MAX_PATH_LENGTH,
-                 L"/Kaldaien/%s/0.10.x/version.ini",
+                 L"/alex47exe/%s/0.10.x/version.ini",
                    wszProduct );
   else if (wcschr (wszProduct, L'/'))
     swprintf_s ( wszRemoteRepoURL, INTERNET_MAX_PATH_LENGTH,
-                 L"/Kaldaien/%s/version.ini",
+                 L"/alex47exe/%s/version.ini",
                    wszProduct );
   else
     swprintf_s ( wszRemoteRepoURL, INTERNET_MAX_PATH_LENGTH,
-                 L"/Kaldaien/%s/master/version.ini",
+                 L"/alex47exe/%s/master/version.ini",
                    wcslen (wszProduct) ? wszProduct : L"SpecialK" );
 
   ULONG ulTimeout = 5000UL;

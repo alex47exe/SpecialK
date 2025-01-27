@@ -4576,10 +4576,10 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
         ImGui::TreePush ("###HelpSubmenu");
         {
 #if 0
-          if (ImGui::MenuItem (R"("Kaldaien's Mod")", "Discourse Forums", &selected, true))
+          if (ImGui::MenuItem (R"("SpecialK")", "Discourse Forums", &selected, true))
             SK_SteamOverlay_GoToURL ("https://discourse.differentk.fyi/", true);
 #else
-          if (ImGui::MenuItem (R"("Kaldaien's Mod")", "Discord Server", &selected, true))
+          if (ImGui::MenuItem (R"("SpecialK")", "Discord Server", &selected, true))
             SK_SteamOverlay_GoToURL ("https://discord.gg/SpecialK", true);
 #endif
         }

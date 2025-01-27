@@ -1898,6 +1898,7 @@ SK_SteamAPIContext::OnVarChange (SK_IVariable* var, void* val)
   // ( Dead man's switch for silly pirates that attempt to bypass framerate
   //    limit with a hex edit rather than a proper forked project - "crack"
   //      this the right way please )
+  /* --- shhh
   if (var == tbf_pirate_fun)
   {
     known = true;
@@ -1933,7 +1934,7 @@ SK_SteamAPIContext::OnVarChange (SK_IVariable* var, void* val)
 
     return true;
   }
-
+  */
 
   if (var == notify_corner)
   {
@@ -4425,10 +4426,12 @@ SK_Steam_InitCommandConsoleVariables (void)
     cmdAddAliasedVar ( NotifyCorner,
                        steam_ctx.notify_corner );
 
+    /* --- shhh
     steam_ctx.tbf_pirate_fun =
       SK_CreateVar ( SK_IVariable::Float,
                        &steam_ctx.tbf_float,
                        &steam_ctx );
+    */
   }
 }
 
@@ -5458,6 +5461,7 @@ uint32_t
 __stdcall
 SK_Steam_PiratesAhoy (void)
 {
+  /* --- shhh
   const auto pApps  = steam_ctx.Apps  ();
   const auto pUtils = steam_ctx.Utils ();
   const auto pUser  = steam_ctx.User  ();
@@ -5555,6 +5559,8 @@ SK_Steam_PiratesAhoy (void)
   }
 
   return verdict;
+  */
+  return 0x00;
 }
 
 uint32_t
@@ -5570,11 +5576,13 @@ static HANDLE hSigNewSteamFileDetails {
   INVALID_HANDLE_VALUE
 };
 
-
+#pragma warning(push)
+#pragma warning(disable: 4100)
 void
 SK_SteamAPIContext::OnFileDetailsDone ( FileDetailsResult_t* pParam,
                                         bool                 bFailed )
 {
+  /* --- shhh
   struct _HashWorkComparitor {
     bool operator () ( const FileDetailsResult_t& lh,
                        const FileDetailsResult_t& rh ) const {
@@ -5777,11 +5785,12 @@ SK_SteamAPIContext::OnFileDetailsDone ( FileDetailsResult_t* pParam,
   else {
     SetEvent (hSigNewSteamFileDetails);
   }
-
+  */
 
   get_file_details.Cancel ();
 }
-
+#pragma warning(pop)
+ 
 void
 SK_Steam_SignalEmulatedXInputActivity (DWORD dwSlot, bool blocked)
 {
@@ -6755,7 +6764,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
   if (config.steam.online_status != SK_NoPreference)
     SK_Steam_ConnectUserIfNeeded (user_->GetSteamID ());
 
-
+  /* --- shhh
   // Blacklist of people not allowed to use my software (for being disruptive to other users)
   //uint32_t aid = user_->GetSteamID ().GetAccountID    ();
   //uint64_t s64 = user_->GetSteamID ().ConvertToUint64 ();
@@ -6773,6 +6782,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
   //                    L"Unauthorized User", MB_ICONWARNING | MB_OK );
   //  ExitProcess (0x00);
   //}
+  */
 
   friends_ =
     client_->GetISteamFriends (
