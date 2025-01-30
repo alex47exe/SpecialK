@@ -1,8 +1,31 @@
-﻿25.1.28.1
+﻿25.1.29.3
 =========
+ + Increase allocation size for DEV_BROADCAST_DEVICEINTERFACE_W global
+     structs to accomodate storing a device path MAX_PATH-many characters.
+
+25.1.29.2
+=========
+ + Changed Widescreen Visibility Hack and "Smog" (now renamed to "Blur")
+     settings in Tales of Graces f from unsaved debug test options to
+       actual settings stored in SK's INI for the game.
+ + Added tooltips explaining what the abovementioned things even are :)
+ + Disable notification about fixing achievement bugs in Tales of Graces f
+     after the first one has been unlocked.
+
+25.1.29.1
+=========
+ + Fixed a SERIOUS screwup in the Tales of Graces f Steam port, where ALL
+     achievement-related code is contingent upon the end-user having the
+       Steam overlay enabled!
+
+    * Bad Bandai Namco, Bad!  Pay me to do your QA next time? :)
+
+25.1.29
+=======
  + Detach Mono threads after invoking C# functions on threads that are not
      originally part of the Mono runtime to avoid garbage collection on the
        render thread in Tales of Graces f.
+ + Increased color grading LUT size to reduce banding in Tales of Graces f.
 
 25.1.28
 =======

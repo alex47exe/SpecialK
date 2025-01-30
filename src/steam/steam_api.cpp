@@ -2600,6 +2600,11 @@ public:
 
         achievement->unlocked_ = true;
 
+        for ( auto& callback : plugin_mgr->achievement_unlock_fns )
+        {
+          callback (achievement);
+        }
+
         if (config.platform.achievements.play_sound && (! unlock_sound.empty ()))
         {
           SK_PlaySound ( (LPCWSTR)unlock_sound.data (),
@@ -4454,7 +4459,16 @@ SteamAPI_Delay_Init (LPVOID)
     SK_Sleep (std::max (5, config.steam.init_delay));
 
     if (SK_GetFramesDrawn () < 1)
+    {
+      SwitchToThread ();
+
+      if (ReadAcquire (&__SK_Steam_init))
+      {
+        break;
+      }
+
       continue;
+    }
 
     ++tries;
 
