@@ -5994,8 +5994,11 @@ D3D11Dev_CreateTexture2DCore_Impl (
                      pDesc->SampleDesc.Count == 1       &&
                     (pDesc->MiscFlags        == 0x00 ||
                      pDesc->MiscFlags        == D3D11_RESOURCE_MISC_RESOURCE_CLAMP ||
-                     pDesc->MiscFlags        == D3D11_RESOURCE_MISC_GENERATE_MIPS)
-                                                        &&
+                     pDesc->MiscFlags        == D3D11_RESOURCE_MISC_GENERATE_MIPS) &&
+                     // Workaround for Unity stuff...
+                    ((//DirectX::MakeTypeless (pDesc->Format) != DXGI_FORMAT_R8_TYPELESS  &&
+                      DirectX::MakeTypeless (pDesc->Format) != DXGI_FORMAT_R16_TYPELESS &&
+                      DirectX::MakeTypeless (pDesc->Format) != DXGI_FORMAT_R32_TYPELESS) || pDesc->MipLevels > 1) &&
                      //pDesc->MiscFlags        != 0x01  &&
                      pDesc->CPUAccessFlags   == 0x0     &&
                      pDesc->Width             > 0       &&
@@ -8170,16 +8173,32 @@ D3D11CreateDeviceAndSwapChain_Detour (IDXGIAdapter          *pAdapter,
   if (       ppSwapChain != nullptr) *ppSwapChain        = nullptr;
   if (ppImmediateContext != nullptr) *ppImmediateContext = nullptr;
 
+  bool bD3D10 = false;
+
   // Check for the one in a million game that's actually D3D10...
   //   the D3D10 runtime calls into D3D11, but has some quirks SK does
   //     not want to bother with...
   if (  FeatureLevels     == 1                      &&
        pFeatureLevels [0] <= D3D_FEATURE_LEVEL_10_1 &&
                     Flags == 0x40000000             &&
-       SK_GetCallerName ().find (L"d3d10.dll") != std::wstring::npos )
+       StrStrIW (SK_GetCallerName ().c_str (), L"d3d10.dll"))
   {
-    SK_MessageBox ( L"Special K does not support Direct3D 10",
-                    L"Incompatible Game", MB_ICONERROR | MB_OK );
+    bD3D10 = true;
+
+    extern volatile LONG SK_DXGI_LiveWrappedSwapChains;
+    extern volatile LONG SK_DXGI_LiveWrappedSwapChain1s;
+
+    if (SK_GetCurrentGameID () == SK_GAME_ID::AssassinsCreed_Odyssey)
+    {
+      return E_NOTIMPL;
+    }
+
+    else if (! ( ReadAcquire (&SK_DXGI_LiveWrappedSwapChains)  > 0 ||
+                 ReadAcquire (&SK_DXGI_LiveWrappedSwapChain1s) > 0 ) )
+    {
+      SK_MessageBox ( L"Special K does not support Direct3D 10",
+                      L"Incompatible Game", MB_ICONERROR | MB_OK );
+    }
   }
 
   bool bEOSOverlay =
@@ -8195,7 +8214,7 @@ D3D11CreateDeviceAndSwapChain_Detour (IDXGIAdapter          *pAdapter,
 
   if (! config.render.dxgi.debug_layer)
   {
-    if (bEOSOverlay || (pSwapChainDesc != nullptr && !SK_DXGI_IsSwapChainReal (*pSwapChainDesc)))
+    if (bD3D10 || bEOSOverlay || (pSwapChainDesc != nullptr && !SK_DXGI_IsSwapChainReal (*pSwapChainDesc)))
     {
       return
         D3D11CreateDeviceAndSwapChain_Import ( pAdapter,

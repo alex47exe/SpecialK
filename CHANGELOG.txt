@@ -1,4 +1,40 @@
-﻿25.1.30.2
+﻿25.2.4.3
+========
+ + Disabled D3D10 and DXGI Flip Model in Assassin's Creed Origin and Odyssey
+ + Add 3000 frame delay befor enabling visibility hacks for wide aspect ratio
+     displays in Tales of Graces f, to mask glitches on the title screen.
+
+25.2.4.2
+========
+ + For shadow scissor rectangles completely within the normal 16:9 area,
+     in Tales of Graces f, simply rescale and offset the scissor instead
+       of disabling it.
+
+   For shadow scissor rectangles that extend to the left/right of the 16:9
+     area or top/bottom (i.e. 16:10), extend the rectangle to the edge of
+       the screen.
+
+    * This gets rid of most artifacts without completely disabling scissor
+        tests on shadows.
+
+25.2.4.1
+========
+ + Continue auto-disabling texture cache for non-mipmapped textures if
+     UnityPlayer.dll is from 2020 or older.
+
+25.2.4
+======
+ + Stop auto-disabling texture cache for textures without mipmaps in
+     Unity engine games.
+ + No longer cache 16-bit or 32-bit single-channel no mipmap textures
+
+25.1.31
+=======
+ + Disable XInput Emulation in Hello Kitty: Island Adventure.
+ + Disabled render in background in Hello Kitty: Island Adventure or it
+     breaks input and requires you to use keyboard and mouse.
+
+25.1.30.2
 =========
  + Enable modified form of scissor rectangle hack for 16:9 users running at
      resolution scales != 100% in Tales of Graces f to prevent shadows from
