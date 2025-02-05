@@ -943,6 +943,9 @@ IWrapDXGISwapChain::GetDesc (DXGI_SWAP_CHAIN_DESC *pDesc)
   {
     std::scoped_lock lock (_backbufferLock);
 
+    if (config.render.dxgi.fake_swapchain_desc != DXGI_FORMAT_UNKNOWN)
+      pDesc->BufferDesc.Format = config.render.dxgi.fake_swapchain_desc;
+
     if ( (! _backbuffers.empty ()) &&
             _backbuffers [0].p != nullptr )
     {

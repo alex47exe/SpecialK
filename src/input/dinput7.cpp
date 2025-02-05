@@ -1259,12 +1259,12 @@ SK_Input_HookDI7 (void)
           static_cast_p2p <void> (&DirectInputCreateW_Import) );
       }
 
+      InterlockedIncrementRelease (&hooked);
+
       if (SK_GetModuleHandle (L"dinput8.dll"))
       {
         SK_Input_HookDI8 ();
       }
-
-      InterlockedIncrementRelease (&hooked);
     }
 
     else

@@ -387,6 +387,14 @@ SK_TraceLoadLibrary (       HMODULE hCallingMod,
     return;
   }
 
+  // Catch imports that we missed because they were loaded
+  //   as dependencies of another DLL... but stop doing this
+  //     check after 15 frames to avoid unnecessary overhead.
+  if (SK_GetFramesDrawn () < 15)
+  {
+    SK_Input_PreInit ();
+  }
+
   wchar_t     wszModName [MAX_PATH + 2] = { };
   wcsncpy_s ( wszModName, MAX_PATH,
              SK_GetModuleName (hCallingMod).c_str (),

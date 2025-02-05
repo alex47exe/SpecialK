@@ -273,7 +273,8 @@ SK_BootDI8 (void)
           ( SK_GetModuleHandle (L"dinput8.dll") != hBackend );
 
 
-        if ( MH_OK ==
+        if ( InterlockedCompareExchangePointer ((void **)&DirectInput8Create_Import, (void*)1, nullptr) == nullptr &&
+               MH_OK ==
                 SK_CreateDLLHook2 (      L"dinput8.dll",
                                           "DirectInput8Create",
                                            DirectInput8Create,
@@ -393,7 +394,10 @@ CoCreateInstance_DI8 (
   _Out_ LPVOID   *ppv,
   _In_  LPVOID    pCallerAddr )
 {
-  SK_BootDI8 ();
+  if (DirectInput8Create_Import == nullptr)
+  {
+    SK_BootDI8 ();
+  }
 
   if (SK_GetDLLRole () == DLL_ROLE::DInput8)
   {
@@ -1919,7 +1923,7 @@ SK_Input_HookDI8 (void)
   if (! SK_GetModuleHandle (L"dinput8.dll"))
            SK_LoadLibraryW (L"dinput8.dll");
 
-  if (SK_GetModuleHandle (L"dinput8.dll") && DirectInput8Create_Import == nullptr)
+  if (SK_GetModuleHandle (L"dinput8.dll") && InterlockedCompareExchangePointer ((void **)&DirectInput8Create_Import, (void*)1, nullptr) == nullptr)
   {
     static volatile LONG               hooked    =   FALSE;
     if (! InterlockedCompareExchange (&hooked, TRUE, FALSE))
@@ -1949,12 +1953,12 @@ SK_Input_HookDI8 (void)
           static_cast_p2p <void> (&DirectInput8Create_Import) );
       }
 
+      InterlockedIncrementRelease (&hooked);
+
       if (SK_GetModuleHandle (L"dinput.dll"))
       {
         SK_Input_HookDI7 ();
       }
-
-      InterlockedIncrementRelease (&hooked);
     }
 
     else
@@ -1971,7 +1975,7 @@ SK_Input_PreHookDI8 (void)
     SK_BootDI8 ();
 
     if (SK_GetModuleHandle (L"dinput.dll"))
-      SK_Input_HookDI7  ();
+      SK_Input_HookDI7 ();
   }
 
   else
@@ -1979,34 +1983,21 @@ SK_Input_PreHookDI8 (void)
     if (! config.input.gamepad.hook_dinput8)
       return;
 
-    if ( nullptr == InterlockedCompareExchangePointer (
-                      (void **)&DirectInput8Create_Import,
-                        (PVOID)1, nullptr
-                    )
-       )
+    static sk_import_test_s tests [] = { { "dinput.dll",  false },
+                                         { "dinput8.dll", false } };
+
+    SK_TestImports (SK_GetModuleHandle (nullptr), tests, 2);
+
+    if (tests [1].used || SK_GetModuleHandle (L"dinput8.dll"))
     {
-      static sk_import_test_s tests [] = { { "dinput.dll",  false },
-                                           { "dinput8.dll", false } };
+      if (SK_GetDLLRole () != DLL_ROLE::DInput8)
+        SK_Input_HookDI8 ();
+    }
 
-      SK_TestImports (SK_GetModuleHandle (nullptr), tests, 2);
-
-      if (tests [1].used || SK_GetModuleHandle (L"dinput8.dll"))
-      {
-        if (SK_GetDLLRole () != DLL_ROLE::DInput8)
-         SK_Input_HookDI8 ();
-      }
-
-      else
-      {
-        InterlockedExchangePointer ( (void **)&DirectInput8Create_Import,
-                                       nullptr );
-      }
-
-      if (tests [0].used/* || SK_GetModuleHandle (L"dinput.dll")*/)
-      {
-        SK_Modules->LoadLibraryLL (L"dinput.dll");
-                           SK_Input_PreHookDI7 ();
-      }
+    if (tests [0].used || SK_GetModuleHandle (L"dinput.dll"))
+    {
+      SK_Modules->LoadLibraryLL (L"dinput.dll");
+                         SK_Input_PreHookDI7 ();
     }
   }
 }
