@@ -23,6 +23,7 @@
 
 #include <SpecialK/stdafx.h>
 #include <SpecialK/control_panel/input.h>
+#include <SpecialK/render/d3d11/d3d11_core.h> // For HUDless keybinding
 
 #include <imgui/font_awesome.h>
 
@@ -794,6 +795,9 @@ SK::ControlPanel::Input::Draw (void)
       ImGui::TreePop  ();
     }
 
+    // Gamepad debug menus
+    static bool show_debug_option = false;
+
     if (bHasPlayStation)
       ImGui::SetNextItemOpen (true, ImGuiCond_Once);
 
@@ -1117,6 +1121,9 @@ SK::ControlPanel::Input::Draw (void)
           }
           else
           {
+            bool bHasHUDless =
+              ( SK_GetCurrentRenderBackend ().api == SK_RenderAPI::D3D11 && ReadAcquire (&SK_D3D11_TrackingCount->Conditional) > 0 );
+
             if (bHasPlayStation)
               ImGui::TextUnformatted ("Exit \"Control Panel Exclusive Input Mode\" by Holding Share/Select or Pressing Caps Lock");
             else
@@ -1135,6 +1142,8 @@ SK::ControlPanel::Input::Draw (void)
               ImGui::TextUnformatted (ICON_FA_PLAYSTATION " + Left");
               ImGui::TextUnformatted (ICON_FA_PLAYSTATION " + Right");
               ImGui::TextUnformatted (ICON_FA_PLAYSTATION " + Share");
+              if (bHasHUDless)
+              ImGui::TextUnformatted (ICON_FA_PLAYSTATION " + Start");
               ImGui::TextUnformatted (ICON_FA_PLAYSTATION " + L3");
               ImGui::TextUnformatted (ICON_FA_PLAYSTATION " + L1");
               ImGui::TextUnformatted (ICON_FA_PLAYSTATION " + R1");
@@ -1159,6 +1168,8 @@ SK::ControlPanel::Input::Draw (void)
               ImGui::TextUnformatted (ICON_FA_XBOX " + Left");
               ImGui::TextUnformatted (ICON_FA_XBOX " + Right");
               ImGui::TextUnformatted (ICON_FA_XBOX " + Back");
+              if (bHasHUDless)
+              ImGui::TextUnformatted (ICON_FA_XBOX " + Start");
               ImGui::TextUnformatted (ICON_FA_XBOX " + LS");
               ImGui::TextUnformatted (ICON_FA_XBOX " + LB");
               ImGui::TextUnformatted (ICON_FA_XBOX " + RB");
@@ -1180,6 +1191,8 @@ SK::ControlPanel::Input::Draw (void)
               ImGui::TextUnformatted ("HDR Brightness -10 nits");
               ImGui::TextUnformatted ("HDR Brightness +10 nits");
               ImGui::TextUnformatted ("Capture Screenshot");
+              if (bHasHUDless)
+              ImGui::TextUnformatted ("Capture HUDless Screenshot");
               ImGui::TextUnformatted ("Media Play / Pause");
               ImGui::TextUnformatted ("Media Prev Track");
               ImGui::TextUnformatted ("Media Next Track");
@@ -1718,7 +1731,6 @@ SK::ControlPanel::Input::Draw (void)
 
             if (config.input.gamepad.xinput.emulate)
             {
-              static bool show_debug_option = false;
               //ImGui::TreePush ("");
               ImGui::SameLine        ();
               ImGui::PushItemWidth   (
@@ -2388,7 +2400,7 @@ extern float SK_ImGui_PulseNav_Strength;
           std::min (16U, joy_caps.wMaxButtons);
 
         for ( unsigned int i = 0,
-                           j = 0                                    ;
+                           j = 0           ;
                            i < max_buttons ;
                          ++i )
         {
@@ -2486,26 +2498,27 @@ extern float SK_ImGui_PulseNav_Strength;
         ImGui::PopID         ( );
       };
 
-#if 1
-      static DWORD dwLastCheck = current_time;
-      static UINT  dwLastCount = SK_joyGetNumDevs ();
+      if (show_debug_option)
+      {
+        static DWORD dwLastCheck = current_time;
+        static UINT  dwLastCount = SK_joyGetNumDevs ();
 
-      const DWORD _CHECK_INTERVAL = 1500UL;
+        const DWORD _CHECK_INTERVAL = 1500UL;
 
-      UINT count =
-        ( dwLastCheck < (current_tick - _CHECK_INTERVAL) ) ?
-                  SK_joyGetNumDevs () : dwLastCount;
+        UINT count =
+          ( dwLastCheck < (current_tick - _CHECK_INTERVAL) ) ?
+                    SK_joyGetNumDevs () : dwLastCount;
 
-      if (dwLastCheck < (current_tick - _CHECK_INTERVAL))
-          dwLastCount = count;
+        if (dwLastCheck < (current_tick - _CHECK_INTERVAL))
+            dwLastCount = count;
 
-      if (  count > 0) { GamepadDebug (JOYSTICKID1);
-        if (count > 1) {
-          for ( UINT i = 1 ; i < count ; ++i )
-            GamepadDebug (i);
+        if (  count > 0) { GamepadDebug (JOYSTICKID1);
+          if (count > 1) {
+            for ( UINT i = 1 ; i < count ; ++i )
+              GamepadDebug (i);
+          }
         }
       }
-#endif
 
       if (config.input.gamepad.hook_xinput && SK_ImGui_HasXboxController ())
       {

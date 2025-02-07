@@ -5112,8 +5112,6 @@ _In_opt_ ID3D11DepthStencilView        *pDepthStencilView,
   ID3D11DepthStencilView *pDSV =
        pDepthStencilView;
 
-  SK_WRAP_AND_HOOK
-
   auto _Finish = [&](void) ->
   void
   {
@@ -5136,9 +5134,18 @@ _In_opt_ ID3D11DepthStencilView        *pDepthStencilView,
           pDevCtx, NumViews, ppRenderTargetViews,
             pDSV );
     }
-    catch (const SK_SEH_IgnoredException&) {};
+    catch (const SK_SEH_IgnoredException&) {
+      SK_LOGi0 (
+        L"Caught Access Violation during call to OMSetRenderTargets (...)!"
+      );
+    };
     SK_SEH_RemoveTranslator (orig_se);
   };
+
+  if (! (SK::ControlPanel::D3D11::show_shader_mod_dlg && (! SK_D3D11_ApplyingStateBlock)))
+    return _Finish ();
+
+  SK_WRAP_AND_HOOK
 
   bool early_out =
     (! bMustNotIgnore) ||
@@ -5532,9 +5539,11 @@ D3D11Dev_CreateTexture2DCore_Impl (
       {
         if (__SK_CC_ResMultiplier)
         {
-          if (pDesc->Format != DXGI_FORMAT_R16_UINT &&
-              pDesc->Width == 4096 && pDesc->Height == 2048 && ((pDesc->BindFlags & D3D11_BIND_DEPTH_STENCIL) ||
-                                                                (pDesc->BindFlags & D3D11_BIND_RENDER_TARGET) ||
+          if (!DirectX::IsCompressed (pDesc->Format) &&
+                                      pDesc->Format != DXGI_FORMAT_R16_UINT &&
+              pDesc->Width == 4096 && pDesc->Height == 2048 && ((pDesc->BindFlags & D3D11_BIND_DEPTH_STENCIL)   ||
+                                                                (pDesc->BindFlags & D3D11_BIND_SHADER_RESOURCE) ||
+                                                                (pDesc->BindFlags & D3D11_BIND_RENDER_TARGET)   ||
                                                                 (pDesc->BindFlags & D3D11_BIND_UNORDERED_ACCESS)))
           {
             pDesc->Width  = 4096 * static_cast <UINT> (__SK_CC_ResMultiplier);
@@ -6853,19 +6862,19 @@ SK_D3D11_Init (void)
              ( LocalHook_D3D11CreateDeviceAndSwapChain.active == TRUE  ||
                MH_OK == SK_QueueEnableHook (pfnD3D11CreateDeviceAndSwapChain) ) )
         {
-          InterlockedIncrementRelease (&SK_D3D11_initialized);
-
-          bool  bEnable = SK_EnableApplyQueuedHooks  ();
+          SK_EnableApplyQueuedHooks ();
           {
             success =
               ( MH_OK == SK_ApplyQueuedHooks () );
           }
-          if (! bEnable)  SK_DisableApplyQueuedHooks ();
+
+          InterlockedIncrementRelease (&SK_D3D11_initialized);
         }
       }
 
       if (! success)
       {
+        InterlockedIncrementRelease (&SK_D3D11_initialized);
         SK_LOGi0 ( L"Something went wrong hooking D3D11 -- "
                    L"need better errors." );
       }

@@ -278,6 +278,8 @@ SK_GetCurrentGameID (void)
           { L"Stalker2-Win64-Shipping.exe",            SK_GAME_ID::Stalker2                     },
           { L"vlc.exe",                                SK_GAME_ID::vlc                          },
           { L"ZenlessZoneZero.exe",                    SK_GAME_ID::ZenlessZoneZero              },
+          { L"EnderLiliesSteam-Win64-Shipping.exe",    SK_GAME_ID::EnderLilies                  },
+          { L"EnderLiliesEOS-Win64-Shipping.exe",      SK_GAME_ID::EnderLilies                  },
         };
 
     first_check  = false;
@@ -2618,6 +2620,7 @@ auto DeclKeybind =
         // Fake it, otherwise once per-frame the game's going to try to
         //   ReSizeBuffers (...)
         config.render.dxgi.fake_swapchain_desc = DXGI_FORMAT_R8G8B8A8_UNORM;
+        config.input.ui.use_hw_cursor          = false; // Prevent the game's cursor from doing whatever
         break;
 
       case SK_GAME_ID::DragonsDogma2:
@@ -2682,6 +2685,7 @@ auto DeclKeybind =
         config.render.dxgi.scaling_mode         = DXGI_MODE_SCALING_UNSPECIFIED;
         config.render.dxgi.fake_fullscreen_mode = true;
         config.window.background_render         = true;
+        config.render.dxgi.hide_hdr_support     = true;
 
         // Prevent VRR disable when game plays cutscenes
         config.render.framerate.sync_interval_clamp  =     1;
@@ -4070,6 +4074,13 @@ auto DeclKeybind =
         config.apis.dxgi.d3d11.hook  = true;
         config.apis.dxgi.d3d12.hook  = true;
       } break;
+
+#ifdef _M_AMD64
+      case SK_GAME_ID::EnderLilies:
+      {
+        SK_EnderLilies_InitPlugIn ();
+      } break;
+#endif
     }
   }
 

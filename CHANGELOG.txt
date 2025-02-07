@@ -1,4 +1,51 @@
-﻿25.2.6
+﻿25.2.6.8
+========
+ + Hide the controller reading debug menu under Input Management / Gamepad
+     unless Xbox debug mode is enabled (right-click the Xbox Mode button),
+       if you have an Xbox controller this doesn't apply to you.
+
+   * That debug menu loads up DirectInput 7 and causes issues with some
+       overlays, so it's going back to hidden by default...
+
+25.2.6.7
+========
+ + Added widescreen patch to Ender Lilies.
+ + Fixed EOS frame counter in games that use both SteamAPI and EOS SDK.
+
+25.2.6.6
+========
+ + Fixed some EOS games not triggering EOS SDK hooks for overlay/achievement
+     features when using Global Injection.
+ + Disable Hardware Cursor in Kingdom Come Deliverance 2.
+
+25.2.6.5
+========
+ + Xbox Guide + Start or PlayStation + Start now triggers HUDless screenshots,
+     provided d3d11_shaders.ini defines any HUD shaders.
+
+25.2.6.4
+========
+ + Fixed HUDless screenshots not working in some D3D11 games...
+     (mostly ones that use fewer than 3 buffers in their SwapChain).
+
+25.2.6.3
+========
+ + Fixed monochrome JPEG achievement icons showing up as misaligned Red-only
+     textures in D3D12 achievement popups. (They are converted to RGBA now...).
+
+25.2.6.2
+========
+ + Fixed Chrono Cross resolution uncap not working after December's D3D11 state
+     tracking optimization.
+ + Pass initialized values for interface count when building stateblocks during
+     SK_D3D11_BltCopySurface (...) and calling ID3D11DeviceContext::*SGetShader
+
+25.2.6.1
+========
+ + Change D3D11 hook initialization to avoid "Out of Graphic Memory" jibberish
+     error in NieR: Automata
+
+25.2.6
 ======
  + Workaround Steam overlay manipulation of DirectInput 8 that could deadlock
 
