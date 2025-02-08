@@ -568,6 +568,8 @@ struct sk_config_t
     bool         copy_to_clipboard     =  true;
     bool         allow_hdr_clipboard   =  true;
     int          clipboard_hdr_format  =     1; // 1 = PNG, 2 = AVIF
+    int          snipboard_hdr_format  =     0; // 0 = No override
+    ULONG64      reset_snipboard_frame =     0; // Frame when clipboard overrides reset
     bool         embed_nickname        = false;
     std::wstring override_path         =   L"";
     std::wstring filename_format       = L"%G %F %T";
@@ -1444,7 +1446,8 @@ struct sk_config_t
   struct utility_functions_s {
     HANDLE hSignalAsyncSave     = nullptr;
 
-    void save_async (void);
+    void save_async_if (bool predicate);
+    void save_async    (void);
   } utility;
 };
 

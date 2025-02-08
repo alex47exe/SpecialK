@@ -1,4 +1,31 @@
-﻿25.2.8
+﻿25.2.8.3
+========
+ + Added support for importing settings from an INI file using drag-n-drop
+     from a URL (i.e. drag the download icon from Discord into the game).
+
+   * Currently SK allows importing any INI file named "SpecialK_import.ini",
+       or "<game_executable_name>.ini" (with the .exe extension removed).
+
+25.2.8.2
+========
+ + Automatically download the AVIF codec if a user selects AVIF clipboard
+     format and does not already have the codec.
+ + Fixed HDR snipping screenshots when AVIF is the selected clipboard format,
+     it will use HDR PNG for the snip because it is simpler and lossless.
+
+25.2.8.1
+========
+ + Apply Xbox analog stick remapping to Windows.Gaming.Input and GameInput
+ + Added INI setting to hide Windows.Gaming.Input support from games, which
+     usually causes them to fallback to XInput.
+
+   [Input.Gamepad]
+   HideWindowsGamingInput={true|false}  Default: false
+
+   * XInput has a few benefits, such as support for higher polling rates, and
+       the API allows polling while the game window is in the background.
+
+25.2.8
 ======
  + Added options to invert X/Y-axes on analog sticks in Xbox mode.
  + Added options to swap left/right analog sticks in Xbox mode.

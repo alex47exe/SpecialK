@@ -1375,34 +1375,28 @@ SK::ControlPanel::Input::Draw (void)
 
         if (axial_remap)
         {
-          ImGui::SameLine     (0.0f, ImGui::GetStyle ().ItemSpacing.x * 3);
+          const float item_spacing_x = ImGui::GetStyle ().ItemSpacing.x;
+          const float combo_width    = item_spacing_x * 2 +
+                     ImGui::CalcTextSize ("Inverted X-axis\t").x;
+
+          ImGui::SameLine     (0.0f, item_spacing_x * 3);
           changed |=
           ImGui::Checkbox     ("Swap Left / Right",
             &config.input.gamepad.xinput.swap_sticks);
           ImGui::TreePush     ("");
+          ImGui::PushItemWidth(combo_width);
           ImGui::BeginGroup   (  );
-          ImGui::TextUnformatted
-                           ("L: ");
-          ImGui::SameLine     (  );
-          ImGui::PushItemWidth(
-            ImGui::GetStyle ().ItemSpacing.x * 2 +
-            ImGui::CalcTextSize ("Inverted X-axis\t").x);
           changed |=
-          ImGui::Combo        ("##LeftStickRemap",  &ls_inversion,
+          ImGui::Combo        ("Left##LeftStickRemap",  &ls_inversion,
             "Normal\0Inverted X-axis\0Inverted Y-axis\0Fully Inverted\0\0", 4);
-          ImGui::PopItemWidth (  );
-          ImGui::SameLine     (0.0f, ImGui::GetStyle ().ItemSpacing.x * 2);
-          ImGui::TextUnformatted
-                           ("R: ");
-          ImGui::SameLine     (  );
-          ImGui::PushItemWidth(
-            ImGui::GetStyle ().ItemSpacing.x * 2 +
-            ImGui::CalcTextSize ("Inverted X-axis\t").x);
-          changed |=
-          ImGui::Combo        ("##RightStickRemap", &rs_inversion,
-            "Normal\0Inverted X-axis\0Inverted Y-axis\0Fully Inverted\0\0", 4);
-          ImGui::PopItemWidth (  );
           ImGui::EndGroup     (  );
+          ImGui::SameLine     (0.0f, item_spacing_x * 2);
+          ImGui::BeginGroup   (  );
+          changed |=
+          ImGui::Combo        ("Right##RightStickRemap", &rs_inversion,
+            "Normal\0Inverted X-axis\0Inverted Y-axis\0Fully Inverted\0\0", 4);
+          ImGui::EndGroup     (  );
+          ImGui::PopItemWidth (  );
           ImGui::TreePop      (  );
         }
 
@@ -1707,18 +1701,16 @@ SK::ControlPanel::Input::Draw (void)
                       //ImGui::SeparatorEx (ImGuiSeparatorFlags_Vertical);
                       //ImGui::SameLine    ();
 
-                      if (ImGui::Checkbox ("Power Saving Mode", &config.input.gamepad.scepad.power_save_mode))
-                      {
-                        config.utility.save_async ();
-                      }
+                      config.utility.save_async_if (
+                        ImGui::Checkbox ("Power Saving Mode", &config.input.gamepad.scepad.power_save_mode)
+                      );
 
                       ImGui::SetItemTooltip ("Polls gyro and touchpad less frequently to save power.");
                     }
 
-                    if (ImGui::SliderFloat ("Critical Battery Level", &config.input.gamepad.low_battery_percent, 0.0f, 45.0f, "%3.0f%% Remaining"))
-                    {
-                      config.utility.save_async ();
-                    }
+                    config.utility.save_async_if (
+                      ImGui::SliderFloat ("Critical Battery Level", &config.input.gamepad.low_battery_percent, 0.0f, 45.0f, "%3.0f%% Remaining")
+                    );
 
                     if (ImGui::BeginItemTooltip ())
                     {
@@ -2113,8 +2105,7 @@ SK::ControlPanel::Input::Draw (void)
             ImGui::SliderFloat ("Right Trigger", &config.input.gamepad.impulse_strength_r, 0.0f, 1.5f, "%3.1fx Impulse Strength");
             ImGui::TreePop     ( );
 
-            if (changed)
-              config.utility.save_async ();
+            config.utility.save_async_if (changed);
           }
 
           ImGui::BeginGroup ();
@@ -2271,8 +2262,7 @@ SK::ControlPanel::Input::Draw (void)
               ImGui::EndGroup ();
             }
 
-            if (changed)
-              config.utility.save_async ();
+            config.utility.save_async_if (changed);
 
             ImGui::TreePop  (  );
           }
@@ -2733,8 +2723,7 @@ extern float SK_ImGui_PulseNav_Strength;
       if (keyboard_changed)config.input.keyboard.    disabled_to_game =
                            config.input.keyboard.org_disabled_to_game;
 
-      if (mouse_changed || keyboard_changed)
-        config.utility.save_async ();
+      config.utility.save_async_if (mouse_changed || keyboard_changed);
 
       if (config.input.keyboard.disabled_to_game == SK_InputEnablement::DisabledInBackground)
         ImGui::SetItemTooltip ("Most games block keyboard input in the background to begin with...");
