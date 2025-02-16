@@ -1087,7 +1087,7 @@ struct sk_config_t
       bool    capture_keyboard    = false; // ^^^ Disabled by default because it interferes with cursor auto-hide
       bool    capture_gamepad     = false;
       bool    use_hw_cursor       =  true;
-      bool    ignore_set_cursor   = false;
+      bool    allow_set_cursor    =  true; // Not stored in INI, set according to HW cursor preference
       bool    center_cursor       = false;
       bool    nav_moves_mouse     = false;
       int     game_set_hw_cursor  =     0; // Not stored in INI, the number of times
@@ -1285,6 +1285,7 @@ struct sk_config_t
     bool    treat_fg_as_active  = false; // Compat. hack for NiNoKuni 2
     bool    dont_hook_wndproc   = false;
     bool    activate_at_start   = false;
+    bool    fix_stuck_keys      =  true; // Fixes keys that might be stuck after alt-tab
     struct resolution_s {
       struct dim_override_s {
         unsigned int x          = 0;
@@ -1798,6 +1799,7 @@ enum class SK_GAME_ID
   vlc,                          // vlc.exe
   ZenlessZoneZero,              // ZenlessZoneZero.exe
   EnderLilies,                  // EnderLiliesEOS-Win64-Shipping.exe, EnderLiliesSteam-Win64-Shipping.exe
+  Avowed,                       // Avowed-WinGDK-Shipping.exe, Avowed-Win64-Shipping.exe
 
   UNKNOWN_GAME               = 0xffff
 };

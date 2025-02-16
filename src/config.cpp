@@ -280,6 +280,8 @@ SK_GetCurrentGameID (void)
           { L"ZenlessZoneZero.exe",                    SK_GAME_ID::ZenlessZoneZero              },
           { L"EnderLiliesSteam-Win64-Shipping.exe",    SK_GAME_ID::EnderLilies                  },
           { L"EnderLiliesEOS-Win64-Shipping.exe",      SK_GAME_ID::EnderLilies                  },
+          { L"Avowed-WinGDK-Shipping.exe",             SK_GAME_ID::Avowed                       }, // Microsoft Store Version
+          { L"Avowed-Win64-Shipping.exe",              SK_GAME_ID::Avowed                       }, // Steam Version
         };
 
     first_check  = false;
@@ -1168,6 +1170,7 @@ struct {
   sk::ParameterBool*      dont_hook_wndproc       = nullptr;
   sk::ParameterBool*      activate_at_start       = nullptr;
   sk::ParameterBool*      treat_fg_as_active      = nullptr;
+  sk::ParameterBool*      fix_stuck_alt_tab_keys  = nullptr;
 } window;
 
 struct {
@@ -1855,6 +1858,8 @@ auto DeclKeybind =
                                                          L" they are running in the background)",                      dll_ini,         L"Window.System",         L"ActivateAtStart"),
     ConfigEntry (window.treat_fg_as_active,              L"The game treats the foreground window (rather than focus),"
                                                          L" as the active application [for background render feature]",dll_ini,         L"Window.System",         L"TreatForegroundAsActive"),
+    ConfigEntry (window.fix_stuck_alt_tab_keys,          L"Automatically re-send key release notifications for keys"
+                                                         L" that were released while the game was alt-tab'd",          dll_ini,         L"Window.System",         L"FixStuckAltTabKeys"),
 
     // Compatibility
     //////////////////////////////////////////////////////////////////////////
@@ -2633,9 +2638,10 @@ auto DeclKeybind =
         //   ReSizeBuffers (...)
         config.render.dxgi.fake_swapchain_desc = DXGI_FORMAT_R8G8B8A8_UNORM;
 
-        config.input.ui.use_hw_cursor          = false; // Prevent the game's cursor from doing whatever
+        config.input.ui.use_hw_cursor          = false;
         config.render.d3d12.force_anisotropic  = false;
-        config.input.ui.ignore_set_cursor      = true;
+        config.input.ui.allow_set_cursor       = false;
+        config.window.dont_hook_wndproc        =  true; // Game randomly displays mouse cursor when memory is modified
 
         // Sick of users complaining about bugs that -were- fixed because they can't be bothered to
         //   reset their INI after defaults are changed to fix the problems... so we're going to be
@@ -3373,7 +3379,6 @@ auto DeclKeybind =
       case SK_GAME_ID::Hello_Kitty_Island_Adventure:
       {
         config.input.gamepad.xinput.emulate = false;
-        config.window.background_render     = false;
       } break;
 
       case SK_GAME_ID::Tales_of_Vesperia:
@@ -3911,6 +3916,10 @@ auto DeclKeybind =
                          SK_ImGui_Toast::ShowTitle );
           }
         );
+        break;
+
+      case SK_GAME_ID::Avowed:
+        config.window.treat_fg_as_active = true;
         break;
 
       case SK_GAME_ID::DiabloIV:
@@ -4822,6 +4831,9 @@ auto DeclKeybind =
   input.cursor.block_invisible->load     (config.input.ui.capture_hidden);
   input.cursor.fix_synaptics->load       (config.input.mouse.fix_synaptics);
 
+  // Implicit setting, not user-facing
+  config.input.ui.allow_set_cursor =      config.input.ui.use_hw_cursor;
+
   input.gamepad.disabled_to_game->load   (config.input.gamepad.disabled_to_game);
   input.gamepad.disable_hid->load        (config.input.gamepad.disable_hid);
   input.gamepad.disable_winmm->load      (config.input.gamepad.disable_winmm);
@@ -5030,18 +5042,19 @@ auto DeclKeybind =
     }
   }
 
-  window.confine_cursor->load      (config.window.confine_cursor);
-  window.unconfine_cursor->load    (config.window.unconfine_cursor);
-  window.persistent_drag->load     (config.window.persistent_drag);
-  window.fullscreen->load          (config.window.fullscreen);
-  window.fix_mouse_coords->load    (config.window.res.override.fix_mouse);
-  window.always_on_top->load       (config.window.always_on_top);
-  window.disable_screensaver->load (config.window.disable_screensaver);
-  window.fullscreen_no_saver->load (config.window.fullscreen_no_saver);
-  window.manage_screensaver->load  (config.window.manage_screensaver);
-  window.dont_hook_wndproc->load   (config.window.dont_hook_wndproc);
-  window.activate_at_start->load   (config.window.activate_at_start);
-  window.treat_fg_as_active->load  (config.window.treat_fg_as_active);
+  window.confine_cursor->load         (config.window.confine_cursor);
+  window.unconfine_cursor->load       (config.window.unconfine_cursor);
+  window.persistent_drag->load        (config.window.persistent_drag);
+  window.fullscreen->load             (config.window.fullscreen);
+  window.fix_mouse_coords->load       (config.window.res.override.fix_mouse);
+  window.always_on_top->load          (config.window.always_on_top);
+  window.disable_screensaver->load    (config.window.disable_screensaver);
+  window.fullscreen_no_saver->load    (config.window.fullscreen_no_saver);
+  window.manage_screensaver->load     (config.window.manage_screensaver);
+  window.dont_hook_wndproc->load      (config.window.dont_hook_wndproc);
+  window.activate_at_start->load      (config.window.activate_at_start);
+  window.treat_fg_as_active->load     (config.window.treat_fg_as_active);
+  window.fix_stuck_alt_tab_keys->load (config.window.fix_stuck_keys);
 
   if (config.window.fullscreen && (! config.window.borderless))
   {
@@ -6519,6 +6532,7 @@ SK_SaveConfig ( std::wstring name,
   window.dont_hook_wndproc->store             (config.window.dont_hook_wndproc);
   window.activate_at_start->store             (config.window.activate_at_start);
   window.treat_fg_as_active->store            (config.window.treat_fg_as_active);
+  window.fix_stuck_alt_tab_keys->store        (config.window.fix_stuck_keys);
 
 #ifdef _VALIDATE_MONITOR_IDX
   if (config.display.monitor_handle != 0)

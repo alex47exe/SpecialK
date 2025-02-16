@@ -1079,7 +1079,7 @@ ImGui_WndProcHandler ( HWND   hWnd,   UINT   msg,
     }
   }
 
-  if (msg == WM_SETCURSOR && (! config.input.ui.ignore_set_cursor))
+  if (msg == WM_SETCURSOR)
   {
   //SK_LOG0 ( (L"ImGui Witnessed WM_SETCURSOR"), L"Window Mgr" );
 
@@ -1116,7 +1116,7 @@ ImGui_WndProcHandler ( HWND   hWnd,   UINT   msg,
           if (bRawCapture || ( SK_ImGui_IsAnythingHovered () &&
                                SK_ImGui_WantMouseCapture  () ))
           {
-            if (SK_ImGui_WantHWCursor ())
+            if (SK_ImGui_WantHWCursor () && config.input.ui.allow_set_cursor)
             {
               auto desired_cursor     = ImGui_DesiredCursor ();
               bool using_class_cursor = false;
@@ -1144,19 +1144,23 @@ ImGui_WndProcHandler ( HWND   hWnd,   UINT   msg,
                 SK_SetCursor (desired_cursor);
             }
 
-            return TRUE;
+            if (config.input.ui.allow_set_cursor)
+              return TRUE;
           }
 
           else
           {
-            // Reset the class cursor if necessary.
-            if ((intptr_t)game_window.game_cursor > 0 &&
-                          game_window.game_cursor != game_window.real_cursor)
+            if (config.input.ui.allow_set_cursor)
             {
-              game_window.real_cursor = game_window.game_cursor;
+              // Reset the class cursor if necessary.
+              if ((intptr_t)game_window.game_cursor > 0 &&
+                            game_window.game_cursor != game_window.real_cursor)
+              {
+                game_window.real_cursor = game_window.game_cursor;
 
-              SK_SetClassLongPtrW ( game_window.hWnd, GCLP_HCURSOR,
-                       (LONG_PTR)game_window.real_cursor );
+                SK_SetClassLongPtrW ( game_window.hWnd, GCLP_HCURSOR,
+                         (LONG_PTR)game_window.real_cursor );
+              }
             }
 
             if (config.input.cursor.manage)
@@ -1171,9 +1175,11 @@ ImGui_WndProcHandler ( HWND   hWnd,   UINT   msg,
 
               if (! SK_Window_IsCursorActive ())
               {
-                SK_SetCursor (0);
-
-                return TRUE;
+                if (config.input.ui.allow_set_cursor)
+                {
+                  SK_SetCursor (0);
+                  return TRUE;
+                }
               }
             }
           }
@@ -3584,6 +3590,9 @@ public:
         return S_OK;
       };
 
+      auto& rb =
+        SK_GetCurrentRenderBackend ();
+
       // Unicode URLs
       if (m_fmtDropping->cfFormat == CF_UNICODETEXT && SUCCEEDED (pDataObj->GetData (m_fmtDropping, &medium)))
       {
@@ -3667,7 +3676,7 @@ public:
             }
           }
 
-          if (StrStrIW (wszSource, L".dds"))
+          if (SK_API_IsLayeredOnD3D11 (rb.api) && StrStrIW (wszSource, L".dds"))
           {
             std::filesystem::path dest =
               *SK_D3D11_res_root;
@@ -3844,7 +3853,7 @@ public:
             }
           }
 
-          if (StrStrIA (szSource, ".dds"))
+          if (SK_API_IsLayeredOnD3D11 (rb.api) && StrStrIA (szSource, ".dds"))
           {
             std::filesystem::path dest =
               *SK_D3D11_res_root;
@@ -3930,18 +3939,12 @@ private:
 void
 SK_ImGui_InitDragAndDrop (void)
 {
-  auto& rb =
-    SK_GetCurrentRenderBackend ();
-
-  if (SK_API_IsLayeredOnD3D11 (rb.api))
-  {
-    SK_RunOnce (
-      OleInitialize        (nullptr);
-      SK_SetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE, SK_GetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE) | WS_EX_ACCEPTFILES);
-      RevokeDragDrop       (game_window.hWnd);
-      RegisterDragDrop     (game_window.hWnd,                 new SK_DropTarget (game_window.hWnd))
-    );
-  }
+  SK_RunOnce (
+    OleInitialize        (nullptr);
+    SK_SetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE, SK_GetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE) | WS_EX_ACCEPTFILES);
+    RevokeDragDrop       (game_window.hWnd);
+    RegisterDragDrop     (game_window.hWnd,                 new SK_DropTarget (game_window.hWnd))
+  );
 }
 
 void

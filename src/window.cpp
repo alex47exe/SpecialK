@@ -4426,6 +4426,25 @@ GetWindowInfo_Detour (HWND hwnd, PWINDOWINFO pwi)
        pwi->cbSize == sizeof (WINDOWINFO) &&
        bRet )
   {
+    if (config.window.borderless)
+    {
+      pwi->cxWindowBorders = 0;
+      pwi->cyWindowBorders = 0;
+    }
+
+    // DXGI checks on this during SwapChain creation...
+    //   lie to DXGI if we have to, so that SwapCHain creation succeeds.
+    if (StrStrIW (SK_GetCallerName ().c_str (), L"dxgi.dll"))
+    {
+      pwi->dwExStyle &= ~WS_EX_TOPMOST;
+
+      if ( config.render.framerate.flip_discard ||
+           config.render.framerate.flip_sequential )
+      {
+        pwi->dwExStyle |= WS_EX_NOREDIRECTIONBITMAP;
+      }
+    }
+
     if (SK_WantBackgroundRender ())
     {
       if (hwnd == game_window.hWnd)
@@ -5963,7 +5982,7 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
 
     case WM_SETCURSOR:
     {
-      if ((! config.input.ui.ignore_set_cursor) && hWnd == game_window.hWnd && HIWORD (lParam) != WM_NULL)
+      if (hWnd == game_window.hWnd && HIWORD (lParam) != WM_NULL)
       {
         if (LOWORD (lParam) == HTCLIENT)
         {
@@ -5976,8 +5995,11 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
 
             __SK_EnableSetCursor = bOrig;
 
-            // For a very long time now, we've been handling this message WRONG, return 1 stupid!
-            return 1;
+            if (config.input.ui.allow_set_cursor)
+            {
+              // For a very long time now, we've been handling this message WRONG, return 1 stupid!
+              return 1;
+            }
           }
         }
       }
@@ -6134,6 +6156,13 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
       if (SK_Window_OnFocusChange (hWnd, (HWND)wParam))
       {
         ActivateWindow (hWnd, true, (HWND)wParam);
+
+        if ( ( config.window.background_render ||
+               config.window.fix_stuck_keys )  &&
+               config.input.keyboard.disabled_to_game != SK_InputEnablement::Disabled )
+        {
+          SK_Input_ReleaseCommonStuckKeys ();
+        }
 
         // GeForce Experience Overlay is known to paradoxically set
         //   hWnd == wParam when it activates...
@@ -8628,9 +8657,14 @@ SK_Win32_BackgroundWndProc (HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
       }
       break;
     case WM_SETCURSOR:
-      if (game_window.active && (! config.input.ui.ignore_set_cursor))
+      if (game_window.active)
       {
-        SetCursor (NULL);
+        if (       GetCurrentThreadId () !=
+             GetWindowThreadProcessId (game_window.hWnd, nullptr) )
+        {
+          SetCursor (NULL);
+        }
+
         return TRUE;
       }
   }

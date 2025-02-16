@@ -1,6 +1,39 @@
-﻿25.2.15
+﻿25.2.16.3
+=========
+ + Added DontHookWndProc=true to Kingdom Come Deliverance 2 to keep the mouse
+     cursor from randomly appearing when the game detects modified memory.
+ + Enabled drag-n-drop functionality (for INI files) for all graphics APIs;
+     texture mod drag-n-drop still requires D3D11.
+ + Added config profile for Avowed and set "Treat Foreground Window as Active",
+     because the game is using the wrong test for window activation.
+ + Added an INI option to control whether Alt+Tab stuck-key fixes are
+     applied even for non-background-render scenarios.
+
+    [Window.System]
+    FixStuckAltTabKeys={true|false}  Default=true
+
+25.2.16.2
+=========
+ + Re-enable background rendering mode in Hello Kitty: Island Adventure,
+     because 25.2.16.1 fixed the original input problem.
+
+25.2.16.1
+=========
+ + Add 5 millisecond delay between each of the keys listed in 25.2.16;
+     seems to fix Avowed's menus not working correctly...
+
+25.2.16
 =======
- + Attempted fix for Kingdom Come Deliverance 2 mouse cursor issues.
+ + When "Continue Rendering" is enabled, generate fake key release events for
+     Tab, Escape, Alt, Ctrl, Shift, Windows after alt-tabbing back into a game
+       unless keyboard input is set to always block.
+
+    * This should help with games that think Alt, etc. are still down after
+        Alt-Tab when using background render mode.
+
+25.2.15
+=======
+ + Fix for Kingdom Come Deliverance 2 mouse cursor issues.
 
 25.2.13
 =======
