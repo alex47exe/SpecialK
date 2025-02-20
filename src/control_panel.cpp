@@ -7455,6 +7455,66 @@ extern ULONG64 SK_ImGui_LastKeyboardInputFrame;
 
 LRESULT
 CALLBACK
+SK_Input_LowLevelKeyboardProc (int code, WPARAM wParam, LPARAM lParam)
+{
+  KBDLLHOOKSTRUCT *pHookData =
+    (KBDLLHOOKSTRUCT *)lParam;
+
+  const bool bIsAltTab =
+    ( wParam                            == WM_SYSKEYDOWN &&
+      pHookData                         != nullptr       &&
+     (pHookData->flags & LLKHF_ALTDOWN) != 0x0           &&
+      pHookData->vkCode                 == VK_TAB );
+
+  static DWORD                             dwLastAltTab = 0;
+  if (bIsAltTab && (! game_window.active)) dwLastAltTab = SK_timeGetTime ();
+
+  if (code != HC_ACTION || game_window.active == false || lParam == 0)
+    return CallNextHookEx (0, code, wParam, lParam);
+
+  if (bIsAltTab)
+  {
+    const auto adhd_pace =
+      config.input.keyboard.alt_tab_adhd_pace;
+
+    if (dwLastAltTab > SK_timeGetTime() - adhd_pace && adhd_pace > 0)
+    {
+      if ((SK_GetAsyncKeyState (VK_SHIFT) & 0x8000) == 0x0)
+      {
+        SK_ImGui_CreateNotification (
+          "ADHD.TaskSwitch", SK_ImGui_Toast::Warning,
+             SK_FormatString ("Alt-Tab Blocked for the next %3.1f seconds...",
+             (double)(dwLastAltTab-(SK_timeGetTime ()-adhd_pace))/1000.0).c_str (),
+                                 "ADHD Multi-Tasking Blocked",
+                     1000, SK_ImGui_Toast::UseDuration |
+                           SK_ImGui_Toast::ShowCaption |
+                           SK_ImGui_Toast::ShowNewest );
+        return 1;
+      }
+    }
+
+    if (config.input.keyboard.enable_alt_tab == SK_Disabled)
+    {
+      return 1;
+    }
+
+    dwLastAltTab =
+      SK_timeGetTime ();
+  }
+
+  const bool bIsWindowsKey =
+    ( pHookData->vkCode >= VK_LWIN &&
+      pHookData->vkCode <= VK_APPS );
+
+  if (bIsWindowsKey && config.input.keyboard.enable_win_key == SK_Disabled)
+    return 1;
+
+  return
+    CallNextHookEx (0, code, wParam, lParam);
+}
+
+LRESULT
+CALLBACK
 SK_ImGui_KeyboardProc (int code, WPARAM wParam, LPARAM lParam)
 {
   if (code < 0 || GImGui == nullptr) // We saw nothing (!!)
@@ -7499,6 +7559,11 @@ SK_ImGui_KeyboardProc (int code, WPARAM wParam, LPARAM lParam)
     if (isPressed) SK_Console::getInstance ()->KeyDown ((BYTE)(vKey & 0xFF), 0x0);
     else           SK_Console::getInstance ()->KeyUp   ((BYTE)(vKey & 0xFF), 0x0);
 
+    return 1;
+  }
+
+  if ((vKey == VK_LWIN || vKey == VK_RWIN) && config.input.keyboard.enable_win_key == SK_Disabled)
+  {
     return 1;
   }
 

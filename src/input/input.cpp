@@ -738,6 +738,10 @@ SK_Input_Init (void)
   CreateInputVar_Int  ("Input.Steam.UIController",     &config.input.gamepad.steam.ui_slot);
   CreateInputVar_Int  ("Input.XInput.UIController",    &config.input.gamepad.xinput.ui_slot);
 
+  CreateInputVar_Int  ("Input.Keyboard.EnableAltTab",  &config.input.keyboard.enable_alt_tab);
+  CreateInputVar_Int  ("Input.Keyboard.EnableWinKey",  &config.input.keyboard.enable_win_key);
+  CreateInputVar_Int  ("Input.Keyboard.AltTabPace",    &config.input.keyboard.alt_tab_adhd_pace);
+
   SK_Input_PreHookHID    ();
   SK_Input_PreHookDI8    ();
   SK_Input_PreHookXInput ();

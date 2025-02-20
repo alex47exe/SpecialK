@@ -1034,6 +1034,9 @@ struct {
     sk::ParameterBool*    catch_alt_f4            = nullptr;
     sk::ParameterBool*    bypass_alt_f4           = nullptr;
     sk::ParameterInt*     disabled_to_game        = nullptr;
+    sk::ParameterInt*     enable_alt_tab          = nullptr;
+    sk::ParameterInt*     enable_win_key          = nullptr;
+    sk::ParameterInt*     alt_tab_adhd_pace       = nullptr;
   } keyboard;
 
   struct
@@ -1736,6 +1739,9 @@ auto DeclKeybind =
     ConfigEntry (input.keyboard.catch_alt_f4,            L"If the game does not handle Alt+F4, offer a replacement",   dll_ini,         L"Input.Keyboard",        L"CatchAltF4"),
     ConfigEntry (input.keyboard.bypass_alt_f4,           L"Forcefully disable a game's Alt+F4 handler",                dll_ini,         L"Input.Keyboard",        L"BypassAltF4Handler"),
     ConfigEntry (input.keyboard.disabled_to_game,        L"Completely stop all keyboard input from reaching the Game", dll_ini,         L"Input.Keyboard",        L"DisabledToGame"),
+    ConfigEntry (input.keyboard.enable_alt_tab,          L"Block, Unblock or use Game Behavior for Alt-Tab key",       dll_ini,         L"Input.Keyboard",        L"EnableAltTab"),
+    ConfigEntry (input.keyboard.enable_win_key,          L"Block, Unblock or use Game Behavior for Windows key",       dll_ini,         L"Input.Keyboard",        L"EnableWinKey"),
+    ConfigEntry (input.keyboard.alt_tab_adhd_pace,       L"Minimum time, in milliseconds, between Alt-Tab usage",      dll_ini,         L"Input.Keyboard",        L"AltTabPacing"),
 
     ConfigEntry (input.mouse.disabled_to_game,           L"Completely stop all mouse input from reaching the Game",    dll_ini,         L"Input.Mouse",           L"DisabledToGame"),
 
@@ -4811,6 +4817,9 @@ auto DeclKeybind =
   input.keyboard.catch_alt_f4->load      (config.input.keyboard.catch_alt_f4);
   input.keyboard.bypass_alt_f4->load     (config.input.keyboard.override_alt_f4);
   input.keyboard.disabled_to_game->load  (config.input.keyboard.disabled_to_game);
+  input.keyboard.enable_alt_tab->load    (config.input.keyboard.enable_alt_tab);
+  input.keyboard.enable_win_key->load    (config.input.keyboard.enable_win_key);
+  input.keyboard.alt_tab_adhd_pace->load (config.input.keyboard.alt_tab_adhd_pace);
   config.input.keyboard.
                     org_disabled_to_game= config.input.keyboard.disabled_to_game;
 
@@ -6346,6 +6355,9 @@ SK_SaveConfig ( std::wstring name,
   input.keyboard.catch_alt_f4->store          (config.input.keyboard.catch_alt_f4);
   input.keyboard.bypass_alt_f4->store         (config.input.keyboard.override_alt_f4);
   input.keyboard.disabled_to_game->store      (config.input.keyboard.org_disabled_to_game);
+  input.keyboard.enable_alt_tab->store        (config.input.keyboard.enable_alt_tab);
+  input.keyboard.enable_win_key->store        (config.input.keyboard.enable_win_key);
+  input.keyboard.alt_tab_adhd_pace->store     (config.input.keyboard.alt_tab_adhd_pace);
 
   input.mouse.disabled_to_game->store         (config.input.mouse.org_disabled_to_game);
 
