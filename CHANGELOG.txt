@@ -1,4 +1,44 @@
-﻿25.2.19
+﻿25.2.22.1
+=========
+ + Optimized shutdown procedure when ReShade is present to avoid rare deadlocks
+
+25.2.22
+=======
+ + Add workaround for Proton's lack of support for WASAPI's IID_IAudioClient3
+     interface. It's a never ending series of broken Windows APIs and a real
+       miracle it can even run a few games; at least they stopped deliberately
+         crashing for code they do not implement.
+
+     * That's an improvement, if nothing else :)
+
+25.2.21.1
+=========
+ + Added compat hack for using RenoDX HDR in Avowed; load ReShade as
+     ReShade64.dll from the game directory.
+ + Added experimental forced DLSSG Multiframe Generation Frame Count override,
+     this setting should enable older games on 5xxx GPUs to use 3x or 4x mode.
+       (Updated Streamline DLLs are necessary.)
+
+      [NVIDIA.DLSS]
+      ForcedMaxMultiFrameCount=1|2|3  (2 = 3x, 3 = 4x)
+
+       - Setting is experimental and does not appear in the control panel...
+
+    * Note setting this override will expose multiframe generation options in
+        settings menus for games like Cyberpunk 2077 on RTX 4xxx GPUs, but it
+          won't actually allow you to use the feature :)
+
+25.2.21
+=======
+ + Removed reshade::addon_event::display_change from SK's codebase, because
+     it was not merged into ReShade 6.4.0 and some addons behave funny with it.
+
+25.2.20
+=======
+ + Added DLSS Multi-Frame Generation Rate to text OSD and control panel.
+     >> Override support should follow soon...
+
+25.2.19
 =======
  + Added hook exclusions for something called medal-hook64.dll, which uses
      'Static' window class and a 2x2 dummy window to initialize its hooks.

@@ -33,6 +33,7 @@
 
 bool __SK_HasDLSSGStatusSupport = false;
 bool __SK_IsDLSSGActive         = false;
+int  __SK_DLSSGMultiFrameCount  = 0;
 bool __SK_DoubleUpOnReflex      = false;
 bool __SK_ForceDLSSGPacing      = false;
 
@@ -65,6 +66,13 @@ SK_NGX_IsUsingDLSS_G (void)
 {
   return /// TODO Refactor
     __SK_IsDLSSGActive;
+}
+
+int
+SK_NGX_DLSSG_GetMultiFrameCount (void)
+{
+  return
+    __SK_DLSSGMultiFrameCount;
 }
 
 static  unsigned  int SK_NGX_GameSetPerfQuality = 0;
@@ -212,6 +220,19 @@ NVSDK_NGX_Parameter_SetI_Detour (NVSDK_NGX_Parameter* InParameter, const char* I
 
   SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
               L"NGX_Parameter_SetI (%hs, %i) - %ws", InName, InValue, SK_GetCallerName ().c_str ());
+
+  if (! strcmp (InName, "DLSSG.BackbufferFormat"))
+  {
+    if (__SK_HDR_16BitSwap)
+    {
+      InValue = DXGI_FORMAT_R16G16B16A16_FLOAT;
+    }
+
+    else if (__SK_HDR_10BitSwap)
+    {
+      InValue = DXGI_FORMAT_R10G10B10A2_UNORM;
+    }
+  }
 
   if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags))
   {
@@ -499,6 +520,19 @@ NVSDK_NGX_Parameter_GetUI_Detour (const NVSDK_NGX_Parameter *InParameter, const 
     SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
                 L"NGX_Parameter_GetUI (%hs) - %ws", InName, SK_GetCallerName ().c_str ());
 
+    if (! strcmp (InName, "DLSSG.BackbufferFormat"))
+    {
+      if (__SK_HDR_16BitSwap)
+      {
+        *OutValue = DXGI_FORMAT_R16G16B16A16_FLOAT;
+      }
+
+      else if (__SK_HDR_10BitSwap)
+      {
+        *OutValue = DXGI_FORMAT_R10G10B10A2_UNORM;
+      }
+    }
+
     if (config.nvidia.dlss.force_dlaa)
     {
       if (! strcmp (InName, NVSDK_NGX_Parameter_OutWidth))                           { NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_Width,     OutValue); *OutValue = sk::narrow_cast <UINT> (std::max (1, (int)*OutValue + config.nvidia.dlss.compat.extra_pixels)); }
@@ -573,6 +607,14 @@ NVSDK_NGX_Parameter_GetI_Detour (const NVSDK_NGX_Parameter *InParameter, const c
     SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
                 L"NGX_Parameter_GetI (%hs) - %ws", InName, SK_GetCallerName ().c_str ());
 
+    if (config.nvidia.dlss.forced_multiframe != SK_NoPreference)
+    {
+      if (! strcmp (InName, "DLSSG.MultiFrameCountMax"))
+      {
+        *OutValue =
+          std::max (1, std::min (config.nvidia.dlss.forced_multiframe, 8));
+      }
+    }
     // This stuff doesn't work for signed integers
 #if 0
     if (config.nvidia.dlss.force_dlaa)
@@ -1334,13 +1376,15 @@ SK_NGX_DLSS_ControlPanel (void)
 
         ImGui::TextColored     ( bFrameGen ? ImVec4 (0.0f, 0.8f, 0.0f, 1.0f) : ImVec4 (0.8f, 0.0f, 0.0f, 1.0f),
                                  bFrameGen ? "     " ICON_FA_CHECK   : "     " ICON_FA_XMARK );
-        ImGui::SameLine        ();
-        ImGui::TextUnformatted ("Frame Generation\t");
-        ImGui::SameLine        ();
+        ImGui::SameLine        ( );
+        ImGui::Text            ( bFrameGen ? "Frame Generation (%dx)\t" :
+                                             "Frame Generation",
+                         SK_NGX_DLSSG_GetMultiFrameCount () + 1 );
+        ImGui::SameLine        ( );
         ImGui::TextColored     ( bRayRecon ? ImVec4 (0.0f, 0.8f, 0.0f, 1.0f) : ImVec4 (0.8f, 0.0f, 0.0f, 1.0f),
                                  bRayRecon ? ICON_FA_CHECK                   : ICON_FA_XMARK );
-        ImGui::SameLine        ();
-        ImGui::TextUnformatted ("Ray Reconstruction");
+        ImGui::SameLine        ( );
+        ImGui::TextUnformatted ( "Ray Reconstruction" );
       }
 
       ImGui::TreePush     ("");
