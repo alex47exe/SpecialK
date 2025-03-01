@@ -495,11 +495,11 @@ NVSDK_NGX_Parameter_GetVoidPointer_Detour (const NVSDK_NGX_Parameter *InParamete
 
   if (InName != nullptr)
   {
-    if (! strcmp (InName, "DLSSG.UI"))         NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_UI_Buffer);
-    if (! strcmp (InName, "DLSSG.HUDLess"))    NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_HUDLess_Buffer);
-    if (! strcmp (InName, "DLSSG.Depth"))      NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_Depth_Buffer);
-    if (! strcmp (InName, "DLSSG.MVecs"))      NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_MVecs_Buffer);
-    if (! strcmp (InName, "DLSSG.Backbuffer")) NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_Back_Buffer);
+         if (! strcmp (InName, "DLSSG.UI"))         NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_UI_Buffer);
+    else if (! strcmp (InName, "DLSSG.HUDLess"))    NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_HUDLess_Buffer);
+    else if (! strcmp (InName, "DLSSG.Depth"))      NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_Depth_Buffer);
+    else if (! strcmp (InName, "DLSSG.MVecs"))      NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_MVecs_Buffer);
+    else if (! strcmp (InName, "DLSSG.Backbuffer")) NVSDK_NGX_Parameter_GetVoidPointer_Original (InParameter, InName, &SK_NGX_DLSSG_Back_Buffer);
   }
 
   return
@@ -811,23 +811,23 @@ SK_DLSS_Context::version_s SK_DLSS_Context::dlss_s::Version;
 SK_DLSS_Context::version_s SK_DLSS_Context::dlssg_s::Version;
 
 void
-SK_NGX_EstablishDLSSVersion (void) noexcept
+SK_NGX_EstablishDLSSVersion (const wchar_t* wszDLSS) noexcept
 {
   static bool bHasVersion = false;
 
-  if (bHasVersion)
+  if (bHasVersion && SK_GetFramesDrawn () > 0)
     return;
 
-  if (! GetModuleHandleW (L"nvngx_dlss.dll"))
+  if (! GetModuleHandleW (wszDLSS))
     return;
 
   std::swscanf (
-    SK_GetDLLVersionShort (L"nvngx_dlss.dll").c_str (), L"%d,%d,%d,%d",
+    SK_GetDLLVersionShort (wszDLSS).c_str (), L"%d,%d,%d,%d",
       &SK_DLSS_Context::dlss_s::Version.major, &SK_DLSS_Context::dlss_s::Version.minor,
       &SK_DLSS_Context::dlss_s::Version.build, &SK_DLSS_Context::dlss_s::Version.revision
   );
 
-  bHasVersion = true;
+  bHasVersion = SK_DLSS_Context::dlss_s::Version.major > 0;
 
   // Turn off overrides before we break stuff!
   if (SK_DLSS_Context::dlss_s::Version.major < 2)
@@ -840,23 +840,23 @@ SK_NGX_EstablishDLSSVersion (void) noexcept
 }
 
 void
-SK_NGX_EstablishDLSSGVersion (void) noexcept
+SK_NGX_EstablishDLSSGVersion (const wchar_t* wszDLSSG) noexcept
 {
   static bool bHasVersion = false;
 
-  if (bHasVersion)
+  if (bHasVersion && SK_GetFramesDrawn () > 0)
     return;
 
-  if (! GetModuleHandleW (L"nvngx_dlssg.dll"))
+  if (! GetModuleHandleW (wszDLSSG))
     return;
 
   std::swscanf (
-    SK_GetDLLVersionShort (L"nvngx_dlssg.dll").c_str (), L"%d,%d,%d,%d",
+    SK_GetDLLVersionShort (wszDLSSG).c_str (), L"%d,%d,%d,%d",
       &SK_DLSS_Context::dlssg_s::Version.major, &SK_DLSS_Context::dlssg_s::Version.minor,
       &SK_DLSS_Context::dlssg_s::Version.build, &SK_DLSS_Context::dlssg_s::Version.revision
   );
 
-  bHasVersion = true;
+  bHasVersion = SK_DLSS_Context::dlssg_s::Version.major > 0;
 }
 
 SK_DLSS_Context::version_s
@@ -2267,6 +2267,30 @@ SK_NGX_Reset (void)
   WriteULong64Release (&SK_NGX_DLSS12.super_sampling.ResetFrame, SK_GetFramesDrawn () + 1);
 }
 
+namespace sl
+{
+  using PFuncGetPluginFunction = void* (const char* name);
+
+  struct FeatureContext
+  {
+    bool     initialized       = false;
+    bool     enabled           = true;
+    uint32_t supportedAdapters = 0;
+    PFuncGetPluginFunction*
+             getFunction    {};
+    void*    setData        {};
+    void*    getData        {};
+    void*    allocResources {};
+    void*    freeResources  {};
+    void*    evaluate       {};
+    void*    setTag         {};
+    void*    setConstants   {};
+    void*    isSupported    {};
+  };
+};
+
+#define SL_FEATURE_FUN_IMPORT(feature, func) slGetFeatureFunction(feature, #func, (void*&) ##func)
+
 void
 SK_NGX_DumpParameters (const NVSDK_NGX_Parameter *Params)
 {
@@ -2576,7 +2600,7 @@ SK_NGX12_DumpBuffers_DLSSG (ID3D12GraphicsCommandList* pCommandList)
   ////if (SK_NGX_DLSSG_UI_Buffer      != nullptr) SK_D3D12_CopyTexRegion_Dump (pCommandList, (ID3D12Resource *)SK_NGX_DLSSG_UI_Buffer,      L"DLSSG.UI");
   ////if (SK_NGX_DLSSG_HUDLess_Buffer != nullptr) SK_D3D12_CopyTexRegion_Dump (pCommandList, (ID3D12Resource *)SK_NGX_DLSSG_HUDLess_Buffer, L"DLSSG.HUDLess");
   ////if (SK_NGX_DLSSG_Back_Buffer    != nullptr) SK_D3D12_CopyTexRegion_Dump (pCommandList, (ID3D12Resource *)SK_NGX_DLSSG_Back_Buffer,    L"DLSSG.Backbuffer");
-  ////if (SK_NGX_DLSSG_MVecs_Buffer   != nullptr) SK_D3D12_CopyTexRegion_Dump (pCommandList, (ID3D12Resource *)SK_NGX_DLSSG_MVecs_Buffer,   L"DLSSG.MVecs");
+  ////uf (SK_NGX_DLSSG_MVecs_Buffer   != nullptr) SK_D3D12_CopyTexRegion_Dump (pCommandList, (ID3D12Resource *)SK_NGX_DLSSG_MVecs_Buffer,   L"DLSSG.MVecs");
   ////if (SK_NGX_DLSSG_Depth_Buffer   != nullptr) SK_D3D12_CopyTexRegion_Dump (pCommandList, (ID3D12Resource *)SK_NGX_DLSSG_Depth_Buffer,   L"DLSSG.Depth");
 
   //SK_NGX_DLSSG_UI_Buffer      = nullptr;

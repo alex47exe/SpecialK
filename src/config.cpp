@@ -3868,7 +3868,8 @@ auto DeclKeybind =
 
       case SK_GAME_ID::MonsterHunterWilds:
         config.steam.crapcom_mode                   = true;
-        config.render.dstorage.enable_hooks         = false;
+        config.window.dont_hook_wndproc             = true;
+        config.render.dstorage.enable_hooks         = true;
         break;
 
       case SK_GAME_ID::DragonAgeTheVeilguard:
@@ -5851,7 +5852,7 @@ auto DeclKeybind =
   //
   // DRM Workarounds
   //
-  bool bHasCrapcomDRM = false;
+  bool bHasCrapcomDRM = config.steam.crapcom_mode;
 
   // Only do DRM checks when we have a fully parsed INI file
   //
@@ -5869,7 +5870,7 @@ auto DeclKeybind =
       config.compatibility.disable_debug_features = true;
     }
 
-    if (StrStrIW (code_sig.subject.c_str (), L"CAPCOM"))
+    if (StrStrIW (code_sig.subject.c_str (), L"CAPCOM") || SK_GetCurrentGameID () == SK_GAME_ID::MonsterHunterWilds)
     //LR"(Private Organization, JP, 1200-01-077023, JP, Osaka, Osaka-shi, "CAPCOM CO., LTD.", "CAPCOM CO., LTD.")"
     {
       static constexpr
@@ -5896,8 +5897,10 @@ auto DeclKeybind =
       static constexpr wchar_t *wszSteamAPIDll    =              L"steam_api.dll";
       static constexpr wchar_t *wszKaldaienAPIDll = L"kaldaien_api/steam_api.dll";
   #else
-      static constexpr wchar_t *wszSteamAPIDll    =              L"steam_api64.dll";
-      static constexpr wchar_t *wszKaldaienAPIDll = L"kaldaien_api/steam_api64.dll";
+      static const wchar_t *wszSteamAPIDll    =                 L"steam_api64.dll";
+      static const wchar_t *wszKaldaienAPIDll = SK_IsCurrentGame (SK_GAME_ID::StreetFighter6) ?
+                                                   L"kaldaien_api/steam_api64.dll"            :
+                                                   L"kaldaien_api/kaldaien_api64.dll";
   #endif
   
       // Do not use CRAPCOM DRM workaround on Steam Deck
@@ -5916,8 +5919,8 @@ auto DeclKeybind =
                                          wszKaldaienAPIDll, FALSE)));
         }
   
-        if (! config.platform.silent )
-        {if(! config.steam.crapcom_mode )
+        if  (!config.platform.silent)
+        {if((!config.steam.crapcom_mode) || wcscmp (config.steam.dll_path.c_str (), wszKaldaienAPIDll))
           {   config.steam.auto_inject         =    true;
               config.steam.auto_pump_callbacks =    true;
               config.steam.force_load_steamapi =    true;

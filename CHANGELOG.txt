@@ -1,4 +1,60 @@
-﻿25.2.24
+﻿25.2.29.1
+=========
+ + Disable GPU Decompression Metacommands when forcing GPU Decompression off
+     in DirectStorage overrides.
+
+25.2.29
+=======
+ + Added nvngx_dlssg.dll and nvngx_dlssd.dll to the list of DLLs that
+     Special K can auto-load an alternate version of.
+
+   * Place the DLLs in the same PlugIns\ThirdParty\NVIDIA directory as dlss...
+
+ + Fixed potential issue with older games that use DLSS without Streamline,
+     which could prevent them from loading NVNGX.
+ + Minor tweaks to anti-tamper workaround in Monster Hunter: Wilds
+ + Allow DirectStorage overrides in Monster Hunter: Wilds;
+     reset SK's config for MHW if you've previously run 25.2.28.x...
+
+25.2.28.1
+=========
+ + Allow Steam Input to run in the background in Monster Hunter: Wilds
+
+25.2.28
+=======
+ + Improved detection of DLSS/DLSSG version when overrides are applied using
+     NVIDIA App.
+ + Various fixes for MonsterHunterWilds anti-tamper
+    * Game will deliberately corrupt graphics if it detects modification.
+
+25.2.27.2
+=========
+ + Fixed potential to load ReShade AddOns twice when using local injection
+
+25.2.27.1
+=========
+ + Added support for DLSS version detection when an NVIDIA App configured
+     override is being applied.
+
+25.2.27
+=======
+ + Write DLSS Frame Generation overrides to driver profile instead of
+     trying to hook the NvAPI driver settings API.
+
+   * A game restart is required, and running commands as admin to modify
+       this part of the driver profile is also necessary.
+
+25.2.26.1
+=========
+ + Finished support for ForcedMaxMultiFrameCount introduced in 25.2.21.1,
+     but no control panel option will be added until more testing is done.
+
+25.2.26
+=======
+ + Restore partial latency statistics (DXGI) on systems that do not have
+     NVIDIA Reflex capable hardware installed.
+
+25.2.24
 =======
  + Added option to prevent Streamline's fake frame pacing for fake frames.
 
