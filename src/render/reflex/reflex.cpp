@@ -73,7 +73,7 @@ SK_NvAPI_D3D_SetLatencyMarker ( __in IUnknown                 *pDev,
                                 __in NV_LATENCY_MARKER_PARAMS *pSetLatencyMarkerParams )
 {
   if (NvAPI_D3D_SetLatencyMarker_Original != nullptr)
-  { 
+  {
     SK_ComPtr <ID3D12Device>                     pDev12;
     if (SK_slGetNativeInterface (pDev, (void **)&pDev12.p) == sl::Result::eOk)
       return NvAPI_D3D_SetLatencyMarker_Original(pDev12.p, pSetLatencyMarkerParams);
@@ -89,7 +89,7 @@ NVAPI_INTERFACE
 SK_NvAPI_D3D_Sleep (__in IUnknown *pDev)
 {
   if (NvAPI_D3D_Sleep_Original != nullptr)
-  { 
+  {
     SK_ComPtr <ID3D12Device>                     pDev12;
     if (SK_slGetNativeInterface (pDev, (void **)&pDev12.p) == sl::Result::eOk)
       return NvAPI_D3D_Sleep_Original (          pDev12.p);
@@ -108,6 +108,11 @@ NvAPI_D3D_Sleep_Detour (__in IUnknown *pDev)
 
   SK_Reflex_LastNativeSleepFrame =
     SK_GetFramesDrawn ();
+
+  if (SK_IsCurrentGame (SK_GAME_ID::MonsterHunterWilds))
+  {
+    return NVAPI_OK;
+  }
 
   if (config.nvidia.reflex.disable_native)
     return NVAPI_OK;
@@ -141,6 +146,9 @@ SK_NvAPI_D3D_SetSleepMode ( __in IUnknown                 *pDev,
 bool
 SK_Reflex_FixOutOfBandInput (NV_LATENCY_MARKER_PARAMS& markerParams, IUnknown* pDevice, bool native = false)
 {
+  if (SK_IsCurrentGame (SK_GAME_ID::MonsterHunterWilds))
+    return false;
+
   // If true, we submitted the latency marker(s) ourselves and the normal processing
   //   should be ignored.
   bool bFixed  = false;
@@ -160,7 +168,7 @@ SK_Reflex_FixOutOfBandInput (NV_LATENCY_MARKER_PARAMS& markerParams, IUnknown* p
     return
       bQueueInput;
   }
-  
+
   // Input Sample has to come between SIMULATION_START and SIMULATION_END, or it's invalid.
   //
   //   So take this opportunity to re-order some events if necessary
@@ -213,6 +221,64 @@ SK_Reflex_FixOutOfBandInput (NV_LATENCY_MARKER_PARAMS& markerParams, IUnknown* p
     bFixed;
 }
 
+std::optional <NvAPI_Status>
+SK_Reflex_GameSpecificLatencyMarkerFixups ( __in IUnknown                 *pDev,
+                                            __in NV_LATENCY_MARKER_PARAMS *pSetLatencyMarkerParams )
+{
+  if (SK_IsCurrentGame (SK_GAME_ID::MonsterHunterWilds))
+  {
+    if (pSetLatencyMarkerParams->markerType > INPUT_SAMPLE)
+    {
+      if (pSetLatencyMarkerParams->markerType == TRIGGER_FLASH)
+      { // This marker randomly appears and causes problems
+        return NVAPI_OK;
+      }
+      SK_LOGi0 (L"Marker Type: %d, on frame: %d", pSetLatencyMarkerParams->markerType, pSetLatencyMarkerParams->frameID);
+    }
+
+    if (pSetLatencyMarkerParams->markerType == RENDERSUBMIT_END ||
+        pSetLatencyMarkerParams->markerType == SIMULATION_START)
+    {
+      NV_GET_SLEEP_STATUS_PARAMS
+        sleepStatusParams         = {                            };
+        sleepStatusParams.version = NV_GET_SLEEP_STATUS_PARAMS_VER;
+
+      if ( NVAPI_OK ==
+             NvAPI_D3D_GetSleepStatus (pDev, &sleepStatusParams)
+         )
+      {
+        if (sleepStatusParams.bLowLatencyMode)
+        {
+          if (pSetLatencyMarkerParams->markerType == RENDERSUBMIT_END)
+          {
+            SK_NvAPI_D3D_Sleep (pDev);
+          }
+
+          static NvU64 lastSimFrame = MAXUINT64;
+          if (pSetLatencyMarkerParams->markerType == SIMULATION_START)
+          {
+            if (lastSimFrame != pSetLatencyMarkerParams->frameID)
+            {   lastSimFrame  = pSetLatencyMarkerParams->frameID;
+
+              NV_LATENCY_MARKER_PARAMS fake_input = *pSetLatencyMarkerParams;
+                                       fake_input.markerType = INPUT_SAMPLE;
+
+              NVAPI_INTERFACE
+              NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
+                                                  __in NV_LATENCY_MARKER_PARAMS *pSetLatencyMarkerParams );
+
+                     NvAPI_D3D_SetLatencyMarker_Detour (pDev, pSetLatencyMarkerParams);
+              return NvAPI_D3D_SetLatencyMarker_Detour (pDev, &fake_input);
+            }
+          }
+        }
+      }
+    }
+  }
+
+  return std::nullopt;
+}
+
 NVAPI_INTERFACE
 NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
                                     __in NV_LATENCY_MARKER_PARAMS *pSetLatencyMarkerParams )
@@ -223,6 +289,12 @@ NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
   // Naive test, proper test for equality would involve QueryInterface
   SK_ReleaseAssert (pDev == SK_GetCurrentRenderBackend ().device);
 #endif
+
+  const auto fixup =
+    SK_Reflex_GameSpecificLatencyMarkerFixups (pDev, pSetLatencyMarkerParams);
+
+  if ( fixup.has_value ())
+    return fixup.value ();
 
   if (! config.nvidia.reflex.disable_native)
   {
