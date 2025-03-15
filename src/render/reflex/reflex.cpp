@@ -139,13 +139,19 @@ NVAPI_INTERFACE
 SK_NvAPI_D3D_SetSleepMode ( __in IUnknown                 *pDev,
                             __in NV_SET_SLEEP_MODE_PARAMS *pSetSleepModeParams )
 {
+  NV_SET_SLEEP_MODE_PARAMS params =
+             *pSetSleepModeParams;
+
+  if (params.minimumIntervalUs != 0 &&         params.minimumIntervalUs > 50)
+      params.minimumIntervalUs = pSetSleepModeParams->minimumIntervalUs - 2;
+
   if (NvAPI_D3D_SetSleepMode_Original != nullptr)
   {
     SK_ComPtr <ID3D12Device>                     pDev12;
     if (SK_slGetNativeInterface (pDev, (void **)&pDev12.p) == sl::Result::eOk)
-      return NvAPI_D3D_SetSleepMode_Original (   pDev12, pSetSleepModeParams);
+      return NvAPI_D3D_SetSleepMode_Original (   pDev12, &params);
     else
-      return NvAPI_D3D_SetSleepMode_Original (   pDev,   pSetSleepModeParams);
+      return NvAPI_D3D_SetSleepMode_Original (   pDev,   &params);
   }
 
   return
@@ -266,11 +272,96 @@ SK_Reflex_GameSpecificLatencyMarkerFixups ( __in IUnknown                 *pDev,
   return std::nullopt;
 }
 
+IUnknown*                SK_Reflex_LastLatencyDevice     = nullptr;
+NV_LATENCY_MARKER_PARAMS SK_Reflex_LastLatencyMarkerParams;
+bool                     SK_Reflex_AllowPresentEndMarker   = true;
+bool                     SK_Reflex_AllowPresentStartMarker = true;
+
+extern UINT            __SK_DLSSGMultiFrameCount;
+extern IDXGISwapChain   *SK_Streamline_ProxyChain;
+
+extern void   SK_SpawnPresentMonWorker (void);
+extern HANDLE SK_ImGui_SignalBackupInputThread;
+
 NVAPI_INTERFACE
 NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
                                     __in NV_LATENCY_MARKER_PARAMS *pSetLatencyMarkerParams )
 {
   SK_LOG_FIRST_CALL
+
+  bool bSkipCall = false;
+
+  if ( SK_Streamline_ProxyChain != nullptr                          &&
+         config.render.framerate.streamline.enable_native_limit     &&
+         config.render.framerate.streamline.target_fps > 0.0f       &&
+                                                 __SK_IsDLSSGActive &&
+                                 pSetLatencyMarkerParams != nullptr )
+  {
+    if (pDev != nullptr)
+    {
+      if (pSetLatencyMarkerParams->markerType == PRESENT_START)
+      {
+        SK_Reflex_LastLatencyDevice       = pDev;
+        SK_Reflex_LastLatencyMarkerParams = *pSetLatencyMarkerParams;
+
+        if (! SK_Reflex_AllowPresentStartMarker)
+          bSkipCall = true;
+      }
+      else if (pSetLatencyMarkerParams->markerType == PRESENT_END)
+      {
+        if (! SK_Reflex_AllowPresentEndMarker)
+          bSkipCall = true;
+      }
+    }
+
+#if 1
+    if (pSetLatencyMarkerParams->markerType == SIMULATION_START ||
+        pSetLatencyMarkerParams->markerType == INPUT_SAMPLE)
+    {  
+      auto pLimiter =
+        SK::Framerate::GetLimiter (SK_Streamline_ProxyChain, false);
+
+      if (pLimiter != nullptr && __SK_IsDLSSGActive)
+      {
+        if (SK_IsCurrentGame (SK_GAME_ID::MonsterHunterWilds))
+        {
+          config.render.framerate.streamline.enforcement_policy = 2;
+        }
+
+        auto& rb =
+          SK_GetCurrentRenderBackend ();
+
+        if ( config.render.framerate.streamline.enforcement_policy == 2 &&
+                               pSetLatencyMarkerParams->markerType == INPUT_SAMPLE )
+        {
+          pLimiter->wait ();
+
+          auto                                  tNow = SK_QueryPerf ();
+          SK::Framerate::TickEx (false, -1.0,   tNow, rb.swapchain.p);
+          //for ( UINT i = 0 ; i < __SK_DLSSGMultiFrameCount ; ++i )
+          //{                                    tNow.QuadPart += (pLimiter->get_ticks_per_frame () / (__SK_DLSSGMultiFrameCount + 1));
+          //  SK::Framerate::TickEx (false, 0.0, tNow, rb.swapchain.p); 
+          //}
+        }
+
+        // Fallback to normal mode if the game has no latency markers
+        //
+        else if ( ( config.render.framerate.streamline.enforcement_policy == 4 || SK_Reflex_LastInputFrameId == 0 ) &&
+                                      pSetLatencyMarkerParams->markerType == SIMULATION_START )
+        {
+          pLimiter->wait ();
+
+          auto                                  tNow = SK_QueryPerf ();
+          SK::Framerate::TickEx (false, -1.0,   tNow, rb.swapchain.p);
+          //for ( UINT i = 0 ; i < __SK_DLSSGMultiFrameCount ; ++i )
+          //{                                    tNow.QuadPart += (pLimiter->get_ticks_per_frame () / (__SK_DLSSGMultiFrameCount + 1));
+          //  SK::Framerate::TickEx (false, 0.0, tNow, rb.swapchain.p); 
+          //}
+        }
+      }
+    }
+#endif
+  }
 
 #ifdef _DEBUG
   // Naive test, proper test for equality would involve QueryInterface
@@ -328,6 +419,7 @@ NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
   }
 
   return
+    bSkipCall ? NVAPI_OK :
     SK_NvAPI_D3D_SetLatencyMarker (pDev, pSetLatencyMarkerParams);
 }
 
@@ -358,7 +450,7 @@ NvAPI_D3D_SetSleepMode_Detour ( __in IUnknown                 *pDev,
     if ((__SK_ForceDLSSGPacing && __target_fps > 10.0f) || config.nvidia.reflex.use_limiter)
     {
       config.nvidia.reflex.frame_interval_us =
-            (UINT)(1000000.0 / __target_fps) + ( __SK_ForceDLSSGPacing ? 24
+            (UINT)(1000000.0 / __target_fps) + ( __SK_ForceDLSSGPacing ? 6
                                                                        : 0 );
     }
     else
@@ -510,9 +602,8 @@ SK_RenderBackend_V2::setLatencyMarkerNV (NV_LATENCY_MARKER_TYPE marker) const
 {
   if (marker == RENDERSUBMIT_START)
   {
-    extern HANDLE SK_ImGui_SignalBackupInputThread;
-    if (          SK_ImGui_SignalBackupInputThread != 0)
-      SetEvent (  SK_ImGui_SignalBackupInputThread     );
+    if (        SK_ImGui_SignalBackupInputThread != 0)
+      SetEvent (SK_ImGui_SignalBackupInputThread     );
   }
 
   NvAPI_Status ret =
@@ -862,8 +953,7 @@ SK_NV_AdaptiveSyncControl (void)
       if (rb.api == SK_RenderAPI::D3D12)
       {
         // It is necessary to start PresentMon in D3D12, or the VRR indicator will not work
-        extern void SK_SpawnPresentMonWorker (void);
-                    SK_SpawnPresentMonWorker ();
+        SK_SpawnPresentMonWorker ();
       }
     });
 

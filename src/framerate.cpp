@@ -1407,7 +1407,7 @@ SK::Framerate::Limiter::try_wait (void)
   {
     if (SK_IsGameWindowActive () || __target_fps_bg == 0.0f)
     {
-      if (__target_fps <= 0.0f) {
+      if (fps <= 0.0f) {
         return false;
       }
     }
@@ -1456,16 +1456,19 @@ SK::Framerate::Limiter::wait (void)
   }
 
 
-  if (! background)
+  if (! standalone)
   {
-    set_limit ( __target_fps );
-  }
+    if (! background)
+    {
+      set_limit ( __target_fps );
+    }
 
-  else if (tracks_window)
-  {
-    set_limit ( (__target_fps_bg > 0.0f) ?
-                 __target_fps_bg         :
-                 __target_fps           );
+    else if (tracks_window)
+    {
+      set_limit ( (__target_fps_bg > 0.0f) ?
+                   __target_fps_bg         :
+                   __target_fps           );
+    }
   }
 
 
@@ -1520,11 +1523,14 @@ SK::Framerate::Limiter::wait (void)
   }
 
 
-  if (tracks_window && __target_fps <= 0.0f)
+  if (! standalone)
   {
-    SK_FPU_SetControlWord (_MCW_PC, &fpu_cw_orig);
+    if (tracks_window && fps <= 0.0f)
+    {
+      SK_FPU_SetControlWord (_MCW_PC, &fpu_cw_orig);
 
-    return;
+      return;
+    }
   }
 
   
@@ -1533,17 +1539,20 @@ SK::Framerate::Limiter::wait (void)
 
 
 #if 1
-  // SK's framerate limiter is more energy efficient, prefer it over NVIDIA Reflex
-  //   while the game is in the background
-  if ((! background) && rb.isReflexSupported () && __target_fps > 0.0f)
+  if (! standalone)
   {
-    if ((__SK_ForceDLSSGPacing) || (config.nvidia.reflex.use_limiter && config.nvidia.reflex.enable &&
-         ((! config.nvidia.reflex.native) || config.nvidia.reflex.override)))
+    // SK's framerate limiter is more energy efficient, prefer it over NVIDIA Reflex
+    //   while the game is in the background
+    if ((! background) && rb.isReflexSupported () && fps > 0.0f)
     {
-      extern bool
-             __SK_DoubleUpOnReflex;
-      if ((! __SK_DoubleUpOnReflex) || (SK_GetCurrentGameID () != SK_GAME_ID::Starfield && (! config.nvidia.reflex.combined_limiter)))
-        return;
+      if ((__SK_ForceDLSSGPacing) || (config.nvidia.reflex.use_limiter && config.nvidia.reflex.enable &&
+           ((! config.nvidia.reflex.native) || config.nvidia.reflex.override)))
+      {
+        extern bool
+               __SK_DoubleUpOnReflex;
+        if ((! __SK_DoubleUpOnReflex) || (SK_GetCurrentGameID () != SK_GAME_ID::Starfield && (! config.nvidia.reflex.combined_limiter)))
+          return;
+      }
     }
   }
 #endif
@@ -1562,14 +1571,17 @@ SK::Framerate::Limiter::wait (void)
     (pDisplay->signal.timing.vsync_freq.Numerator)                                 : 1;
 
 
-  auto threadId    = GetCurrentThreadId ();
-  auto framesDrawn = SK_GetFramesDrawn  ();
+  if (! standalone)
+  {
+    auto threadId    = GetCurrentThreadId ();
+    auto framesDrawn = SK_GetFramesDrawn  ();
 
-  // Two limits applied on the same frame would cause problems, don't allow it.
-  if (_frame_shame.count (threadId) &&
-      _frame_shame       [threadId] == framesDrawn) return;
-  else
-      _frame_shame       [threadId]  = framesDrawn;
+    // Two limits applied on the same frame would cause problems, don't allow it.
+    if (_frame_shame.count (threadId) &&
+        _frame_shame       [threadId] == framesDrawn) return;
+    else
+        _frame_shame       [threadId]  = framesDrawn;
+  }
 
   auto _time =
     SK_QueryPerf ().QuadPart;
@@ -1583,7 +1595,7 @@ SK::Framerate::Limiter::wait (void)
 
     ////if (full_restart || config.render.framerate.present_interval == 0)
     {
-      init (__target_fps, tracks_window);
+      init (fps, tracks_window);
       full_restart = false;
     }
 
@@ -1621,14 +1633,17 @@ SK::Framerate::Limiter::wait (void)
 
     double dMissingTimeBoundary = 1.0;
 
-    if (config.render.framerate.present_interval == 0)
+    if (! standalone)
     {
-      dMissingTimeBoundary =
-        std::max (1.0,
-          std::round (           (ticks_per_refresh > 1) ?
-            static_cast <double> (ticks_per_refresh) /
-            static_cast <double> (ticks_per_frame)       : 1.0)
-        );
+      if (config.render.framerate.present_interval == 0)
+      {
+        dMissingTimeBoundary =
+          std::max (1.0,
+            std::round (           (ticks_per_refresh > 1) ?
+              static_cast <double> (ticks_per_refresh) /
+              static_cast <double> (ticks_per_frame)       : 1.0)
+          );
+      }
     }
 
     static constexpr double dEdgeToleranceLow  = 0.0;
@@ -2276,8 +2291,9 @@ SK::Framerate::Limiter::set_limit (float& target)
   target = sk::narrow_cast <float> (SK_Framerate_GetLimitEnvVar (target));
 
   // Skip redundant set_limit calls
-  if (fabs (fps - target) < DBL_EPSILON && tracks_window == true)
+  if (fabs (fps - target) < DBL_EPSILON && tracks_window == true) {
     return;
+  }
 
   __scanline.lock.requestResync ();
   wait_time.reset               ();
@@ -2386,8 +2402,8 @@ extern SK_LazyGlobal <SK_ImGui_FrameHistory> SK_ImGui_Frames;
 extern bool                                  reset_frame_history;
 
 void
-SK::Framerate::TickEx ( bool       /*wait*/,
-                        double        dt,
+SK::Framerate::TickEx ( bool     /*wait*/,
+                        double         dt,
                         LARGE_INTEGER now,
                         IUnknown*     swapchain )
 {
@@ -2437,11 +2453,14 @@ SK::Framerate::TickEx ( bool       /*wait*/,
 
     if (last_frame < SK_GetFramesDrawn () - 1)
     {
-      skip_frame_history = true;
+      if (! (__SK_IsDLSSGActive && config.render.framerate.streamline.enable_native_limit && __target_fps > 0.0f))
+      {
+        skip_frame_history = true;
+      }
     }
 
     if (std::exchange (last_frame, SK_GetFramesDrawn ())
-                                != SK_GetFramesDrawn ())
+                                != SK_GetFramesDrawn () || (__SK_IsDLSSGActive && config.render.framerate.streamline.enable_native_limit && __target_fps > 0.0f))
     {
       if (!   (reset_frame_history ||
                 skip_frame_history) ) SK_ImGui_Frames->timeFrame (dt);
@@ -2566,7 +2585,7 @@ SK::Framerate::Tick ( bool          wait,
   if (wait)
     pLimiter->wait ();
 
-  if (config.fps.timing_method == SK_FrametimeMeasures_LimiterPacing && __target_fps > 0.0f)
+  if (config.fps.timing_method == SK_FrametimeMeasures_LimiterPacing && pLimiter->get_limit () > 0.0f && ((!__SK_IsDLSSGActive || !config.render.framerate.streamline.enable_native_limit)))
   {
     SK::Framerate::TickEx (false, dt, now, swapchain);
   }

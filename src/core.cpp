@@ -4161,6 +4161,15 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
     );
   }
 
+  // If we left a low-level keyboard hook active while debugging, it would
+  //   cause the entire system to sporadically respond to input.
+  if (SK_IsDebuggerPresent ())
+  {
+    extern void
+    __SKX_WinHook_UninstallLowLevelHooks (void);
+    __SKX_WinHook_UninstallLowLevelHooks ();
+  }
+
   // Invoke any plug-in's frame end callback
   for ( auto end_frame_fn : plugin_mgr->end_frame_fns )
   {
@@ -4541,6 +4550,30 @@ SK_WaitForParentToExit (void)
 
       SK_SleepEx (50UL, FALSE);
     }
+  }
+}
+
+void
+CALLBACK
+RunDLL_Extract7Zip ( HWND  hwnd,        HINSTANCE hInst,
+                     LPSTR lpszCmdLine, int       nCmdShow )
+{
+  UNREFERENCED_PARAMETER (hInst);
+  UNREFERENCED_PARAMETER (nCmdShow);
+  UNREFERENCED_PARAMETER (hwnd);
+
+  if (lpszCmdLine == nullptr)
+    return;
+
+  if (PathFileExistsA (lpszCmdLine))
+  {
+    wchar_t    wszPathToArchive [MAX_PATH + 2] = {};
+    wcsncpy_s (wszPathToArchive, MAX_PATH, SK_UTF8ToWideChar (lpszCmdLine).c_str (),
+                                 MAX_PATH);
+
+    config.system.log_level = -1;
+
+    SK_Decompress7zEx (wszPathToArchive, L"", nullptr);
   }
 }
 

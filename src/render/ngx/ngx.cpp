@@ -33,7 +33,7 @@
 
 bool __SK_HasDLSSGStatusSupport = false;
 bool __SK_IsDLSSGActive         = false;
-int  __SK_DLSSGMultiFrameCount  = 0;
+UINT __SK_DLSSGMultiFrameCount  = 0;
 bool __SK_DoubleUpOnReflex      = false;
 bool __SK_ForceDLSSGPacing      = false;
 
@@ -46,7 +46,8 @@ SK_NGX_IsUsingDLSS (void)
     (SK_NGX_DLSS12.apis_called    ?
      SK_NGX_DLSS12.super_sampling : SK_NGX_DLSS11.super_sampling);
 
-  return                 dlss_ss.Handle     != nullptr                &&
+  return                 dlss_ss.LastInstance         != nullptr &&
+                         dlss_ss.LastInstance->Handle != nullptr &&
     ReadULong64Acquire (&dlss_ss.LastFrame) >= SK_GetFramesDrawn () - 8;
 }
 
@@ -56,9 +57,11 @@ SK_NGX_IsUsingDLSS_D (void)
   const auto& dlss_ss =
     SK_NGX_DLSS12.super_sampling;
 
-  return                 dlss_ss.Handle     != nullptr                  &&
+  return                 
+                         dlss_ss.LastInstance         != nullptr &&
+                         dlss_ss.LastInstance->Handle != nullptr &&
     ReadULong64Acquire (&dlss_ss.LastFrame) >= SK_GetFramesDrawn () - 8 &&
-                         dlss_ss.DLSS_Type  == NVSDK_NGX_Feature_RayReconstruction;
+                         dlss_ss.LastInstance->DLSS_Type  == NVSDK_NGX_Feature_RayReconstruction;
 }
 
 bool
@@ -97,7 +100,7 @@ NVSDK_NGX_Parameter_SetF_Detour (NVSDK_NGX_Parameter* InParameter, const char* I
 {
   SK_LOG_FIRST_CALL
 
-  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
               L"NGX_Parameter_SetF (%hs, %f) - %ws", InName, InValue, SK_GetCallerName ().c_str ());
 
   if (! strcmp (InName, NVSDK_NGX_Parameter_Sharpness))
@@ -157,7 +160,7 @@ NVSDK_NGX_Parameter_SetD_Detour (NVSDK_NGX_Parameter* InParameter, const char* I
 {
   SK_LOG_FIRST_CALL
 
-  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
               L"NGX_Parameter_SetD (%hs, %f) - %ws", InName, InValue, SK_GetCallerName ().c_str ());
 
   if (! strcmp (InName, NVSDK_NGX_Parameter_Sharpness))
@@ -218,7 +221,7 @@ NVSDK_NGX_Parameter_SetI_Detour (NVSDK_NGX_Parameter* InParameter, const char* I
 {
   SK_LOG_FIRST_CALL
 
-  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
               L"NGX_Parameter_SetI (%hs, %i) - %ws", InName, InValue, SK_GetCallerName ().c_str ());
 
   if (! strcmp (InName, "DLSSG.BackbufferFormat"))
@@ -365,7 +368,7 @@ NVSDK_NGX_Parameter_SetUI_Detour (NVSDK_NGX_Parameter* InParameter, const char* 
 {
   SK_LOG_FIRST_CALL
 
-  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
               L"NGX_Parameter_SetUI (%hs, %u) - %ws", InName, InValue, SK_GetCallerName ().c_str ());
 
   if (! strcmp (InName, NVSDK_NGX_Parameter_PerfQualityValue))
@@ -424,7 +427,7 @@ NVSDK_NGX_Parameter_SetULL_Detour (NVSDK_NGX_Parameter* InParameter, const char*
 {
   SK_LOG_FIRST_CALL
 
-  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
               L"NGX_Parameter_SetULL (%hs, %u) - %ws", InName, InValue, SK_GetCallerName ().c_str ());
 
   if (! strcmp (InName, NVSDK_NGX_Parameter_PerfQualityValue))
@@ -490,7 +493,7 @@ NVSDK_NGX_Parameter_GetVoidPointer_Detour (const NVSDK_NGX_Parameter *InParamete
 {
   SK_LOG_FIRST_CALL
 
-  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+  SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
               L"NGX_Parameter_GetVoidPointer (%hs) - %ws", InName, SK_GetCallerName ().c_str ());
 
   if (InName != nullptr)
@@ -517,7 +520,7 @@ NVSDK_NGX_Parameter_GetUI_Detour (const NVSDK_NGX_Parameter *InParameter, const 
 
   if (ret == NVSDK_NGX_Result_Success)
   {
-    SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+    SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
                 L"NGX_Parameter_GetUI (%hs) - %ws", InName, SK_GetCallerName ().c_str ());
 
     if (! strcmp (InName, "DLSSG.BackbufferFormat"))
@@ -604,7 +607,7 @@ NVSDK_NGX_Parameter_GetI_Detour (const NVSDK_NGX_Parameter *InParameter, const c
 
   if (ret == NVSDK_NGX_Result_Success)
   {
-    SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+    SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
                 L"NGX_Parameter_GetI (%hs) - %ws", InName, SK_GetCallerName ().c_str ());
 
     if (config.nvidia.dlss.forced_multiframe != SK_NoPreference)
@@ -691,7 +694,7 @@ NVSDK_NGX_Parameter_GetULL_Detour (const NVSDK_NGX_Parameter *InParameter, const
 
   if (ret == NVSDK_NGX_Result_Success)
   {
-    SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 1),
+    SK_LOGn (((SK_NGX_LogAllParams == true) ? 0 : 2),
                 L"NGX_Parameter_GetULL (%hs) - %ws", InName, SK_GetCallerName ().c_str ());
 
     if (config.nvidia.dlss.force_dlaa)
@@ -801,10 +804,11 @@ NVSDK_NGX_Parameter*
 SK_NGX_GetDLSSParameters (void)
 {
   if (     SK_NGX_DLSS12.apis_called)
-    return SK_NGX_DLSS12.super_sampling.Parameters;
+    return SK_NGX_DLSS12.super_sampling.LastInstance != nullptr  ?
+           SK_NGX_DLSS12.super_sampling.LastInstance->Parameters : nullptr;
 
-  return
-    SK_NGX_DLSS11.super_sampling.Parameters;
+  return SK_NGX_DLSS11.super_sampling.LastInstance != nullptr  ?
+         SK_NGX_DLSS11.super_sampling.LastInstance->Parameters : nullptr;
 }
 
 SK_DLSS_Context::version_s SK_DLSS_Context::dlss_s::Version;
@@ -813,6 +817,8 @@ SK_DLSS_Context::version_s SK_DLSS_Context::dlssg_s::Version;
 void
 SK_NGX_EstablishDLSSVersion (const wchar_t* wszDLSS) noexcept
 {
+  SK_NGX_Init ();
+
   static bool bHasVersion = false;
 
   // Driver overrides have extension .bin
@@ -847,16 +853,7 @@ SK_NGX_EstablishDLSSVersion (const wchar_t* wszDLSS) noexcept
 
     // Stupid hack because of NVIDIA's in-place OTA upgrades not necessarily actually
     //   upgrading anything.
-    if (  version.major     > SK_DLSS_Context::dlss_s::Version.major   ||
-        ( version.major    == SK_DLSS_Context::dlss_s::Version.major   &&
-          version.minor     > SK_DLSS_Context::dlss_s::Version.minor ) ||
-        ( version.major    == SK_DLSS_Context::dlss_s::Version.major &&
-          version.minor    == SK_DLSS_Context::dlss_s::Version.minor &&
-          version.build     > SK_DLSS_Context::dlss_s::Version.build ) ||
-        ( version.major    == SK_DLSS_Context::dlss_s::Version.major &&
-          version.minor    == SK_DLSS_Context::dlss_s::Version.minor &&
-          version.build    == SK_DLSS_Context::dlss_s::Version.build &&
-          version.revision  > SK_DLSS_Context::dlss_s::Version.revision ) )
+    if (SK_DLSS_Context::dlss_s::Version.isOlderThan (version))
     {
       SK_LOGi1 (L"DLSS Version String (%ws): %ws", wszDLSS,
                               SK_GetDLLVersionStr (wszDLSS).c_str ());
@@ -880,6 +877,8 @@ SK_NGX_EstablishDLSSVersion (const wchar_t* wszDLSS) noexcept
 void
 SK_NGX_EstablishDLSSGVersion (const wchar_t* wszDLSSG) noexcept
 {
+  SK_NGX_Init ();
+
   static bool bHasVersion = false;
 
   // Driver overrides have extension .bin
@@ -909,16 +908,7 @@ SK_NGX_EstablishDLSSGVersion (const wchar_t* wszDLSSG) noexcept
 
     // Stupid hack because of NVIDIA's in-place OTA upgrades not necessarily actually
     //   upgrading anything.
-    if (  version.major     > SK_DLSS_Context::dlssg_s::Version.major   ||
-        ( version.major    == SK_DLSS_Context::dlssg_s::Version.major   &&
-          version.minor     > SK_DLSS_Context::dlssg_s::Version.minor ) ||
-        ( version.major    == SK_DLSS_Context::dlssg_s::Version.major &&
-          version.minor    == SK_DLSS_Context::dlssg_s::Version.minor &&
-          version.build     > SK_DLSS_Context::dlssg_s::Version.build ) ||
-        ( version.major    == SK_DLSS_Context::dlssg_s::Version.major &&
-          version.minor    == SK_DLSS_Context::dlssg_s::Version.minor &&
-          version.build    == SK_DLSS_Context::dlssg_s::Version.build &&
-          version.revision  > SK_DLSS_Context::dlssg_s::Version.revision ) )
+    if (SK_DLSS_Context::dlssg_s::Version.isOlderThan (version))
     {
       SK_LOGi1 (L"DLSS-G Version String (%ws): %ws", wszDLSSG,
                                 SK_GetDLLVersionStr (wszDLSSG).c_str ());
@@ -1098,6 +1088,13 @@ SK_NGX_UpdateDLSSGStatus (void)
 void
 SK_NGX_Init (void)
 {
+  // Too early
+  if (! GetModuleHandleW (L"_nvngx.dll"))
+  {
+    SK_LOGi0 (L"Tried to initialize NGX while _nvngx.dll was not yet loaded...");
+    return;
+  }
+
   SK_RunOnce (
   {
     GetNGXResultAsString =
@@ -1512,10 +1509,10 @@ SK_NGX_DLSS_ControlPanel (void)
               (dlss_creation_flags & NVSDK_NGX_DLSS_Feature_Flags_AlphaUpscaling) ==
                                      NVSDK_NGX_DLSS_Feature_Flags_AlphaUpscaling );
 
-        static const bool bHasAutoExposure =
+        static const bool bHasAutoExposure = true;/*
           config.nvidia.dlss.forced_auto_exposure != -1 ||
             (dlss_creation_flags & NVSDK_NGX_DLSS_Feature_Flags_AutoExposure) ==
-                                   NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;
+                                   NVSDK_NGX_DLSS_Feature_Flags_AutoExposure;*/
 
         static bool restart_required = false;
   
@@ -2132,6 +2129,42 @@ SK_NGX_DLSS_ControlPanel (void)
             ImGui::BulletText      ("Framepacing and FPS counting may be inaccurate (raw FPS), but limiting will work.");
             ImGui::BulletText      ("Try setting GlobalInjectDelay=0.01 or higher, or using Local Injection to fix.");
             ImGui::EndTooltip      ();
+          }
+        }
+
+        if (__SK_IsDLSSGActive)
+        {
+          if (ImGui::Checkbox ("Pace Native Frames", &config.render.framerate.streamline.enable_native_limit))
+          {
+            config.utility.save_async ();
+          }
+          if (ImGui::BeginItemTooltip ())
+          {
+            ImGui::TextUnformatted ("Apply framerate limiting to a game's native frames when Frame Generation is active.");
+            ImGui::Separator       ();
+            ImGui::BulletText      ("The NATIVE framerate will be reported in graphs and text");
+            ImGui::EndTooltip      ();
+          }
+
+          if (config.render.framerate.streamline.enable_native_limit)
+          {
+            ImGui::SameLine ();
+
+            int sel = ( config.render.framerate.streamline.enforcement_policy == 4 ) ? 0 :
+                      ( config.render.framerate.streamline.enforcement_policy == 2 ) ? 1 : 0;
+
+            ImGui::PushItemWidth (ImGui::CalcTextSize ("Low-Latency\tTT").x);
+
+            if (ImGui::Combo ("Mode###StreamlinePacingMode", &sel, "Normal\0Low-Latency\0\0", 2))
+            {
+              config.render.framerate.streamline.enforcement_policy =
+                ( sel == 0 ) ? 4 :
+                ( sel == 1 ) ? 2 : 4;
+
+              config.utility.save_async ();
+            }
+
+            ImGui::PopItemWidth ();
           }
         }
         ImGui::EndGroup    ();

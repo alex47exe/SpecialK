@@ -1,4 +1,74 @@
-﻿25.3.9.1
+﻿25.3.11.2
+=========
+ + Disable Low-Level Keyboard Hook if AutoHotkey is running before a game
+     is launched to avoid bugs in AHK's hook management in some games.
+
+25.3.11.1
+=========
+ + Change NvAPI call failures from message boxes to log entries instead.
+
+25.3.11
+=======
+ + Added support for extracting 7Zip files using RunDLL on Special K's DLL
+
+     rundll32 "SpecialK64.dll", RunDLL_Extract7Zip NameOf7ZipFile.7z
+
+25.3.10.8
+=========
+ + Force native pacing mode to use low-latency mode in Monster Hunter Wilds
+
+25.3.10.7
+=========
+ + Always show DLSS Auto Exposure options, even if the game does not use it.
+ + Fallback to Normal mode for native pacing if a game is not using Input
+     Latency markers in their Reflex implementation.
+
+25.3.10.6
+=========
+ + Disable DLSS Frame Generation Native pacing by default.
+ + Report native input framerate on frame pacing graph for native pacing.
+
+25.3.10.5
+=========
+ + Native pacing statistics are now compatible with 3x and 4x FG modes...
+     (in theory, no outlandishly expensive GPU to test on.)
+
+25.3.10.4
+=========
+ + Display native frame pacing statistics instead of generated statistics when
+     native pacing is enabled (does not work for 3x or 4x modes).
+
+25.3.10.3
+=========
+ + Fixed native pacing potentially resetting the framerate limiter every frame.
+ + Uninstall low-level keyboard hooks when a debugger attaches to prevent flaky
+     keyboard input while debugging.
+
+25.3.10.2
+=========
+ + Fixed missing Reflex PRESENT_END marker when native pacing is set to Normal
+
+25.3.10.1
+=========
+ + Added DLSS Frame Generation -Native- Frame Pacing mode (disabled by default)
+     to pace the game's internal framerate in D3D12 games that use Frame Gen.
+
+    * This option will appear in the DLSS section of the control panel.
+
+   >> Eventually this will be the default behavior, but it is experimental now.
+
+25.3.10
+=======
+ + Added support for games that have multiple instances of DLSS/DLSS-G/DLSS-D
+     in existence at the same time (often for menu screens / cutscenes).
+
+25.3.9.2
+========
+ + Handle case where another mod has LoadLibrary{Ex}W hooked, and loads of
+     .bin files for DLSS were not being detected since they did not originate
+       from _nvngx.dll. (Driver Forced DLSS Overrides)
+
+25.3.9.1
 ========
  + Fixed weird implementation of DLSS in Banishers: Ghosts of New Eden, where
      it destroys its initial DLSS parameters, creates new parameters and then

@@ -253,14 +253,20 @@ NVSDK_NGX_D3D12_DestroyParameters_Detour (NVSDK_NGX_Parameter* InParameters)
       SK_NGX_HookParameters (InParameters)
     );
 
-    if (InParameters == SK_NGX_DLSS12.frame_gen.Parameters)
+    for ( auto& instance : SK_NGX_DLSS12.frame_gen.Instances )
     {
-      SK_NGX_DLSS12.frame_gen.Parameters = nullptr;
+      if (instance.second.Parameters == InParameters)
+      {
+        instance.second.Parameters = nullptr;
+      }
     }
 
-    else if (InParameters == SK_NGX_DLSS12.super_sampling.Parameters)
+    for ( auto& instance : SK_NGX_DLSS12.super_sampling.Instances )
     {
-      SK_NGX_DLSS12.super_sampling.Parameters = nullptr;
+      if (instance.second.Parameters == InParameters)
+      {
+        instance.second.Parameters = nullptr;
+      }
     }
   }
 
@@ -305,11 +311,12 @@ NVSDK_NGX_D3D12_CreateFeature_Detour ( ID3D12GraphicsCommandList *InCmdList,
     {
       SK_NGX_EstablishDLSSGVersion (L"nvngx_dlssg.dll");
 
-      SK_ReleaseAssert ( SK_NGX_DLSS12.frame_gen.Handle == *OutHandle ||
-                         SK_NGX_DLSS12.frame_gen.Handle == nullptr );
+      SK_DLSS_Context::dlssg_s::instance_s instance;
 
-      SK_NGX_DLSS12.frame_gen.Handle     = *OutHandle;
-      SK_NGX_DLSS12.frame_gen.Parameters = InParameters;
+      instance.Handle     = *OutHandle;
+      instance.Parameters = InParameters;
+
+      SK_NGX_DLSS12.frame_gen.Instances [*OutHandle] = instance;
 
       __SK_HasDLSSGStatusSupport = true;
 
@@ -335,12 +342,13 @@ NVSDK_NGX_D3D12_CreateFeature_Detour ( ID3D12GraphicsCommandList *InCmdList,
     else if (InFeatureID == NVSDK_NGX_Feature_SuperSampling ||
              InFeatureID == NVSDK_NGX_Feature_RayReconstruction)
     {
-      //SK_ReleaseAssert ( SK_NGX_DLSS12.super_sampling.Handle == *OutHandle ||
-      //                   SK_NGX_DLSS12.super_sampling.Handle == nullptr );
+      SK_DLSS_Context::dlss_s::instance_s instance;
 
-      SK_NGX_DLSS12.super_sampling.Handle     = *OutHandle;
-      SK_NGX_DLSS12.super_sampling.Parameters = InParameters;
-      SK_NGX_DLSS12.super_sampling.DLSS_Type  = InFeatureID;
+      instance.Handle     = *OutHandle;
+      instance.Parameters = InParameters;
+      instance.DLSS_Type  = InFeatureID;
+
+      SK_NGX_DLSS12.super_sampling.Instances [*OutHandle] = instance;
 
       SK_LOGi1 (L"DLSS Feature Created!");
     }
@@ -373,11 +381,8 @@ NVSDK_NGX_D3D12_EvaluateFeature_Detour (ID3D12GraphicsCommandList *InCmdList, co
 
   SK_NGX_DLSS12.log_call ();
 
-  if (InFeatureHandle == SK_NGX_DLSS12.super_sampling.Handle)
+  if (SK_NGX_DLSS12.super_sampling.hasInstance (InFeatureHandle))
   {
-    if (SK_NGX_DLSS12.super_sampling.Parameters == nullptr)
-        SK_NGX_DLSS12.super_sampling.Parameters  = (NVSDK_NGX_Parameter *)InParameters;
-
     if (config.nvidia.dlss.forced_preset != -1)
     {
       unsigned int dlss_perf_qual;
@@ -430,26 +435,16 @@ NVSDK_NGX_D3D12_EvaluateFeature_Detour (ID3D12GraphicsCommandList *InCmdList, co
 
   if (ret == NVSDK_NGX_Result_Success)
   {
-    if (InFeatureHandle == SK_NGX_DLSS12.frame_gen.Handle)
-    {
-      if (SK_NGX_DLSS12.frame_gen.Parameters == nullptr)
-          SK_NGX_DLSS12.frame_gen.Parameters  = (NVSDK_NGX_Parameter *)InParameters;
-
-      WriteULong64Release (&SK_NGX_DLSS12.frame_gen.LastFrame,      SK_GetFramesDrawn ());
-    }
-
-    else if (InFeatureHandle == SK_NGX_DLSS12.super_sampling.Handle)
-    {
-      WriteULong64Release (&SK_NGX_DLSS12.super_sampling.LastFrame, SK_GetFramesDrawn ());
-    }
+    SK_NGX_DLSS12.frame_gen.evaluateFeature      (SK_NGX_DLSS12.frame_gen.getInstance      (InFeatureHandle));
+    SK_NGX_DLSS12.super_sampling.evaluateFeature (SK_NGX_DLSS12.super_sampling.getInstance (InFeatureHandle));
   }
 
   else
   {
     const wchar_t* wszFeatureName =
-      (InFeatureHandle == SK_NGX_DLSS12.frame_gen.Handle)      ? L"DLSS Frame Generation" :
-      (InFeatureHandle == SK_NGX_DLSS12.super_sampling.Handle) ? L"DLSS"                  :
-                                                                 L"Unknown Feature";
+      SK_NGX_DLSS12.frame_gen.hasInstance      (InFeatureHandle) ? L"DLSS Frame Generation" :
+      SK_NGX_DLSS12.super_sampling.hasInstance (InFeatureHandle) ? L"DLSS"                  :
+                                                                   L"Unknown Feature";
 
     SK_LOGi0 (
       L"NVSDK_NGX_D3D12_EvaluateFeature (%p, %ws, %p, %p) Failed - %x (%ws)",
@@ -486,20 +481,26 @@ NVSDK_NGX_D3D12_ReleaseFeature_Detour (NVSDK_NGX_Handle *InHandle)
 
   if (ret == NVSDK_NGX_Result_Success)
   {
-    if (InHandle == SK_NGX_DLSS12.frame_gen.Handle)
+    auto pFrameGenInstance  = SK_NGX_DLSS12.frame_gen.getInstance (InHandle);
+    if ( pFrameGenInstance != nullptr )
     {
-      SK_NGX_DLSS12.frame_gen.Parameters = nullptr;
-      SK_NGX_DLSS12.frame_gen.Handle     = nullptr;
-      __SK_IsDLSSGActive                 = false;
-      __SK_ForceDLSSGPacing              = false;
+      pFrameGenInstance->Parameters = nullptr;
+      pFrameGenInstance->Handle     = nullptr;
+
+      if (SK_NGX_DLSS12.frame_gen.LastInstance == pFrameGenInstance)
+      {
+        __SK_IsDLSSGActive         = false;
+        __SK_ForceDLSSGPacing      = false;
+      }
 
       SK_LOGi1 (L"DLSS-G Feature Released!");
     }
 
-    else if (InHandle == SK_NGX_DLSS12.super_sampling.Handle)
+    auto pSuperSamplingInstance  = SK_NGX_DLSS12.super_sampling.getInstance (InHandle);
+    if ( pSuperSamplingInstance != nullptr )
     {
-      SK_NGX_DLSS12.super_sampling.Parameters = nullptr;
-      SK_NGX_DLSS12.super_sampling.Handle     = nullptr;
+      pSuperSamplingInstance->Parameters = nullptr;
+      pSuperSamplingInstance->Handle     = nullptr;
 
       SK_LOGi1 (L"DLSS Feature Released!");
     }
@@ -522,32 +523,15 @@ SK_NGX12_UpdateDLSSGStatus (void)
   UINT uiEnableDLSSGInterp = 0;
   UINT uiMultiFrameCount   = 1;
 
-  if (SK_NGX_DLSS12.frame_gen.Parameters != nullptr)
+  auto lastFrameGen = SK_NGX_DLSS12.frame_gen.LastInstance;
+
+  if (lastFrameGen             != nullptr &&
+      lastFrameGen->Parameters != nullptr)
   {
-    SK_NGX_DLSS12.frame_gen.Parameters->Get ("Enable.OFA",            &uiEnableOFA);
-    SK_NGX_DLSS12.frame_gen.Parameters->Get ("DLSSG.EnableInterp",    &uiEnableDLSSGInterp);
-    SK_NGX_DLSS12.frame_gen.Parameters->Get ("DLSSG.NumFrames",       &uiNumberOfFrames);
-    SK_NGX_DLSS12.frame_gen.Parameters->Get ("DLSSG.MultiFrameCount", &uiMultiFrameCount);
-
-#if 0
-    ID3D12Resource*                                          pMvecsRes = nullptr;
-    SK_NGX_DLSS12.frame_gen.Parameters->Get ("DLSSG.MVecs", &pMvecsRes);
-
-    if (pMvecsRes != nullptr)
-    {
-      SK_LOGi0 (
-        L"DLSS-G Motion Vectors: %hs, Format: %hs",
-          pMvecsRes->GetDesc ().Dimension ==  D3D12_RESOURCE_DIMENSION_TEXTURE3D ? "3D"
-                                                                                 : "2D",
-        SK_DXGI_FormatToStr (pMvecsRes->GetDesc ().Format).data ()
-      );
-    }
-#endif
-
-    //{
-    //  SK_LOGi0 (L"Failure to get DLSS-G Parameters During SK_NGX_UpdateDLSSGStatus (...)");
-    //}
-    //
+    lastFrameGen->Parameters->Get ("Enable.OFA",            &uiEnableOFA);
+    lastFrameGen->Parameters->Get ("DLSSG.EnableInterp",    &uiEnableDLSSGInterp);
+    lastFrameGen->Parameters->Get ("DLSSG.NumFrames",       &uiNumberOfFrames);
+    lastFrameGen->Parameters->Get ("DLSSG.MultiFrameCount", &uiMultiFrameCount);
   }
 
   __SK_IsDLSSGActive =
@@ -555,7 +539,8 @@ SK_NGX12_UpdateDLSSGStatus (void)
                                         (uiNumberOfFrames == 0 || uiNumberOfFrames > 1) &&*/
                                          uiEnableDLSSGInterp   && uiEnableOFA;
 
-  if (SK_NGX_DLSS12.frame_gen.Handle != nullptr)
+  if (lastFrameGen         != nullptr &&
+      lastFrameGen->Handle != nullptr)
   {
     static UINT        uiLastDLSSGState = UINT_MAX;
     if (std::exchange (uiLastDLSSGState, (UINT)__SK_IsDLSSGActive) != (UINT)__SK_IsDLSSGActive)
