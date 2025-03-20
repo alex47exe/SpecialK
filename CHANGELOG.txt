@@ -1,4 +1,63 @@
-﻿25.3.11.2
+﻿25.3.21
+=======
+ + More polish for menu framerate uncap in Assassin's Creed Shadows
+
+25.3.20.6
+=========
+ + Auto-enable framerate uncap in Assassin's Creed Shadows for all current
+     versions of the game.
+ + Handle an additional codepath involved in setting framerate limit.
+
+25.3.20.5
+=========
+ + Removed cutscene/menu framerate limiter from the Epic Games Store version
+     of Assassin's Creed Shadows.
+
+      (Ubisoft+ currently unsupported, Steam = ??)
+
+25.3.20.4
+=========
+ + Flag Assassin's Creed Shadows as Reflex-native even though it does
+     not begin generating markers for 5+ seconds, well after the time
+       that SK would mark the game as NOT using Reflex.
+ + Hack to allow Native Pacing mode for DLSS Frame Generation in AC Shadows.
+   * Reset config to let SK's Native Pacing mode work in AC Shadows.
+
+25.3.20.3
+=========
+ + Ignore a fake temporary SwapChain created by Anvil engine during
+     Assassin's Creed Shadows startup, to reduce compatiblity issues.
+   * Reset config for this game for best results...
+
+25.3.20.2
+=========
+ + Disable nearly all audio-related code when running SK under Proton;
+     dealing with their constantly broken Windows audio API implementations
+       is a complete waste of time.
+ + Distinguish "Audio Management" from "Spatial Audio Management" in SK's
+     control panel for games that use spatial audio APIs.
+
+   * For now this is a quick way to verify whether a game uses Atmos, DTX:X,
+       Windows Sonic, etc.
+
+    Eventually static spatial channel volume control will be introduced,
+      similar to the current surround sound volume controls. A positional
+        audio visualizer may also be created...
+
+25.3.20.1
+=========
+ + Disable Reflex Low Latency mode in Assassin's Creed Shadows because the
+     game's Reflex integration is the worst ever seen, and frame generation
+       (DLSS-G) does not work unless low latency is disabled.
+
+ @ Ubisoft, add markers for Simulation/Render Submit, or Reflex does not work!
+
+25.3.20
+=======
+ + Fixed potential infinite framerate limiter wait when VRR limiter mode is
+     active and there is no established SwapChain yet.
+
+25.3.11.2
 =========
  + Disable Low-Level Keyboard Hook if AutoHotkey is running before a game
      is launched to avoid bugs in AHK's hook management in some games.
