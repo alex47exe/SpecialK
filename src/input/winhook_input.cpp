@@ -42,6 +42,10 @@ public:
 
   concurrency::concurrent_unordered_map <
     UINT64, std::pair <HOOKPROC, HHOOK> > keyboard;
+
+  // Indicates SK has seen the game has installed a low-level hook
+  bool low_level_mouse    = false;
+  bool low_level_keyboard = false;
 } __hooks;
 
 static POINTS last_pos;
@@ -756,6 +760,9 @@ SetWindowsHookExW_Detour (
   if (hook != nullptr)
     *hook = ret;
 
+  if (ret != 0 && idHook == WH_KEYBOARD_LL) __hooks.low_level_keyboard = true;
+  if (ret != 0 && idHook == WH_MOUSE_LL)    __hooks.low_level_mouse    = true;
+
   return ret;
 }
 
@@ -879,6 +886,9 @@ SetWindowsHookExA_Detour (
   if (hook != nullptr)
     *hook = ret;
 
+  if (ret != 0 && idHook == WH_KEYBOARD_LL) __hooks.low_level_keyboard = true;
+  if (ret != 0 && idHook == WH_MOUSE_LL)    __hooks.low_level_mouse    = true;
+
   return ret;
 }
 
@@ -902,4 +912,86 @@ SK_Input_PreHookWinHook (void)
                                UnhookWindowsHookEx_Detour,
       static_cast_p2p <void> (&UnhookWindowsHookEx_Original) );
   });
+}
+
+bool
+SK_Input_IsGameUsingLowLevelMouseHooks (void)
+{
+  return __hooks.low_level_mouse;
+}
+
+bool
+SK_Input_IsGameUsingLowLevelKeyboardHooks (void)
+{
+  return __hooks.low_level_keyboard;
+}
+
+HHOOK SK_hHookLowLevelKeyboard = 0;
+
+bool
+SK_Input_HasInstalledLowLevelKeyboardHook (void)
+{
+  return SK_hHookLowLevelKeyboard != 0;
+}
+
+bool
+SK_Input_UninstallLowLevelKeyboardHook (void)
+{
+  if (config.compatibility.disallow_ll_keyhook)
+    return true;
+
+  UnhookWindowsHookEx_pfn _UnhookWindowsHookEx = UnhookWindowsHookEx_Original;
+
+  if (SK_hHookLowLevelKeyboard != 0 && _UnhookWindowsHookEx != nullptr && _UnhookWindowsHookEx (SK_hHookLowLevelKeyboard)) {
+      SK_hHookLowLevelKeyboard  = 0;
+
+    SK_LOGi0 (L"Uninstalled Low-Level Keyboard Hook");
+
+    return true;
+  }
+
+  return false;
+}
+
+bool
+SK_Input_InstallLowLevelKeyboardHook (void)
+{
+  if (config.compatibility.disallow_ll_keyhook)
+    return false;
+
+  SetWindowsHookEx_pfn _SetWindowsHookEx = SetWindowsHookExW_Original;
+
+  if (config.input.keyboard.needsLowLevelKeyboardHook ())
+  {
+    if (!(SK_IsProcessRunning (L"AutoHotkey64.exe")||
+          SK_IsProcessRunning (L"AutoHotkey32.exe")||
+          SK_IsProcessRunning (L"AutoHotkeyUX.exe")))
+    {
+      if (SK_hHookLowLevelKeyboard == 0 && _SetWindowsHookEx != nullptr)
+      {
+        SK_LOGi0 (L"Installing Low-Level Keyboard Hook...");
+    
+        SK_hHookLowLevelKeyboard =
+          _SetWindowsHookEx (
+            WH_KEYBOARD_LL, SK_Input_LowLevelKeyboardProc,
+                GetModuleHandle (nullptr), 0
+                            );
+    
+        if (! SK_hHookLowLevelKeyboard)
+        {
+          SK_LOGi0 (L"Low-Level Keyboard Hook Failed... Error=%x", GetLastError ());
+          return false;
+        }
+
+        return true;
+      }
+    }
+
+    else
+    {
+      SK_LOGi0 (L"Low-Level Keyboard Hooks Not Supported Because AutoHotkey!");
+    }
+  }
+
+  return false;
 }
