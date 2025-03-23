@@ -52,7 +52,19 @@ SK_HasPlugin (void);
 using SK_EndFrame_pfn                  = void   (__stdcall *)( void        );
 using SK_EndFrameEx_pfn                = void   (__stdcall *)( BOOL
                                                                bWaitOnFail );
-using SK_ExitGame_pfn                 = void    (__stdcall *)( void        );
+using SK_OpenFileW_pfn                 = void   (__stdcall *)( LPCWSTR
+                                                               lpFileName,
+                                                               HANDLE
+                                                               hFile       );
+using SK_OpenFileA_pfn                 = void   (__stdcall *)( LPCSTR
+                                                               lpFileName,
+                                                               HANDLE
+                                                               hFile       );
+using SK_ReadFile_pfn                  = void   (__stdcall *)( HANDLE
+                                                               hFile       );
+using SK_WriteFile_pfn                 = void   (__stdcall *)( HANDLE
+                                                               hFile       );
+using SK_ExitGame_pfn                  = void   (__stdcall *)( void        );
 using SK_BeginFrame_pfn                = void   (__stdcall *)( void        );
 using SK_ReleaseGfx_pfn                = void   (__stdcall *)( void        );
 using SK_PlugIn_ControlPanelWidget_pfn = void   (__stdcall *)( void        );
@@ -88,6 +100,12 @@ struct SK_PluginRegistry
   std::set <SK_ReleaseGfx_pfn>               release_gfx_fns;
   std::set <SK_ExitGame_pfn>                   exit_game_fns;
   std::set <SK_AchievementUnlock_pfn> achievement_unlock_fns;
+  std::set <SK_ReadFile_pfn>                   read_file_fns;
+  std::set <SK_WriteFile_pfn>                 write_file_fns; // Not implemented
+  std::set <SK_OpenFileW_pfn>                open_file_w_fns;
+  // Avoid; a translation from ANSI to wide char should be
+  //   used instead if a plug-in ever needs this callback.
+  std::set <SK_OpenFileA_pfn>                open_file_a_fns;
 
   std::wstring plugin_name;
 };
@@ -155,6 +173,7 @@ void SK_BGS_InitPlugin             (void);
 void SK_LOTF2_InitPlugin           (void);
 void SK_OPT_InitPlugin             (void);
 void SK_ACV_InitPlugin             (void);
+void SK_ACS_InitPlugin             (void);
 
 bool SK_NIER_RAD_PlugInCfg         (void);
 bool SK_Okami_PlugInCfg            (void);

@@ -1,4 +1,120 @@
-﻿25.3.21
+﻿25.3.23
+=======
+ + Improved ReShade support in Assassin's Creed Shadows.
+ + Removed 2x, 3x, 4x frame gen options from control panel for AC Shadows.
+
+25.3.22.6
+=========
+ + Rephrase ReShade DLSSG incompatibility warning for AC Shadows.
+
+25.3.22.5
+=========
+ + Added error message if RTSS is enabled, but 'Detours API Hooking' is not.
+
+25.3.22.4
+=========
+ + Force NVSDK_NGX_D3D12_GetFeatureRequirements (...) to succeed for all
+     RTX 4xxx and newer GPUs in AC Shadows.
+
+    -> A one-time game restart may be necessary to write the following to INI:
+
+       [NVIDIA.DLSS]
+       SpoofFeatureSupport=true
+
+    This should fix DLSS options missing from in-game settings, RTX 2xxx/3xxx
+      users are NOT opted-in automatically because they have not been tested.
+
+    If you have an older RTX GPU and are missing non-framegen DLSS options,
+      manually setting the INI value above may fix it for you.
+
+25.3.22.3
+=========
+ + Add error message if attempting to use ReShade with DLSS Frame Generation
+     in AC Shadows, since ReShade does not support Ubisoft's broken DLSS4
+       integration.
+
+25.3.22.2
+=========
+ + Default Reflex Low Latency mode to on in AC Shadows.
+
+25.3.22.1
+=========
+ + Prevent non-monotonic Reflex frame IDs in AC Shadows when fuzzing frame
+     generation markers.
+ + Revert to disabling screen tearing when Flip Metering is enabled and
+     DLSS frame generation is active (on VRR capable displays).
+
+25.3.22
+=======
+ + Disabled DLSS/Streamline Over-the-Air Updates in AC Shadows
+   * Reset config if you were having trouble getting the game to show DLSS
+
+25.3.21.11
+==========
+ + Added system to re-enable realtime cutscene frame generation when user
+     determines FMV playback is finished...
+
+25.3.21.10
+==========
+ + Add 15 second delay before turning Frame Generation back on after an
+     FMV frame is played.
+
+25.3.21.9
+=========
+ + Safely disable Frame Generation during FMV cutscenes in AC Shadows.
+ + Enable cutscene Frame Generation by default.
+
+25.3.21.8
+=========
+ + Fixed Native Pacing unintentionally resetting its framerate limiter clock
+     following Alt-Tab; fixes missing DLSS Frame Generation in AC Shadows.
+ + Set default Native Pacing mode back to Low Latency, now that the above
+     issue is fixed (lol)
+
+25.3.21.7
+=========
+ + Do not apply Tearing Flag or Sync Interval overrides when Flip Metering
+     is enabled.
+ + Default to Normal mode for Native Pacing in AC Shadows
+
+25.3.21.6
+=========
+ + Add more precise tooltip for Flip Metering.
+ + Ensure that PresentMon threads are shutdown even if a game terminates
+     early.
+
+25.3.21.5
+=========
+ + Add Flip Metering option to Asassin's Creed Shadows control panel.
+
+25.3.21.4
+=========
+ + Return fake success status codes when Assassin's Creed Shadows tries to
+     call NVSDK_NGX_D3D12_EvaluateFeature (...) on a DLSSG Framegen NGX
+       context, with invalid parameters.
+
+   * Suppressing errors should prevent Streamline from freaking out, and
+       users who previously lost DLSS / DLSS Frame Gen settings at random
+         should now consistently be offered them in the game's settings.
+          
+25.3.21.3
+=========
+ + Enable flip metering in Assassin's Creed Shadows, since Native Pacing
+     is enabled by default.
+
+25.3.21.2
+=========
+ + Ensure that DLSSG generates at least 1 frame while FG is forced enabled.
+ + Add warning about forced frame generation crashing during cutscenes.
+ + Fixed forced frame generation disabling screenspace shadows.
+
+25.3.21.1
+=========
+ + Added settings to enable Frame Gen in Cutscenes and Menus in AC Shadows
+ + Added settings to control multi-frame gen in AC Shadows
+ + Added settings to control cutscene/menu framerate unlock in AC Shadows
+
+25.3.21
 =======
  + More polish for menu framerate uncap in Assassin's Creed Shadows
 
@@ -21,7 +137,6 @@
      not begin generating markers for 5+ seconds, well after the time
        that SK would mark the game as NOT using Reflex.
  + Hack to allow Native Pacing mode for DLSS Frame Generation in AC Shadows.
-   * Reset config to let SK's Native Pacing mode work in AC Shadows.
 
 25.3.20.3
 =========

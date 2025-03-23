@@ -3360,10 +3360,13 @@ SK_DXGI_PresentBase ( IDXGISwapChain         *This,
       }
     }
 
-    if (ReadAcquire        (&SK_RenderBackend::flip_skip) > 0) {
-      InterlockedDecrement (&SK_RenderBackend::flip_skip);
-      interval      = 0;
-      flags |= DXGI_PRESENT_RESTART;
+    if (! __SK_IsDLSSGActive)
+    {
+      if (ReadAcquire        (&SK_RenderBackend::flip_skip) > 0) {
+        InterlockedDecrement (&SK_RenderBackend::flip_skip);
+        interval      = 0;
+        flags |= DXGI_PRESENT_RESTART;
+      }
     }
 
 

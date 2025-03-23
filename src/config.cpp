@@ -3372,7 +3372,6 @@ auto DeclKeybind =
         break;
 
       case SK_GAME_ID::AssassinsCreed_Shadows:
-      {
         config.apis.d3d9.hook                      = false;
         config.apis.d3d9ex.hook                    = false;
         config.apis.OpenGL.hook                    = false;
@@ -3382,83 +3381,27 @@ auto DeclKeybind =
         apis.OpenGL.hook->store (config.apis.OpenGL.hook);
         config.apis.dxgi.d3d11.hook                =  true;
         config.apis.dxgi.d3d12.hook                =  true;
-        config.render.framerate.sleepless_render   =  true;
-        config.render.framerate.sleepless_window   =  true;
         config.window.background_render            =  true; // Workaround focus lost behavior
         config.window.treat_fg_as_active           =  true;
         // Necessary hack for frame generation to work...
         config.nvidia.reflex.native                =  true;
         config.render.framerate.streamline.enable_native_limit
                                                    =  true;
-      //// This is permissable if native pacing is enabled.
-      //config.nvidia.dlss.allow_flip_metering     =  true;
+        config.render.framerate.streamline.enforcement_policy
+                                                   =     2;
+        config.nvidia.reflex.low_latency           =  true;
+        config.nvidia.reflex.low_latency_boost     =  true;
+        config.nvidia.reflex.enable                =  true;
+        config.nvidia.reflex.override              =  true;
+        //// This is permissable if native pacing is enabled.
+        config.nvidia.dlss.allow_flip_metering     =  true;
         config.compatibility.disallow_ll_keyhook   =  true;
+        config.nvidia.dlss.disable_ota_updates     =  true;
 
         // Delay the application of framerate patch in case other mods are
         //   doing the same thing...
-        static HANDLE hInitThread =
-        SK_Thread_CreateEx ([](LPVOID)->DWORD
-        {
-          bool unlimited = false;
-
-          void* const limit_load_addr =
-            (uint8_t *)SK_Debug_GetImageBaseAddr ()+0xF7B0BA;
-
-          if (! memcmp (limit_load_addr, "\x48\x8b\x05\x9f", 4))
-          {
-            void* const limit_store_addr =
-              (uint8_t *)SK_Debug_GetImageBaseAddr ()+0xF7B0C1;
-
-            DWORD                                                             dwOrigProt = 0x0;
-            if (VirtualProtect (limit_store_addr, 8, PAGE_EXECUTE_READWRITE, &dwOrigProt))
-            {
-              SK_SleepEx (1500UL, FALSE);
-
-              config.system.silent_crash = true;
-              config.utility.save_async ();
-
-              unlimited = true;
-
-              memcpy         (limit_store_addr, "\x90\x90\x90\x90\x90\x90\x90\x90", 8);
-              VirtualProtect (limit_store_addr, 8, dwOrigProt, &dwOrigProt);
-
-              void* const     limit_check_addr =
-              (uint8_t *)SK_Debug_GetImageBaseAddr ()+0xF7B0D3;
-
-              VirtualProtect (limit_check_addr, 2, PAGE_EXECUTE_READWRITE, &dwOrigProt);
-              memcpy         (limit_check_addr, "\x90\x90", 2);
-              VirtualProtect (limit_check_addr, 2, dwOrigProt, &dwOrigProt);
-
-              void* const     limit_alt_addr =
-              (uint8_t *)SK_Debug_GetImageBaseAddr ()+0x178AD29;
-
-              VirtualProtect (limit_alt_addr, 10, PAGE_EXECUTE_READWRITE, &dwOrigProt);
-              memcpy         (limit_alt_addr, "\xC7\x46\x28\x00\x00\x80\xBF\x90\x90\x90", 10);
-              VirtualProtect (limit_alt_addr, 10, dwOrigProt, &dwOrigProt);
-
-              // The pointer base addr is stored in the limit_load_addr instruction
-              plugin_mgr->begin_frame_fns.insert ([](void)
-              {
-                // Fail-safe incase any code that sets this was missed
-                 float* const framerate_limit =             // Limit = Offset 0x98; single-precision float
-                (float *)((uintptr_t)SK_Debug_GetImageBaseAddr ()+0x9C91960 + 0x98);
-
-                // -1.0f = Unlimited
-                *framerate_limit = -1.0f;
-              });
-            }
-          }
-
-          if (! unlimited)
-          {
-            SK_ImGui_Warning (L"Cutscene / Menu Framerate Limiter Bypass Unsupported");
-          }
-
-          SK_Thread_CloseSelf ();
-
-          return 0;
-        });
-      } break;
+        SK_RunOnce (plugin_mgr->init_fns.insert (SK_ACS_InitPlugin));
+        break;
 
       case SK_GAME_ID::Shenmue:
         config.textures.d3d11.generate_mips       = true;
