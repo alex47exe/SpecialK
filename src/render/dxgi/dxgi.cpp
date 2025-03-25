@@ -2528,6 +2528,11 @@ SK_StreamlinePresent ( IDXGISwapChain *This,
   if (SK_IsCurrentGame (SK_GAME_ID::AssassinsCreed_Shadows))
   {
     limit_to_set *= 2.0f;
+
+#if 0
+    __SK_FramerateScale =
+      std::max (1.0f, static_cast <float> (SK_NGX_DLSSG_GetMultiFrameCount ()));
+#endif
   }
 
   pLimiter->standalone = true;
