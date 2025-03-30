@@ -79,6 +79,8 @@ void
 __stdcall
 SK_InitRenderBackends (void)
 {
+  SK_PROFILE_FIRST_CALL
+
   SK_ICommandProcessor
     *pCommandProcessor = nullptr;
 
@@ -126,6 +128,8 @@ bool
 __stdcall
 SK_DXVK_CheckForInterop (void)
 {
+  SK_PROFILE_FIRST_CALL
+
   HMODULE hModD3D9 =
     SK_GetModuleHandle (L"d3d9.dll");
 
@@ -258,6 +262,8 @@ SK_BootD3D9 (void)
 
   if (InterlockedCompareExchangeAcquire (&__booted, TRUE, FALSE) == FALSE)
   {
+    SK_PROFILE_FIRST_CALL
+
     // Offer to enable native Vulkan support
     SK_DXVK_CheckForInterop ();
 
@@ -329,6 +335,8 @@ SK_BootD3D8 (void)
 
   if (! InterlockedCompareExchangeAcquire (&__booted, TRUE, FALSE))
   {
+    SK_PROFILE_FIRST_CALL
+
     dll_log->Log (
       L"[API Detect]  <!> [ Bootstrapping Direct3D 8 (d3d8.dll) ] <!>\t(Initialization tid=%x)",
              SK_GetCurrentThreadId ()
@@ -381,6 +389,8 @@ SK_BootDDraw (void)
 
   if (! InterlockedCompareExchangeAcquire (&__booted, TRUE, FALSE))
   {
+    SK_PROFILE_FIRST_CALL
+
     dll_log->Log (
       L"[API Detect]  <!> [ Bootstrapping DirectDraw (ddraw.dll) ] <!>\t(Initialization tid=%x)",
              SK_GetCurrentThreadId ()
@@ -443,6 +453,8 @@ SK_BootDXGI (void)
 
   if (InterlockedCompareExchangeAcquire (&__booted, TRUE, FALSE) == FALSE)
   {
+    SK_PROFILE_FIRST_CALL
+
     SK_DXGI_QuickHook ();
 
     // Establish the minimal set of APIs necessary to work as dxgi.dll
@@ -531,6 +543,8 @@ SK_BootOpenGL (void)
 
   if (InterlockedCompareExchangeAcquire (&__booted, TRUE, FALSE) == FALSE)
   {
+    SK_PROFILE_FIRST_CALL
+
     if (pTLS)
         pTLS->render->gl->ctx_init_thread = true;
 
@@ -602,6 +616,8 @@ _SK_HookVulkan (void)
   {
     if (! InterlockedCompareExchangeAcquire (&hooked, TRUE, FALSE))
     {
+      SK_PROFILE_FIRST_CALL
+
       config.render.gl.disable_fullscreen = true;
 
       //
@@ -622,6 +638,8 @@ SK_BootVulkan (void)
 
   if (InterlockedCompareExchange (&__booted, TRUE, FALSE))
     return;
+
+  SK_PROFILE_FIRST_CALL
 
   // Establish the minimal set of APIs necessary to work as vulkan-1.dll
   if (SK_GetDLLRole () == DLL_ROLE::Vulkan)
@@ -838,6 +856,11 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
 
     if (! disabled.for_app)
     {
+      static HANDLE wait_objects [] = {
+        __SK_DLL_TeardownEvent, SK_CreateEvent (nullptr, FALSE, FALSE, nullptr), // Update Syn
+                                SK_CreateEvent (nullptr, FALSE, FALSE, nullptr)  // Update Ack
+      };
+
       static HANDLE hVRRThread =
       SK_Thread_CreateEx ([](LPVOID)->
       DWORD
@@ -857,13 +880,23 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
           display.nvapi.monitor_caps.version  = NV_MONITOR_CAPABILITIES_VER;
           display.nvapi.monitor_caps.infoType = NV_MONITOR_CAPS_TYPE_GENERIC;
 
-          static DWORD
-              dwLastCacheTime = 0;
-          if (dwLastCacheTime < SK::ControlPanel::current_time - 250UL)
-          {   dwLastCacheTime = SK::ControlPanel::current_time + 50UL;                    vrr_info = {NV_GET_VRR_INFO_VER};
-            SK_NvAPI_Disp_GetVRRInfo             (display.nvapi.display_id, &vrr_info);
-          } SK_NvAPI_DISP_GetMonitorCapabilities (display.nvapi.display_id,
-                                                 &display.nvapi.monitor_caps);
+          static int check_stage = 0;
+
+          DWORD dwTimeNow =
+            SK_timeGetTime ();
+
+          if (rb.gsync_state.last_checked < (dwTimeNow - 666UL))
+          {   rb.gsync_state.last_checked =  dwTimeNow;                        vrr_info = {NV_GET_VRR_INFO_VER};
+            if (check_stage++ % 5 == 0)
+              SK_NvAPI_DISP_GetMonitorCapabilities (display.nvapi.display_id,
+                                                   &display.nvapi.monitor_caps);
+            SK_NvAPI_Disp_GetVRRInfo               (display.nvapi.display_id, &vrr_info);
+
+            if (vrr_info.bIsVRREnabled)
+              rb.gsync_state.last_checked = dwTimeNow +  300UL;
+            else
+              rb.gsync_state.last_checked = dwTimeNow + 1500UL;
+          }
 
           display.nvapi.vrr_enabled =
             vrr_info.bIsVRREnabled;
@@ -904,22 +937,29 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
               monitor_caps.data.caps.supportVRR &&
               monitor_caps.data.caps.currentlyCapableOfVRR;
           }
+
+          SetEvent (wait_objects [2]);
         } while ( WAIT_OBJECT_0 !=
-                  WaitForSingleObject (__SK_DLL_TeardownEvent, 1500UL) );
+                  WaitForMultipleObjects (2, wait_objects, FALSE, INFINITE) );
 
         SK_Thread_CloseSelf ();
 
         return 0;
       }, L"[SK] VRR Status Monitor");
+
+      if (SignalObjectAndWait ( wait_objects [1],
+                                wait_objects [2], 0, FALSE ) == WAIT_OBJECT_0)
+      {
+        _EvaluateAutoLowLatency ();
+      }
     }
 
-    return
-      _EvaluateAutoLowLatency ();
+    return;
   }
 
 
   //
-  // D3D9 or D3D11
+  // D3D9 or D3D11  (These may not be implemented on a separate thread, they will deadlock the D3D9/11 driver)
   //
 
   // DO NOT hold onto this. NVAPI does not explain how NVDX handles work, but
@@ -3722,6 +3762,8 @@ SK_RenderBackend_V2::updateOutputTopology (void)
                  )
              )
           {
+            SK_LOGi0 (L"Display Change Handled");
+
             display.nvapi.display_handle = nvDisplayHandle;
             display.nvapi.gpu_handle     = nvGpuHandles [0];
             display.nvapi.display_id     = nvDisplayId;

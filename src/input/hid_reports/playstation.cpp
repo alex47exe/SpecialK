@@ -131,8 +131,6 @@ void SK_HID_SetupPlayStationControllers (void)
     cmd_proc->AddVariable ("Input.Gamepad.DualSense.ResistStrR",  &dualsense_resist_str_r-> setRange (-1.0f,   1.0f));
     cmd_proc->AddVariable ("Input.Gamepad.DualSense.ResistPosR",  &dualsense_resist_pos_r-> setRange (-1.0f,   1.0f));
 
-    SK_Input_PreHookHID ();
-
     HDEVINFO hid_device_set = 
       SK_SetupDiGetClassDevsW (&GUID_DEVINTERFACE_HID, nullptr, nullptr, DIGCF_DEVICEINTERFACE |
                                                                          DIGCF_PRESENT);
@@ -3666,6 +3664,135 @@ SK_HID_PlayStationDevice::write_output_report (bool force)
 }
 
 
+bool SK_HID_DeviceFile::filterHidOutput (uint8_t report_id, DWORD dwSize, LPVOID data)
+{
+  bool data_changed = false;
+
+  switch (device_vid)
+  {
+    case SK_HID_VID_SONY:
+    {
+      switch (device_pid)
+      {
+        case SK_HID_PID_DUALSHOCK4:
+        case SK_HID_PID_DUALSHOCK4_REV2:
+        {
+          // Not implemented yet
+        } break;
+
+        case SK_HID_PID_DUALSENSE_EDGE:
+        case SK_HID_PID_DUALSENSE:
+        {
+          SK_HID_DualSense_SetStateData *pSetState = nullptr;
+
+          if (dwSize >= 47 && report_id == 0x02)
+          {
+            // libScePad has an extra 17 bytes for some reason...?  (dwSize=64)
+
+            pSetState =
+              (SK_HID_DualSense_SetStateData *)(&((uint8_t *)data) [1]);
+          }
+
+          // This one needs extra checksum handling...
+          else if (dwSize == 79 && report_id == 0x31)
+          {
+            //SK_ReleaseAssertg ( pDevice->bBluetooth);
+
+            //pSetState =
+            //  (SK_HID_DualSense_SetStateData *)(&(uint8_t *)data [3]);
+          }
+
+          else
+          {
+            SK_RunOnce (
+              SK_LOGi0 (L"DualSense HID Output, dwSize=%d, report_id=%x", dwSize, report_id)
+            );
+          }
+
+          if (pSetState != nullptr)
+          {
+            if (config.input.gamepad.scepad.led_color_r    >= 0 ||
+                config.input.gamepad.scepad.led_color_g    >= 0 ||
+                config.input.gamepad.scepad.led_color_b    >= 0 ||
+                config.input.gamepad.scepad.led_brightness >= 0)
+            {
+              bool disable_player_indicator_lights = false;
+
+              if (config.input.gamepad.scepad.led_brightness != SK_NoPreference)
+              {
+                // 3 is a special case that means OFF
+                if (config.input.gamepad.scepad.led_brightness == 3)
+                {
+                  pSetState->AllowLightBrightnessChange = 1;
+                  pSetState->LightBrightness            = (LightBrightness)3;
+
+                  disable_player_indicator_lights = true;
+                }
+
+                else if (config.input.gamepad.scepad.led_brightness >= 0)
+                {
+                  pSetState->AllowLightBrightnessChange = 1;
+                  pSetState->LightBrightness            =
+                    (LightBrightness)std::clamp (config.input.gamepad.scepad.led_brightness, 0, 2);
+                }
+
+                data_changed = true;
+              }
+
+              if (config.input.gamepad.scepad.led_color_r >= 0 ||
+                  config.input.gamepad.scepad.led_color_g >= 0 ||
+                  config.input.gamepad.scepad.led_color_b >= 0)
+              {
+                pSetState->AllowLedColor = true;
+
+                pSetState->LedRed   = (uint8_t)config.input.gamepad.scepad.led_color_r;
+                pSetState->LedGreen = (uint8_t)config.input.gamepad.scepad.led_color_g;
+                pSetState->LedBlue  = (uint8_t)config.input.gamepad.scepad.led_color_b;
+
+                if (config.input.gamepad.scepad.led_color_r == 
+                    config.input.gamepad.scepad.led_color_g ==
+                    config.input.gamepad.scepad.led_color_b == 0)
+                {
+                  disable_player_indicator_lights = true;
+                }
+
+                data_changed = true;
+              }
+
+              if (disable_player_indicator_lights)
+              {
+                // Disable player indicator light
+                //
+                pSetState->AllowPlayerIndicators = true;
+                pSetState->PlayerLight1          = 0;
+                pSetState->PlayerLight2          = 0;
+                pSetState->PlayerLight3          = 0;
+                pSetState->PlayerLight4          = 0;
+                pSetState->PlayerLight5          = 0;
+
+                data_changed = true;
+              }
+
+              if (config.input.gamepad.disable_rumble)
+              {
+                pSetState->AllowLeftTriggerFFB  = false;
+                pSetState->AllowRightTriggerFFB = false;
+                pSetState->UseRumbleNotHaptics  = 0;
+                pSetState->RumbleEmulationLeft  = 0;
+                pSetState->RumbleEmulationRight = 0;
+              }
+            }
+
+            // SK controls this!
+            pSetState->AllowMuteLight = false;
+          }
+        } break;
+      }
+    } break;
+  }
+
+  return data_changed;
+}
 
 int SK_HID_DeviceFile::neutralizeHidInput (uint8_t report_id, DWORD dwSize)
 {

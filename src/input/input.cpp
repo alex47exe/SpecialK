@@ -547,6 +547,8 @@ SetThreadExecutionState_Detour (EXECUTION_STATE esFlags)
 // Parts of the Win32 API that are safe to hook from DLL Main
 void SK_Input_PreInit (void)
 {
+  SK_PROFILE_FIRST_CALL
+
   auto SK_SDL_SetDefaultBehavior = [](const char* szVarName,
                                       const char* szValue,
                                       bool        force_override =
@@ -631,6 +633,12 @@ void SK_Input_PreInit (void)
   SK_SDL_SetOverride (sdl.allow_all_ps_bt_features,   "SDL_JOYSTICK_HIDAPI_PS5_RUMBLE");
   SK_SDL_SetOverrideFloat (sdl.switch_led_brightness, "SDL_JOYSTICK_HIDAPI_JOYCON_HOME_LED");
 
+  // Defer all of the below into a straight shot single batch of hooks
+  //
+  bool bEnableHooks =
+    SK_DisableApplyQueuedHooks ();
+
+  SK_Input_PreHookHID      ();
   SK_Input_PreHookWinHook  ();
   SK_Input_PreHookCursor   ();
   SK_Input_PreHookKeyboard ();
@@ -681,6 +689,12 @@ void SK_Input_PreInit (void)
   {
     SK_Input_PreHookDI8 ();
   }
+
+  if (bEnableHooks)
+  {
+    SK_EnableApplyQueuedHooks ();
+          SK_ApplyQueuedHooks ();
+  }
 }
 
 void
@@ -693,16 +707,7 @@ SK_Input_Init (void)
   if (std::exchange (once, true))
     return;
 
-  if (SK_GetDLLRole () != DLL_ROLE::DInput8)
-  {
-    if (SK_GetModuleHandle (L"dinput8.dll"))
-      SK_Input_HookDI8  ();
-
-    if (SK_GetModuleHandle (L"dinput.dll"))
-      SK_Input_HookDI7  ();
-  }
-
-  SK_Input_InitKeyboard ();
+  SK_PROFILE_FIRST_CALL
 
   auto *cp =
     SK_Render_InitializeSharedCVars ();
@@ -741,11 +746,31 @@ SK_Input_Init (void)
   CreateInputVar_Int  ("Input.Keyboard.EnableWinKey",  &config.input.keyboard.enable_win_key);
   CreateInputVar_Int  ("Input.Keyboard.AltTabPace",    &config.input.keyboard.alt_tab_adhd_pace);
 
+  bool bEnable =
+    SK_DisableApplyQueuedHooks ();
+
   SK_Input_PreHookHID    ();
   SK_Input_PreHookDI8    ();
   SK_Input_PreHookXInput ();
   SK_Input_PreHookScePad ();
   SK_Input_PreHookWinMM  ();
+
+  if (SK_GetDLLRole () != DLL_ROLE::DInput8)
+  {
+    if (SK_GetModuleHandle (L"dinput8.dll"))
+      SK_Input_HookDI8  ();
+
+    if (SK_GetModuleHandle (L"dinput.dll"))
+      SK_Input_HookDI7  ();
+  }
+
+  SK_Input_InitKeyboard ();
+
+  if (bEnable)
+  {
+    SK_EnableApplyQueuedHooks ();
+          SK_ApplyQueuedHooks ();
+  }
 }
 
 

@@ -3748,10 +3748,15 @@ SK_HookEngine_HookGetProcAddress (void)
 bool
 SK::Diagnostics::Debugger::Allow  (bool bAllow)
 {
+  bool bEnable =
+    SK_DisableApplyQueuedHooks ();
+
   struct LocalInitOnce_s
   {
-    LocalInitOnce_s (void) noexcept
+    LocalInitOnce_s (bool bEnable) noexcept
     {
+      enable_hooks_ = bEnable;
+
       SK_RunOnce (
       {
         extern void SK_DbgHlp_Init (void);
@@ -3790,8 +3795,16 @@ SK::Diagnostics::Debugger::Allow  (bool bAllow)
         void SK_HookEngine_HookGetProcAddress (void);
              SK_HookEngine_HookGetProcAddress ();
       });
+
+      
+      if (enable_hooks_) {
+        SK_EnableApplyQueuedHooks ();
+              SK_ApplyQueuedHooks ();
+      }
     }
-  } finish_init_on_return;
+
+    bool enable_hooks_;
+  } finish_init_on_return (bEnable);
 
   if (SK_GetCurrentGameID () == SK_GAME_ID::ForzaHorizon5)
   {

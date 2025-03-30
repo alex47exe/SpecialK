@@ -521,11 +521,19 @@ SK::ControlPanel::D3D11::Draw (void)
         ImGui::PushStyleColor (ImGuiCol_HeaderActive,  ImVec4 (0.87f, 0.78f, 0.14f, 0.80f));
         ImGui::TreePush       ("");
 
+        DSTORAGE_COMPRESSION_SUPPORT gdeflate_support =
+            SK_DStorage_GetGDeflateSupport ();
+
+        const bool captured_dstorage_init =
+          (gdeflate_support != DSTORAGE_COMPRESSION_SUPPORT::DSTORAGE_COMPRESSION_SUPPORT_NONE);
+
         bool bUncollapsedDirectStorage =
-          ImGui::CollapsingHeader ("Direct Storage", ImGuiTreeNodeFlags_DefaultOpen);
+          ImGui::CollapsingHeader ("Direct Storage", captured_dstorage_init ? ImGuiTreeNodeFlags_DefaultOpen
+                                                                            : 0);
 
         if (bUncollapsedDirectStorage)
         {
+          ImGui::BeginGroup ();
           ImGui::BeginGroup ();
           ImGui::
             TextUnformatted ("GDeflate Support: ");
@@ -534,8 +542,6 @@ SK::ControlPanel::D3D11::Draw (void)
           ImGui::EndGroup   ();
           ImGui::SameLine   ();
           ImGui::BeginGroup ();
-          DSTORAGE_COMPRESSION_SUPPORT gdeflate_support =
-            SK_DStorage_GetGDeflateSupport ();
           if (gdeflate_support == DSTORAGE_COMPRESSION_SUPPORT::DSTORAGE_COMPRESSION_SUPPORT_NONE)
           {
             ImGui::TextUnformatted ("N/A");
@@ -620,6 +626,12 @@ SK::ControlPanel::D3D11::Draw (void)
             }
           }
 
+          ImGui::EndGroup   ();
+          ImGui::SameLine   ();
+          ImGui::SeparatorEx(ImGuiSeparatorFlags_Vertical);
+          ImGui::SameLine   ();
+          ImGui::BeginGroup ();
+
           if (ImGui::TreeNode ("Overrides"))
           {
             bool changed = false;
@@ -640,6 +652,7 @@ SK::ControlPanel::D3D11::Draw (void)
 
             ImGui::TreePop ();
           }
+          ImGui::EndGroup  ();
         }
 
         ImGui::TreePop       ( );

@@ -1,4 +1,103 @@
-﻿25.3.25.2
+﻿25.3.29.5
+=========
+ + Optimized input and debug hook initialization slightly.
+
+25.3.29.4
+=========
+ + Run HID device enumeration during startup on a secondary thread.
+
+25.3.29.3
+=========
+ + Workaround Steam Input issues causing some games to hang.
+ 
+   * NOTE:
+  
+      It is impossible to reliably override controller LED colors once
+        you run a native Steam Input application like Monster Hunter Wilds;
+          the controller must be powered off and Steam exited, or the Steam
+            client will continue to sporadically write controller color and
+              vibration state forever (while no game is running) 
+              
+          -- Valve, god dammit... why are you like this?
+
+25.3.29.2
+=========
+ + Disabling RGB lighting on a DualSense controller, or setting the LED
+     brightness to "Very Dim" (not an actual brightness level on the HW),
+       will disable any player indicator lights that a game may try to set.
+
+25.3.29.1
+=========
+ + Added support for hooking HID devices that were opened before SK was
+     injected.
+ + Added support for overriding RGB lighting on DualSense [Edge] controllers
+     in games that use the native SONY input API (USB-mode only for now).
+ + Added support for forcing rumble (not haptics) off in SONY native games.
+
+   * Bluetooth override support will be added, but is more complicated, and
+       support for DualShock 4 will also be added.
+
+25.3.29
+=======
+ + Synthesize Shift key release event when allowing Steam overlay activation
+     while keyboard input is being blocked to games.
+ + Disable mouse input blocking while the Steam overlay is active.
+
+25.3.28
+=======
+ + Changed D3D12 VRR status check code to run in response to part of SK that
+     needs that status (i.e. text OSD or framepacing graph), rather than
+       running every 1.5 seconds.
+
+   * This matches D3D11 behavior, and lowers NVAPI overhead when VRR status
+       is not required; slightly improving performance on newer drivers that
+         have introduced performance problems in NVAPI.
+
+25.3.27.2
+=========
+ + Added all 10 FMV exception addresses for Assassin's Creed Shadows 1.0.1 to
+     prevent any possible crashes from failing to find the memory addresses
+       dynamically before an FMV plays.
+
+25.3.27.1
+=========
+ + Various changes to keyboard processing when ReShade is present to prevent
+     the new 6.4.x branch of ReShade from causing SK to process keybinds twice.
+ + Restored code that allows activating ReShade's overlay by pressing Home even
+     when SK is configured to block keyboard input to the game.
+
+25.3.27
+=======
+ + Fixed Assassin's Creed Shadows capped framerate occasionally being restored
+     when it was not supposed to be, following the new memory scanning change.
+
+25.3.26.3
+=========
+ + Adjusted DLL shutdown procedure to flush INI files before anything else, since
+     some games terminate in the middle of unloading SK's DLL.
+ + Simplified Assassin's Creed Shadows initialization code
+ + Terminate hung nvngx_update.exe instances when launching games, because it
+     can prevent proper launch/exit if the game infinitely waits for a broken
+       DLSS over-the-air-update.
+
+25.3.26.2
+=========
+ + Assassin's Creed Shadows framerate patch addresses are now scanned at start,
+     and patches should no longer break things.
+ + Added INI option to disable keyboard IME services in a game, in order to
+     fix Assassin's Creed deadlocking when combinations of Alt+Shift are used.
+
+25.3.26.1
+=========
+ + Reverted "Native Pacing" timing code to original framerate limiter resync
+     design (pre-25.3.21) when the limiter slips > 1 frame behind ideal pace.
+
+25.3.26
+=======
+ + Updated Assassin's Creed Shadows framerate fix to work with the latest patch
+    * Memory scanning to prevent future patch issues is a work in progress...
+
+25.3.25.2
 =========
  + Added new "Fully Unlocked" mode to Assassin's Creed Shadows, that patches
      a few extra pieces of code in a way that the setting cannot be turned
