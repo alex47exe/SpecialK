@@ -294,7 +294,7 @@ SK_GPUPollingThread (LPVOID user)
               status = NVAPI_OK;
 
         // Run this more frequently if periodic callback-based sampling is not active
-        if (stats.gpus [i].amortization.phase0 % (bHasNVPeriodic ? 4 : 2) == 0)
+        if (stats.gpus [i].amortization.phase0 % (bHasNVPeriodic ? 6 : 3) == 0)
         {
           SK_PROFILE_SCOPED_TASK
                        (NvAPI_GPU_GetDynamicPstatesInfoEx)
@@ -514,7 +514,7 @@ SK_GPUPollingThread (LPVOID user)
 
         SwitchToThreadMinPageFaults ();
 
-        if (stats.gpus [i].amortization.phase0++ % 4 == 0)
+        if (stats.gpus [i].amortization.phase0++ % 6 == 0)
         {
           NV_GPU_CLOCK_FREQUENCIES
             freq           = {                          };

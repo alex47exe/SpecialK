@@ -1242,9 +1242,11 @@ SK_RenderBackend_V2::output_s::statistics_s::vblank_history_s::addRecord (NvDisp
     if (rb.stale_display_info || (! rb.gsync_state.active))
       return false;
 
-    static constexpr auto                                   _PollingFreqInMs = 3;
+    static constexpr auto                                   _PollingFreqInMs = 5;
     if (last_polled_time <= SK::ControlPanel::current_time -_PollingFreqInMs)
     {
+      SK_PROFILE_SCOPED_TASK (NvAPI_GetVBlankCounter)
+
       std::scoped_lock
         lock (SK_NvAPI_Threading->locks.Disp_GetVRRInfo,
               SK_NvAPI_Threading->locks.D3D_IsGSyncActive);
