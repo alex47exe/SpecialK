@@ -886,7 +886,7 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
             SK_timeGetTime ();
 
           const DWORD dwCheckInterval =
-            SK_GetFramesDrawn () > 300 ? 15000UL : 250UL;
+            SK_GetFramesDrawn () > 300 ? 10000UL : 250UL;
 
           if (rb.gsync_state.last_checked < (dwTimeNow - dwCheckInterval))
           {   rb.gsync_state.last_checked =  dwTimeNow;                        vrr_info = {NV_GET_VRR_INFO_VER};
@@ -895,10 +895,11 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
                                                    &display.nvapi.monitor_caps);
             SK_NvAPI_Disp_GetVRRInfo               (display.nvapi.display_id, &vrr_info);
 
-            if (vrr_info.bIsVRREnabled)
-              rb.gsync_state.last_checked = dwTimeNow + 3333UL;
-            else
-              rb.gsync_state.last_checked = dwTimeNow + 6666UL;
+            if (  vrr_info.bIsVRREnabled)
+            { if (vrr_info.bIsDisplayInVRRMode)
+                   rb.gsync_state.last_checked = dwTimeNow + 5000UL;
+              else rb.gsync_state.last_checked = dwTimeNow - 5000UL;
+            } else rb.gsync_state.last_checked = dwTimeNow + 7500UL;
           }
 
           display.nvapi.vrr_enabled =
@@ -912,8 +913,8 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
           if (std::exchange (last_present_mode, rb.presentation.mode) != rb.presentation.mode)
           {
             if (! rb.gsync_state.active)
-                  rb.gsync_state.last_checked -= std::min (1250UL, rb.gsync_state.last_checked);
-            else  rb.gsync_state.last_checked -= std::min (8000UL, rb.gsync_state.last_checked);
+                  rb.gsync_state.last_checked -= std::min (1000UL, rb.gsync_state.last_checked);
+            else  rb.gsync_state.last_checked -= std::min (6000UL, rb.gsync_state.last_checked);
           }
 
           if (rb.gsync_state.capable)
