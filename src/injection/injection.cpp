@@ -1520,6 +1520,9 @@ SKX_InstallCBTHook (void)
 
   if (SK_GetHostAppUtil ()->isInjectionTool ())
   {
+    // This process hangs a lot and prevents games from starting
+    SK_TerminateProcesses (L"nvngx_update.exe", true);
+
     void SK_Inject_InitWhiteAndBlacklists (void);
          SK_Inject_InitWhiteAndBlacklists ();
   }

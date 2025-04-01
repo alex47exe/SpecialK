@@ -3396,7 +3396,6 @@ auto DeclKeybind =
         //// This is permissable if native pacing is enabled.
         config.nvidia.dlss.allow_flip_metering     =  true;
         config.compatibility.disallow_ll_keyhook   =  true;
-        config.nvidia.dlss.disable_ota_updates     =  true;
         // Address issues caused by Steam Input
         config.input.gamepad.dinput.
                                  blackout_gamepads =  true;
@@ -4889,17 +4888,6 @@ auto DeclKeybind =
   config.input.keyboard.
                     org_disabled_to_game= config.input.keyboard.disabled_to_game;
   input.keyboard.disable_ime->load       (config.input.keyboard.disable_ime);
-
-  if (config.input.keyboard.disable_ime)
-  {
-    BOOL disabled =
-      ImmDisableIME ((DWORD)(-1));
-
-    if (disabled)
-    {
-      SK_LOGi0 (L"Successfully disabled IME for all threads in the process...");
-    }
-  }
 
   input.mouse.disabled_to_game->load     (config.input.mouse.disabled_to_game);
   config.input.mouse.
