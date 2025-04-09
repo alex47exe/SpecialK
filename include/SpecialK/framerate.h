@@ -62,14 +62,14 @@ typedef struct _PROCESSOR_POWER_INFORMATION {
  *PPROCESSOR_POWER_INFORMATION;
 #pragma pack(pop)
 
-extern int64_t  SK_QpcFreq;
-extern int64_t  SK_QpcTicksPerMs;
+extern uint64_t SK_QpcFreq;
+extern uint64_t SK_QpcTicksPerMs;
 extern uint32_t SK_QpcFreqInTsc;
-extern int64_t  SK_TscFreq;
+extern uint64_t SK_TscFreq;
 extern bool     SK_TscInvariant;
-extern int64_t  SK_PerfFreq;
+extern uint64_t SK_PerfFreq;
 extern uint32_t SK_PerfFreqInTsc;
-extern int64_t  SK_PerfTicksPerMs;
+extern uint64_t SK_PerfTicksPerMs;
 extern bool     SK_CPU_HasMWAITX;
 
 __forceinline
@@ -314,7 +314,10 @@ namespace SK
             avg_ms =
               std::accumulate ( sampled_lows.begin (),
                                 sampled_lows.begin ()  + end_sample_idx,
-                                        0.0 ) / (double)(end_sample_idx);
+                                        0.0 ) /
+                           // Prevent division by zero, some games use an
+                           //   exception for it...
+                           (double)(std::max ((size_t)1, end_sample_idx));
 
         return
           avg_ms;

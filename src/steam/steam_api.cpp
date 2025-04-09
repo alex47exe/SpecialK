@@ -3084,7 +3084,7 @@ SK_Steam_ShouldThrottleCallbacks (void)
 
     if ( limit == 0 ||
       ( SK_CurrentPerf ().QuadPart - liLastCallbacked.QuadPart  <
-                        SK_PerfFreq / limit ) )
+              (LONGLONG)SK_PerfFreq / limit ) )
     {
       InterlockedDecrement64 ( &SK_SteamAPI_CallbackRunCount );
       return true;

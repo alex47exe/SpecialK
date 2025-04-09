@@ -1,4 +1,102 @@
-﻿25.4.1.1
+﻿25.4.9.2
+========
+ + Disable Cloth Physics Fix for users who do not have SK's framerate limiter
+     enabled in Assassin's Creed Shadows (...why?!).
+
+25.4.9.1
+========
+ + Do not send Escape key-up message when alt-tabbing into a game.
+ + Do not run stuck keys fix unless "Continue Rendering" mode is enabled or
+     user opts-in to "Fix Stuck Keys" feature.
+
+25.4.9
+======
+ + Updated Assassin's Creed Shadows Plug-In for 1.0.2 patch.
+
+25.4.8.5
+========
+ + Eliminate implicit reference on the original SwapChain when using the new
+     undocumented SwapChain interface.
+
+25.4.8.4
+========
+ + Integrate GetColorSpace1 (...) for DXGI SwapChains using the undocumented
+     { 8C803E30-9E41-4DDF-B206-46F28E90E405 } interface.
+
+25.4.8.3
+========
+ + Added error message if trying to use local injection in a game that uses
+     a launcher, and stop initialization as early as possible if using global.
+
+25.4.8.2
+========
+ + Reduce HID controller connected notifications by only reporting the first
+     time that data is read or written using said HID controller.
+
+25.4.8.1
+========
+ + Allow games to see WM_DEVICECHANGE w/ DBT_DEVNODES_CHANGED as the type
+     initially before blocking subsequent messages, since they come in floods.
+
+25.4.8
+======
+ + Disable floating-point exceptions on the render thread for all games, since
+     it will cause crashes in CryEngine games and some others.
+ + Eliminate potential floating-point division by zero (which is normally safe),
+     in SK::Framerate::Stats::calcPercentile (...) for the reason above.
+
+25.4.7.4
+========
+ + Remove pattern scanning timeout from Assassin's Creed Shadows init. thread.
+
+25.4.7.3
+========
+ + Added warning if attempting to load Special K into a Nixxes game that uses
+     DLSS Frame Generation if sl.dlss_g.dll has not been removed or SK is not
+       using Local Injection.
+
+25.4.7.2
+========
+ + Disable Steam overlay in Rise of Ronin in order to prevent crashes.
+ + Disable Steam overlay in Dying Light 2 in order to prevent black screens.
+
+  * Users should consider manually disabling the Steam overlay in any game
+      that supports DLSS Frame Generation...
+
+25.4.7.1
+========
+ + Use Special K's target frametime as cloth simulation's fixed timestep in
+     Assassin's Creed Shadows instead of using the game's internal clock.
+
+25.4.7
+======
+ + Integrated Lyall's FOV slider range expansion for Assassin's Creed Shadows.
+
+25.4.6.2
+========
+ + Added cutscene blackbar removal option for Assasin's Creed Shadows,
+     again based on Lyall's ACShadowsFix.
+
+25.4.6.1
+========
+ + Warn about RTSS on the next launch if the game crashes before SK's
+     crash handler catches it, and RTSS is configured wrong.
+
+25.4.6
+======
+ + Added Dynamic Cloth Rate option for Assassin's Creed Shadows based on
+     Lyall's new ACShadowsFix mod (https://github.com/Lyall/ACShadowsFix/).
+
+25.4.5
+======
+ + Allow "ignore textures without mipmaps" to be turned off in Unity engine
+     games. The setting will always turn on after an INI reset, but can be
+       turned off (at risk of font corruption) from the control panel.
+
+   * It will turn itself on again the second a Unity engine game tries to
+       re-write immutable cached memory.
+
+25.4.1.1
 ========
  + Added JPEGNotQuality setting (defaults to 96) for JPEG screenshots imported
      to Steam, refer to Global\osd.ini -- does not apply to thumbnails.

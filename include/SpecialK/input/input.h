@@ -39,7 +39,7 @@
 #include <concurrent_unordered_map.h>
 
 extern LARGE_INTEGER SK_QueryPerf (void) noexcept;
-extern int64_t       SK_PerfFreq;
+extern uint64_t      SK_PerfFreq;
 
 #define SK_LOG_INPUT_CALL { static int  calls  = 0; { SK_LOG0 ( (L"[!] > Call #%lu: %hs", calls++, __FUNCTION__), L"Input Mgr." ); } }
 
@@ -1189,6 +1189,8 @@ struct SK_HID_DeviceFile {
   USHORT            device_pid                         = 0x0;
   BOOL              bDisableDevice                     = FALSE;
   HANDLE            hFile                              = INVALID_HANDLE_VALUE;
+  UINT64            bytes_read                         = 0;
+  UINT64            bytes_written                      = 0;
 
   SK_HID_DeviceFile (void) = default;
 

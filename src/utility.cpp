@@ -2405,6 +2405,9 @@ SKX_ScanAlignedEx ( const void* pattern, size_t len,   const void* mask,
 
   static auto constexpr _MAX_SEARCH_TIME_IN_MS = 5000UL;
 
+  bool use_timeout =
+    SK_TLS_Bottom ()->memory->memory_scans_should_timeout;
+
   DWORD dwStartTime =
     SK_timeGetTime ();
 
@@ -2498,7 +2501,7 @@ uint8_t* const PAGE_WALK_LIMIT = (base_addr + static_cast <uintptr_t>(1ULL << 36
 
   while (it < end_addr)
   {
-    if (SK_timeGetTime () - dwStartTime > _MAX_SEARCH_TIME_IN_MS)
+    if (use_timeout && SK_timeGetTime () - dwStartTime > _MAX_SEARCH_TIME_IN_MS)
     {
       SK_LOG0 ( ( L"Pattern search took too long, aborting..." ),
                   L" Sig Scan " );
@@ -2551,7 +2554,7 @@ uint8_t* const PAGE_WALK_LIMIT = (base_addr + static_cast <uintptr_t>(1ULL << 36
       if (it == nullptr)
         break;
 
-      if (SK_timeGetTime () - dwStartTime > _MAX_SEARCH_TIME_IN_MS)
+      if (use_timeout && SK_timeGetTime () - dwStartTime > _MAX_SEARCH_TIME_IN_MS)
       {
         SK_LOG0 ( ( L"Pattern search took too long, aborting..." ),
                     L" Sig Scan " );

@@ -1796,6 +1796,21 @@ bool
 __stdcall
 SK_StartupCore (const wchar_t* backend, void* callback)
 {
+  // Early-out for launchers
+  //
+  if (SK_GetCurrentGameID () == SK_GAME_ID::Launcher)
+  {
+    if (! SK_IsInjected ())
+    {
+      SK_MessageBox (
+        L"Local Injection is not supported for this game because it uses a launcher",
+        L"Please switch to Global Injection", MB_ICONHAND | MB_OK
+      );
+    }
+
+    return false;
+  }
+
   if ( backend == nullptr || callback == nullptr )
   {
     return false;
@@ -1944,9 +1959,10 @@ SK_StartupCore (const wchar_t* backend, void* callback)
 
   bool blacklist = false;
 
-  // Injection Compatibility Menu
-  if ( (sk::narrow_cast <USHORT> (SK_GetAsyncKeyState (VK_SHIFT  )) & 0x8000) != 0 &&
-       (sk::narrow_cast <USHORT> (SK_GetAsyncKeyState (VK_CONTROL)) & 0x8000) != 0 )
+  if ( (! SK_IsCurrentGame (SK_GAME_ID::Launcher)) &&
+        // Injection Compatibility Menu
+         (sk::narrow_cast <USHORT> (SK_GetAsyncKeyState (VK_SHIFT  )) & 0x8000) != 0 &&
+         (sk::narrow_cast <USHORT> (SK_GetAsyncKeyState (VK_CONTROL)) & 0x8000) != 0 )
   {
     WriteRelease (&__SK_Init, -1);
                    __SK_bypass = true;
@@ -2943,7 +2959,7 @@ SK_ShutdownCore (const wchar_t* backend)
     return true;
 
   static bool
-      log_unloads = true;//!SK_IsCurrentGame (SK_GAME_ID::AssassinsCreed_Shadows);
+      log_unloads = true;
   if (log_unloads)
   {
     SK_PrintUnloadedDLLs (&dll_log.get ());
@@ -2960,10 +2976,15 @@ SK_ShutdownCore (const wchar_t* backend)
       log_perf_stats = true;
   if (log_perf_stats)
   {
+#ifndef _M_IX86
+    // Need more precision for the profiling code below
+    SK_FPU_SetPrecision (_PC_64);
+
     dll_log->Log (L"[ SK Perf. ] -----------------------");
     dll_log->Log (L"[ SK Perf. ]  Micro Profiled Tasks: ");
     dll_log->Log (L"[ SK Perf. ] -----------------------");
     SK_Perf_PrintProfiledTasks ();
+#endif
     dll_log->Log (L"[ SK Perf. ] -----------------------");
     dll_log->Log (L"[ SK Perf. ]  Initialization Steps: ");
     dll_log->Log (L"[ SK Perf. ] -----------------------");
@@ -2986,6 +3007,8 @@ SK_ShutdownCore (const wchar_t* backend)
 
   if (sk::NVAPI::app_name.find (L"ds3t.exe") == std::wstring::npos)
   {
+    config.system.clean_exit = !SK_Debug_IsCrashing ();
+
     dll_log->LogEx  (true,  L"[ SpecialK ] Saving user preferences to"
                             L" %10s.ini... ", config_name);
 
@@ -3237,7 +3260,8 @@ SK_ShutdownCore (const wchar_t* backend)
 
   if (! SK_Debug_IsCrashing ())
   {
-    if (config.system.handle_crashes)
+    // Anything from this point on is the game's own problem...
+    if (std::exchange (config.system.handle_crashes, false))
       SK::Diagnostics::CrashHandler::Shutdown ();
   }
 
@@ -4971,35 +4995,35 @@ SK_LazyGlobal <concurrency::concurrent_unordered_map <const wchar_t*, SK_Profile
 
 void SK_Perf_PrintEvents (void)
 {
-  std::vector <std::pair <std::wstring, uint64_t>> start_times;
-  std::vector <std::pair <std::wstring, uint64_t>> end_times;
+  std::vector <std::pair <const wchar_t*, uint64_t>> start_times;
+  std::vector <std::pair <const wchar_t*, uint64_t>> end_times;
 
-  for (auto& start : *SK_EventMarker_StartTimes)
+  for (const auto& start : *SK_EventMarker_StartTimes)
   {
     start_times.push_back (start);
   }
 
-  for (auto& end : *SK_EventMarker_EndTimes)
+  for (const auto& end : *SK_EventMarker_EndTimes)
   {
     end_times.push_back (end);
   }
 
   std::sort ( start_times.begin (),
               start_times.end   (),
-    [&]( const std::pair <std::wstring, uint64_t>& a,
-         const std::pair <std::wstring, uint64_t>& b )
+    [&]( const std::pair <const wchar_t*, uint64_t>& a,
+         const std::pair <const wchar_t*, uint64_t>& b )
     {
       return ( a.second < b.second );
     }
   );
 
-  for ( auto& event : start_times )
+  for ( const auto& event : start_times )
   {
     uint64_t end = UINT64_MAX;
 
-    for ( auto& search : end_times )
+    for ( const auto& search : end_times )
     {
-      if (search.first._Equal (event.first))
+      if (! wcscmp (search.first, event.first))
       {
         end = search.second;
         break;
@@ -5010,15 +5034,15 @@ void SK_Perf_PrintEvents (void)
     {
       dll_log->Log (L"[PerfEvents] "
         L" Event:  %-50ws\t\t\t\t%16.5f ms",
-          event.first.c_str (), ( static_cast <double> (end - event.second) /
-                                  static_cast <double> (SK_QpcFreq) ) * 1000.0 );
+          event.first, ( static_cast <double> (end - event.second) /
+                         static_cast <double> (SK_QpcFreq) ) * 1000.0 );
     }
   }
 }
 
 void SK_PerfEvent_Begin  (const wchar_t* wszEventName)
 {
-  uint64_t qpc =
+  const uint64_t qpc =
     SK_QueryPerf ().QuadPart;
 
   if (SK_EventMarker_StartTimes->count  (                wszEventName) == 0)
@@ -5032,7 +5056,7 @@ void SK_PerfEvent_Begin  (const wchar_t* wszEventName)
 
 void SK_PerfEvent_End (const wchar_t* wszEventName)
 {
-  uint64_t qpc =
+  const uint64_t qpc =
     SK_QueryPerf ().QuadPart;
 
   if (SK_EventMarker_EndTimes->count  (                wszEventName) == 0)
@@ -5040,73 +5064,85 @@ void SK_PerfEvent_End (const wchar_t* wszEventName)
   else
   {
     if (config.system.log_level > 1)
-      dll_log->Log (L"[EventTrace] Event: %ws already recorded once...", wszEventName);              
+      dll_log->Log (L"[EventTrace] Event: %ws already recorded once...", wszEventName);
   }
 }
 
 uint64_t
 SK_ProfiledTask_Begin (void)
 {
-  uint64_t qpc =
+#ifndef _M_IX86
+  const uint64_t qpc =
     SK_QueryPerf ().QuadPart;
 
   return qpc;
+#else
+  return 0;
+#endif
 }
 
 SK_ProfiledTask_Accum
 SK_ProfiledTask_End (const wchar_t* wszTaskName, uint64_t start_time)
 {
-  uint64_t qpc =
-    SK_QueryPerf ().QuadPart;
+#ifndef _M_IX86
+  uint64_t qpc = std::max (
+      static_cast <uint64_t> (
+        SK_QueryPerf ().QuadPart
+      ), start_time       );
 
   SK_ProfiledTask_Accum time_taken
     { qpc - start_time, 1 };
 
-  if (SK_ProfileAccumulator->count                  (wszTaskName)        == 0)
-      SK_ProfileAccumulator->insert (std::make_pair (wszTaskName, time_taken));
-  else
+  if (! SK_ProfileAccumulator->insert (std::make_pair (wszTaskName, time_taken)).second)
   {
     auto& accum =
       SK_ProfileAccumulator->at (wszTaskName);
 
-    accum.duration += time_taken.duration;
-    accum.calls    += time_taken.calls;
+    accum.duration.fetch_add (qpc - start_time);
+    accum.calls.   fetch_add (1);
   }
 
   return time_taken;
+#else
+  std::ignore = start_time;
+  std::ignore = wszTaskName;
+  return { 0, 0 };
+#endif
 }
 
 void SK_Perf_PrintProfiledTasks (void)
 {
   std::vector <
-    std::pair <std::wstring, SK_ProfiledTask_Accum>
+    std::pair <const wchar_t *, const SK_ProfiledTask_Accum *>
   > tasks;
 
-  for ( auto& task : *SK_ProfileAccumulator )
+  for ( const auto& task : *SK_ProfileAccumulator )
   {
-    tasks.push_back (
-      { task.first,
-        task.second }
+    tasks.emplace_back (
+      task.first, &task.second
     );
   }
 
-  std::sort ( tasks.begin (),
-              tasks.end   (),
-    [&]( const std::pair <std::wstring, SK_ProfiledTask_Accum>& a,
-         const std::pair <std::wstring, SK_ProfiledTask_Accum>& b )
-    {
-      return ( a.second.calls > b.second.calls );
-    }
-  );
+  std::sort (
+    tasks.begin (),
+      tasks.end (),
+        []( const auto& a,
+            const auto& b )
+        {
+          return ( a.second->calls.load () >
+                   b.second->calls.load () );
+        } );
 
-  for ( auto& task : tasks )
+  for ( const auto& task : tasks )
   {
-    if (task.second.calls > 0)
+    const auto num_calls = 
+      task.second->calls.load ();
+
+    if (num_calls > 0)
     {
-      const auto &[ task_name, num_calls, duration ] =
-        std::make_tuple ( task.first,
-                          task.second.calls,
-                          task.second.duration );
+      const auto &[ task_name, duration ] =
+        std::make_pair ( task.first,
+                         task.second->duration.load () );
 
       const double dMsTotal  =
         ( static_cast <double> (duration) /
@@ -5114,8 +5150,8 @@ void SK_Perf_PrintProfiledTasks (void)
 
       dll_log->Log ( L"[Perf Tasks] "
         L"  Task:  %-44ws %9d / %15.5f ms      %11.5f ms/call",
-          task.first.c_str (), num_calls, dMsTotal,
-                                          dMsTotal / static_cast <double> (num_calls) );
+          task_name, num_calls, dMsTotal,
+                                dMsTotal / static_cast <double> (num_calls) );
     }
   }
 }

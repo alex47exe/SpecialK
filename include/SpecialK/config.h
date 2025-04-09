@@ -1301,7 +1301,7 @@ struct sk_config_t
     bool    treat_fg_as_active  = false; // Compat. hack for NiNoKuni 2
     bool    dont_hook_wndproc   = false;
     bool    activate_at_start   = false;
-    bool    fix_stuck_keys      =  true; // Fixes keys that might be stuck after alt-tab
+    bool    fix_stuck_keys      = false; // Fixes keys that might be stuck after alt-tab
     struct resolution_s {
       struct dim_override_s {
         unsigned int x          = 0;
@@ -1439,6 +1439,7 @@ struct sk_config_t
     bool    wait_for_debugger   = false;
     bool    return_to_skif      = false;
     bool    auto_load_asi_files = false;
+    bool    clean_exit          =  true;
   } system;
 
   struct priority_scheduling_s {
@@ -1818,6 +1819,7 @@ enum class SK_GAME_ID
   EnderLilies,                  // EnderLiliesEOS-Win64-Shipping.exe, EnderLiliesSteam-Win64-Shipping.exe
   Avowed,                       // Avowed-WinGDK-Shipping.exe, Avowed-Win64-Shipping.exe
   AssassinsCreed_Shadows,       // ACShadows.exe ACShadows_Plus.exe
+  RiseOfRonin,                  // Ronin.exe
 
   UNKNOWN_GAME               = 0xffff
 };

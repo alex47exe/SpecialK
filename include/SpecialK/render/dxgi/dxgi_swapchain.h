@@ -47,6 +47,27 @@ void
 __stdcall
 SK_DXGI_SwapChainDestructionCallback (void *pSwapChain);
 
+struct DECLSPEC_UUID ("8C803E30-9E41-4DDF-B206-46F28E90E405")
+IDXGISwapChainExtra : IUnknown
+{
+#pragma region IUnknown
+  virtual HRESULT STDMETHODCALLTYPE QueryInterface (REFIID riid, void **ppvObject) = 0;
+  virtual ULONG   STDMETHODCALLTYPE AddRef         (void)                          = 0;
+  virtual ULONG   STDMETHODCALLTYPE Release        (void)                          = 0;
+#pragma endregion
+
+#pragma region IDXGISwapChainExtra
+  virtual bool                   STDMETHODCALLTYPE HasProxyFrontBufferSurface         (void)  = 0;
+  virtual HRESULT                STDMETHODCALLTYPE GetFrameStatisticsTest             (void*) = 0;
+  virtual void                   STDMETHODCALLTYPE EmulateXBOXBehavior                (BOOL)  = 0;
+  virtual DXGI_COLOR_SPACE_TYPE  STDMETHODCALLTYPE GetColorSpace1                     (void)  = 0;
+  virtual void                   STDMETHODCALLTYPE GetBufferLayoutInfoTest            (void*) = 0;
+  virtual void                  *STDMETHODCALLTYPE GetDFlipOutput                     (void)  = 0;
+  virtual UINT                   STDMETHODCALLTYPE GetBackBufferImplicitRotationCount (void)  = 0;
+  virtual void                   STDMETHODCALLTYPE GetBufferConverterInfo             (void*) = 0;
+#pragma endregion
+};
+
 struct DECLSPEC_UUID("24430A12-6E3C-4706-AFFA-B3EEF2DF4102")
 IWrapDXGISwapChain : IDXGISwapChain4
 {
@@ -140,6 +161,13 @@ IWrapDXGISwapChain : IDXGISwapChain4
            pDXGIDev12 (pDev12.p);
       if ( pDXGIDev12 != nullptr )
            pDXGIDev12->GetMaximumFrameLatency (&gameFrameLatency_);
+    }
+
+    SK_ComPtr <IDXGISwapChainExtra> pExtra;
+    if (            pSwapChain2.p != nullptr &&
+         SUCCEEDED (pSwapChain2->QueryInterface <IDXGISwapChainExtra> (&pExtra.p)) )
+    {
+      has_extra_ = true;
     }
 
     RegisterDestructionCallback ();
@@ -261,6 +289,13 @@ IWrapDXGISwapChain : IDXGISwapChain4
            pDXGIDev12->GetMaximumFrameLatency (&gameFrameLatency_);
     }
 
+    SK_ComPtr <IDXGISwapChainExtra> pExtra;
+    if (            pSwapChain2.p != nullptr &&
+         SUCCEEDED (pSwapChain2->QueryInterface <IDXGISwapChainExtra> (&pExtra.p)) )
+    {
+      has_extra_ = true;
+    }
+
     RegisterDestructionCallback ();
 
     if (! d3d12_)
@@ -375,6 +410,7 @@ IWrapDXGISwapChain : IDXGISwapChain4
   bool                  d3d12_          = false;
   bool                  waitable_       = false;
   ID3D12CommandQueue*   d3d12_queue_    = nullptr;
+  bool                  has_extra_      = false;
 
   struct {
     bool                active          = false;
@@ -432,15 +468,29 @@ IWrapDXGISwapChain : IDXGISwapChain4
   D3D11_FEATURE_DATA_D3D11_OPTIONS
                         _d3d11_feature_opts = { };
 
-  // Shared logic between Present (...) and Present1 (...)
-  int                     PresentBase (void);
+  DXGI_COLOR_SPACE_TYPE GetColorspace1 (void)
+  {
+    SK_ComPtr <IDXGISwapChainExtra> pExtra;
 
-  HRESULT                 RegisterDestructionCallback (void);
+    if (has_extra_)
+    {
+      pReal->QueryInterface <IDXGISwapChainExtra> (&pExtra.p);
+    }
+
+    return pExtra != nullptr         ?
+           pExtra->GetColorSpace1 () : DXGI_COLOR_SPACE_RESERVED;
+  }
+
+  // Shared logic between Present (...) and Present1 (...)
+  int     PresentBase                 (void);
+  HRESULT RegisterDestructionCallback (void);
 };
 
-bool SK_DXGI_IsSwapChainReal (const DXGI_SWAP_CHAIN_DESC& desc) noexcept;
-void ResetImGui_D3D12        (IDXGISwapChain *This);
-void ResetImGui_D3D11        (IDXGISwapChain *This);
+bool                  SK_DXGI_IsSwapChainReal (const DXGI_SWAP_CHAIN_DESC& desc) noexcept;
+DXGI_COLOR_SPACE_TYPE SK_DXGI_GetColorSpace1  (IDXGISwapChain* pSwapChain);
+
+void ResetImGui_D3D12 (IDXGISwapChain *This);
+void ResetImGui_D3D11 (IDXGISwapChain *This);
 
 extern SetFullscreenState_pfn SetFullscreenState_Original;
 extern ResizeTarget_pfn       ResizeTarget_Original;

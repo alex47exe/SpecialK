@@ -211,6 +211,7 @@ SK_GetCurrentGameID (void)
           { L"HaloInfinite.exe",                       SK_GAME_ID::HaloInfinite                 },
           { L"start_protected_game.exe",               SK_GAME_ID::EasyAntiCheat                },
           { L"eldenring.exe",                          SK_GAME_ID::EldenRing                    },
+          { L"DyingLightGame_x64_rwdi.exe",            SK_GAME_ID::DyingLight2                  },
           { L"wonderlands.exe",                        SK_GAME_ID::TinyTinasWonderlands         },
           { L"ELEX2.exe",                              SK_GAME_ID::Elex2                        },
           { L"CHRONOCROSS.exe",                        SK_GAME_ID::ChronoCross                  },
@@ -284,6 +285,7 @@ SK_GetCurrentGameID (void)
           { L"Avowed-Win64-Shipping.exe",              SK_GAME_ID::Avowed                       }, // Steam Version
           { L"ACShadows.exe",                          SK_GAME_ID::AssassinsCreed_Shadows       }, // Normal version
           { L"ACShadows_Plus.exe",                     SK_GAME_ID::AssassinsCreed_Shadows       }, // Ubisoft+ version
+          { L"Ronin.exe",                              SK_GAME_ID::RiseOfRonin                  },
         };
 
     first_check  = false;
@@ -388,7 +390,9 @@ SK_GetCurrentGameID (void)
         if (! config.compatibility.using_wine)
         {
           if (config.system.log_level == 0)
+          {
             config.system.silent = true;
+          }
         }
       }
 
@@ -857,6 +861,7 @@ sk::ParameterFloat*       init_delay              = nullptr;
 sk::ParameterBool*        return_to_skif          = nullptr;
 sk::ParameterInt*         skif_autostop_behavior  = nullptr;
 sk::ParameterBool*        auto_load_asi_files     = nullptr;
+sk::ParameterBool*        clean_exit              = nullptr;
 sk::ParameterStringW*     version                 = nullptr;
                        // Version at last boot
 
@@ -1947,6 +1952,7 @@ auto DeclKeybind =
     ConfigEntry (init_delay,                             L"Delay Global Injection Initialization for x-many Seconds",  dll_ini,         L"SpecialK.System",       L"GlobalInjectDelay"),
     ConfigEntry (return_to_skif,                         L"At Application Exit, make SKIF the new Foreground Window",  dll_ini,         L"SpecialK.System",       L"ReturnToSKIF"),
     ConfigEntry (auto_load_asi_files,                    L"Automatically load .asi files from the game's directory",   dll_ini,         L"SpecialK.System",       L"AutoLoadASIFiles"),
+    ConfigEntry (clean_exit,                             L"Did the game exit cleanly the last time it ran?",           dll_ini,         L"SpecialK.System",       L"CleanExit"),
     ConfigEntry (version,                                L"The last version that wrote the config file",               dll_ini,         L"SpecialK.System",       L"Version"),
 
 
@@ -3375,6 +3381,11 @@ auto DeclKeybind =
         apis.OpenGL.hook->store (config.apis.OpenGL.hook);
         break;
 
+      case SK_GAME_ID::RiseOfRonin:
+        // Serious compatibility issues otherwise
+        config.steam.disable_overlay               = true;
+        break;
+
       case SK_GAME_ID::AssassinsCreed_Shadows:
         config.apis.d3d9.hook                      = false;
         config.apis.d3d9ex.hook                    = false;
@@ -3799,7 +3810,9 @@ auto DeclKeybind =
       } break;
 
       case SK_GAME_ID::DyingLight2:
-        config.input.mouse.ignore_small_clips = true;
+        config.input.mouse.ignore_small_clips    = true;
+        // Serious compatibility issues otherwise
+        config.steam.disable_overlay             = true;
         break;
 
       case SK_GAME_ID::EldenRing:
@@ -5796,6 +5809,17 @@ auto DeclKeybind =
   return_to_skif->load      (config.system.return_to_skif);
   auto_load_asi_files->load (config.system.auto_load_asi_files);
 
+  SK_RunOnce (
+    clean_exit->load        (config.system.clean_exit);
+    if (! std::exchange     (config.system.clean_exit, false))
+    {
+      __SK_ExitedCleanly = FALSE;
+      SK_COMPAT_WarnIfRTSSIsIncompatible ();
+    }
+    clean_exit->store            (config.system.clean_exit);
+    config.utility.save_async_if (__SK_ExitedCleanly);
+  );
+
   // This is slow as hell thanks to the Steam overlay, so it
   //   should only ever be done on the first launch...
   static bool do_win_verify_trust =
@@ -7158,7 +7182,7 @@ SK_SaveConfig ( std::wstring name,
     crash_suppression->store                   (config.system.suppress_crashes);
   }
 
-  silent_crash->store(config.system.silent_crash);
+  silent_crash->store                          (config.system.silent_crash);
 
   game_output->store                           (config.system.game_output);
 
@@ -7174,6 +7198,7 @@ SK_SaveConfig ( std::wstring name,
   init_delay->store                            (config.system.global_inject_delay);
   return_to_skif->store                        (config.system.return_to_skif);
   auto_load_asi_files->store                   (config.system.auto_load_asi_files);
+  clean_exit->store                            (config.system.clean_exit);
   version->store                               (SK_GetVersionStrW ());
 
   if (! SK_IsInjected ())
@@ -8772,6 +8797,10 @@ sk_config_t::utility_functions_s::save_async_if (bool predicate)
 void
 sk_config_t::utility_functions_s::save_async (void)
 {
+  // Don't write anything for launchers
+  if (SK_GetCurrentGameID () == SK_GAME_ID::Launcher || SK_GetHostAppUtil ()->isBlacklisted ())
+    return;
+
   SK_RunOnce (
     SK_Thread_CreateEx ([](LPVOID) -> DWORD
     {
@@ -8829,4 +8858,11 @@ sk_config_t::input_s::keyboard_s::needsLowLevelKeyboardHook (void)
 {
   return
     alt_tab_adhd_pace > 0 || enable_win_key != SK_NoPreference || (enable_alt_tab != SK_NoPreference && SK_Input_IsGameUsingLowLevelKeyboardHooks ());
+}
+
+bool
+SK_IsFirstRun (void)
+{
+  return
+    config.system.first_run;
 }
