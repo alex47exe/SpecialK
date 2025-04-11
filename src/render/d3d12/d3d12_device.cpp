@@ -2738,12 +2738,14 @@ _InstallDeviceHooksImpl (ID3D12Device* pDevice12)
   // 45 SetEventOnMultipleFenceCompletion
   // 46 SetResidencyPriority
 
+#if 0
   SK_ComQIPtr <ID3D12Device1>
                     pDevice1 (pDev12);
   if (   nullptr != pDevice1 )
   {
     SK_D3D12_HookPipelineLibrary (pDevice1.p);
   }
+#endif
 
   // ID3D12Device2
   //---------------
@@ -2753,10 +2755,12 @@ _InstallDeviceHooksImpl (ID3D12Device* pDevice12)
                     pDevice2 (pDev12);
   if (   nullptr != pDevice2 )
   {
+#if 0
     SK_CreateVFTableHook2 ( L"ID3D12Device2::CreatePipelineState",
                              *(void ***)*(&pDevice2.p), 47,
                               D3D12Device2_CreatePipelineState_Detour,
                     (void **)&D3D12Device2_CreatePipelineState_Original );
+#endif
   }
 
   // ID3D12Device3

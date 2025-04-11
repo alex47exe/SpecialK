@@ -754,6 +754,7 @@ struct {
     sk::ParameterFloat*   hdr_luminance           = nullptr;
   } overlay;
   sk::ParameterBool*      draw_first              = nullptr;
+  sk::ParameterBool*      unsafe_addons           = nullptr;
 } reshade_cfg;
 
 struct {
@@ -861,7 +862,9 @@ sk::ParameterFloat*       init_delay              = nullptr;
 sk::ParameterBool*        return_to_skif          = nullptr;
 sk::ParameterInt*         skif_autostop_behavior  = nullptr;
 sk::ParameterBool*        auto_load_asi_files     = nullptr;
+#ifdef SK_USE_CLEAN_EXIT
 sk::ParameterBool*        clean_exit              = nullptr;
+#endif
 sk::ParameterStringW*     version                 = nullptr;
                        // Version at last boot
 
@@ -1103,6 +1106,8 @@ struct {
       sk::ParameterBool*  invert_rx               = nullptr;
       sk::ParameterBool*  invert_ry               = nullptr;
       sk::ParameterBool*  swap_sticks             = nullptr;
+      sk::ParameterBool*  swap_a_b                = nullptr;
+      sk::ParameterBool*  swap_x_y                = nullptr;
     } xinput;
 
     struct {
@@ -1812,6 +1817,8 @@ auto DeclKeybind =
     ConfigEntry (input.gamepad.xinput.invert_rx,         L"Invert the X-Axis on the Right Analog Stick",               dll_ini,         L"Input.XInput",          L"InvertRX"),
     ConfigEntry (input.gamepad.xinput.invert_ry,         L"Invert the Y-Axis on the Right Analog Stick",               dll_ini,         L"Input.XInput",          L"InvertRY"),
     ConfigEntry (input.gamepad.xinput.swap_sticks,       L"Swap Left and Right Analog Stick Input",                    dll_ini,         L"Input.XInput",          L"SwapSticks"),
+    ConfigEntry (input.gamepad.xinput.swap_a_b,          L"Swap A and B to conform to Nintendo button layout",         dll_ini,         L"Input.XInput",          L"SwapAB"),
+    ConfigEntry (input.gamepad.xinput.swap_x_y,          L"Swap X and Y to conform to Nintendo button layout",         dll_ini,         L"Input.XInput",          L"SwapXY"),
     ConfigEntry (input.gamepad.dinput.blackout_gamepads, L"Prevent game from seeing DirectInput gamepads",             dll_ini,         L"Input.DInput",          L"HideGamepads"),
     ConfigEntry (input.gamepad.dinput.blackout_mice,     L"Prevent game from seeing DirectInput mice",                 dll_ini,         L"Input.DInput",          L"HideMice"),
     ConfigEntry (input.gamepad.dinput.blackout_keyboards,L"Prevent game from seeing DirectInput keyboards",            dll_ini,         L"Input.DInput",          L"HideKeyboards"),
@@ -1952,7 +1959,9 @@ auto DeclKeybind =
     ConfigEntry (init_delay,                             L"Delay Global Injection Initialization for x-many Seconds",  dll_ini,         L"SpecialK.System",       L"GlobalInjectDelay"),
     ConfigEntry (return_to_skif,                         L"At Application Exit, make SKIF the new Foreground Window",  dll_ini,         L"SpecialK.System",       L"ReturnToSKIF"),
     ConfigEntry (auto_load_asi_files,                    L"Automatically load .asi files from the game's directory",   dll_ini,         L"SpecialK.System",       L"AutoLoadASIFiles"),
+#ifdef SK_USE_CLEAN_EXIT
     ConfigEntry (clean_exit,                             L"Did the game exit cleanly the last time it ran?",           dll_ini,         L"SpecialK.System",       L"CleanExit"),
+#endif
     ConfigEntry (version,                                L"The last version that wrote the config file",               dll_ini,         L"SpecialK.System",       L"Version"),
 
 
@@ -2173,6 +2182,7 @@ auto DeclKeybind =
     ConfigEntry (notifications.silent,                   L"Will not draw notifications until user requests them.",     notify_ini,      L"Notification.System",   L"Silent"),
 
     ConfigEntry (reshade_cfg.draw_first,                 L"Draw ReShade before SK's overlay in AddOn capable versions",dll_ini,         L"ReShade.System",        L"DrawFirst"),
+    ConfigEntry (reshade_cfg.unsafe_addons,              L"Supress warnings for incompatible ReShade AddOns",          dll_ini,         L"ReShade.System",        L"UnsafeAddOns"),
 
     ConfigEntry (imgui.show_eula,                        L"Show Software EULA",                                        dll_ini,         L"SpecialK.System",       L"ShowEULA"),
     ConfigEntry (imgui.disable_alpha,                    L"Disable Alpha Transparency (reduce flicker)",               dll_ini,         L"ImGui.Render",          L"DisableAlpha"),
@@ -4373,6 +4383,7 @@ auto DeclKeybind =
      config.apis.D3DKMT.enable_perfdata = (! microsoft.d3dkmt.disable_perfdata->get_value ());
 
   reshade_cfg.draw_first->load              (config.reshade.draw_first);
+  reshade_cfg.unsafe_addons->load           (config.reshade.allow_unsafe_addons);
 
   notifications.location->load              (config.notifications.location);
   notifications.silent->load                (config.notifications.silent);
@@ -4983,6 +4994,8 @@ auto DeclKeybind =
   input.gamepad.xinput.invert_rx->load         (config.input.gamepad.xinput.invert_rx);
   input.gamepad.xinput.invert_ry->load         (config.input.gamepad.xinput.invert_ry);
   input.gamepad.xinput.swap_sticks->load       (config.input.gamepad.xinput.swap_sticks);
+  input.gamepad.xinput.swap_a_b->load          (config.input.gamepad.xinput.swap_a_b);
+  input.gamepad.xinput.swap_x_y->load          (config.input.gamepad.xinput.swap_x_y);
   input.gamepad.dinput.blackout_gamepads->load (config.input.gamepad.dinput.blackout_gamepads);
   input.gamepad.dinput.blackout_mice->load     (config.input.gamepad.dinput.blackout_mice);
   input.gamepad.dinput.blackout_keyboards->load(config.input.gamepad.dinput.blackout_keyboards);
@@ -5809,6 +5822,7 @@ auto DeclKeybind =
   return_to_skif->load      (config.system.return_to_skif);
   auto_load_asi_files->load (config.system.auto_load_asi_files);
 
+#ifdef SK_USE_CLEAN_EXIT
   SK_RunOnce (
     clean_exit->load        (config.system.clean_exit);
     if (! std::exchange     (config.system.clean_exit, false))
@@ -5819,6 +5833,7 @@ auto DeclKeybind =
     clean_exit->store            (config.system.clean_exit);
     config.utility.save_async_if (__SK_ExitedCleanly);
   );
+#endif
 
   // This is slow as hell thanks to the Steam overlay, so it
   //   should only ever be done on the first launch...
@@ -6302,6 +6317,8 @@ SK_SaveConfig ( std::wstring name,
     return;
   }
 
+  SK_PROFILE_SCOPED_TASK (SK_SaveConfig)
+
   if (name.empty ())
   {
     if (SK_IsInjected ())
@@ -6561,6 +6578,8 @@ SK_SaveConfig ( std::wstring name,
   input.gamepad.xinput.invert_rx->store            (config.input.gamepad.xinput.invert_rx);
   input.gamepad.xinput.invert_ry->store            (config.input.gamepad.xinput.invert_ry);
   input.gamepad.xinput.swap_sticks->store          (config.input.gamepad.xinput.swap_sticks);
+  input.gamepad.xinput.swap_a_b->store             (config.input.gamepad.xinput.swap_a_b);
+  input.gamepad.xinput.swap_x_y->store             (config.input.gamepad.xinput.swap_x_y);
   input.gamepad.dinput.blackout_gamepads->store    (config.input.gamepad.dinput.blackout_gamepads);
   input.gamepad.dinput.blackout_mice->store        (config.input.gamepad.dinput.blackout_mice);
   input.gamepad.dinput.blackout_keyboards->store   (config.input.gamepad.dinput.blackout_keyboards);
@@ -7015,9 +7034,8 @@ SK_SaveConfig ( std::wstring name,
     render.gl.upgrade_zbuffer->store (config.render.gl.upgrade_zbuffer);
   }
 
-  // Don't write this setting unless an AddOn capable version of ReShade is loaded
-  if (config.reshade.is_addon)
-    reshade_cfg.draw_first->store             (config.reshade.draw_first);
+  reshade_cfg.draw_first->store               (config.reshade.draw_first);
+  reshade_cfg.unsafe_addons->store            (config.reshade.allow_unsafe_addons);
 
   notifications.location->store               (config.notifications.location);
   notifications.silent->store                 (config.notifications.silent);
@@ -7198,7 +7216,9 @@ SK_SaveConfig ( std::wstring name,
   init_delay->store                            (config.system.global_inject_delay);
   return_to_skif->store                        (config.system.return_to_skif);
   auto_load_asi_files->store                   (config.system.auto_load_asi_files);
+#ifdef SK_USE_CLEAN_EXIT
   clean_exit->store                            (config.system.clean_exit);
+#endif
   version->store                               (SK_GetVersionStrW ());
 
   if (! SK_IsInjected ())
@@ -8800,6 +8820,8 @@ sk_config_t::utility_functions_s::save_async (void)
   // Don't write anything for launchers
   if (SK_GetCurrentGameID () == SK_GAME_ID::Launcher || SK_GetHostAppUtil ()->isBlacklisted ())
     return;
+
+  SK_PROFILE_SCOPED_TASK (sk_config_t__utility_functions_s__save_async)
 
   SK_RunOnce (
     SK_Thread_CreateEx ([](LPVOID) -> DWORD

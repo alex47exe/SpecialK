@@ -5147,6 +5147,9 @@ SK_DXGI_CreateSwapChain_PreInit (
             L"  | Flags [%d].. |  %-71hs|\n", i, begin_str);
       }
 
+      if (end_str == nullptr)
+        break;
+
       begin_str =
         ( end_str + 1 );
     }
@@ -9177,6 +9180,9 @@ SK_DXGISwap3_SetColorSpace1_Impl (
   void                  *pCaller  = nullptr
 )
 {
+  // This seems to be called recursively, best to keep an eye on it
+  SK_PROFILE_SCOPED_TASK (SK_DXGISwap3_SetColorSpace1_Impl)
+
   const auto RequestedColorSpace = ColorSpace;
 
   //
@@ -9203,7 +9209,7 @@ SK_DXGISwap3_SetColorSpace1_Impl (
   if (! silent)
   {
     SK_LOGi0 ( L"[!] IDXGISwapChain3::SetColorSpace1 (%hs)\t[%ws]",
-                    DXGIColorSpaceToStr (ColorSpace), SK_GetCallerName ().c_str () );
+                    DXGIColorSpaceToStr (ColorSpace), SK_GetCallerName (pCaller).c_str () );
   }
 
   DXGI_SWAP_CHAIN_DESC   swapDesc = { };
@@ -9335,8 +9341,9 @@ SK_DXGISwap3_SetColorSpace1_Impl (
 
   if (SUCCEEDED (hr))
   {
-    config.render.hdr.last_used_colorspace = ColorSpace;
-    config.utility.save_async ();
+    config.utility.save_async_if (
+      std::exchange (config.render.hdr.last_used_colorspace, ColorSpace) != ColorSpace
+    );
 
     // {018B57E4-1493-4953-ADF2-DE6D99CC05E5}
     static constexpr GUID SKID_SwapChainColorSpace =
@@ -11435,10 +11442,15 @@ SK_DXGI_QuickHook (void)
     return;
 
 
+  wchar_t          wszDXGIPath   [MAX_PATH] = {};
+  wchar_t          wszD3D11Path  [MAX_PATH] = {};
+  SK_PathCombineW (wszDXGIPath,  SK_GetHostPath (), L"dxgi.dll");
+  SK_PathCombineW (wszD3D11Path, SK_GetHostPath (), L"d3d11.dll");
+
   if (! config.render.dxgi.always_allow_quickhook)
   {
-    if ( PathFileExistsW (L"dxgi.dll") ||
-         PathFileExistsW (L"d3d11.dll") )
+    if ( PathFileExistsW (wszDXGIPath) ||
+         PathFileExistsW (wszD3D11Path) )
     {
       SK_LOGi0 (L" # DXGI QuickHook disabled because a local dxgi.dll or d3d11.dll is present...");
 

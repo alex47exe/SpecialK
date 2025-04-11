@@ -1,4 +1,61 @@
-﻿25.4.9.2
+﻿25.4.11
+=======
+ + Automatically change ReShade load order to Lazy from Early if necessary for
+     RenoDX to work correctly with SK.
+ + Handle scenarios where the same ReShade AddOn is located in the game's dir-
+     ectory as well as SK's Profiles\Game\ReShade\AddOns\ directory.
+ + Support worst-case scenario, where user has dxgi.dll and ReShade64.dll in
+     the game's directory -AND- tries to load a Plug-In copy of ReShade.
+ + Add profiling markers to various ReShade addon functions.
+
+25.4.10.4
+=========
+ + Add UnsafeAddOns INI setting
+ + Add local directory to ReShade AddOn search path
+ + Delay initialization of ReShade AddOn if ReShade is local and API is d3d12
+
+25.4.10.3
+=========
+ + Additional changes to deal with Unreal Engine changing the Current Directory
+    @TimSweeneyEpic wtf?
+ + Remove warning introduced in 25.4.10.2 after working around Epic's epic fail
+
+25.4.10.2
+=========
+ + Added warning with directions on how to get RenoDX's Unreal Engine AddOn
+     to stop crashing if ReShade is not loaded in the correct order.
+ + Always use the path relative to the executable when searching for ReShade
+     DLLs in game directories since Unreal Engine changes its Current Directory
+       at some unknown time while SK is initializing.
+ + Set the root path for Local Injection to the executable's directory rather
+     than the Current Directory.
+
+25.4.10.1
+=========
+ + Disable hook on ID3D12Device1::CreatePipelineLibrary (...)
+
+25.4.10
+=======
+ + Optimized GPU Vendor API initialization
+ + Optimized ActivateWindow (...) function in window.cpp
+ + Removed unnecessary D3D12 hooks when state tracking is not enabled
+
+25.4.9.5
+========
+ + Added initialization delay for Ubisoft+ version of Assassin's Creed Shadows.
+
+25.4.9.4
+========
+ + Added options to swap A/B and X/Y on Xbox controllers to match Nintendo.
+
+25.4.9.3
+========
+ + Disable Clean Exit system, because it leads to config files not being saved
+     for games that launch multiple copies of themselves.
+ + Added Cloth Physics Fix support for suckers who gave Valve money in exchange
+     for an even buggier version of Assassin's Creed Shadows.
+
+25.4.9.2
 ========
  + Disable Cloth Physics Fix for users who do not have SK's framerate limiter
      enabled in Assassin's Creed Shadows (...why?!).

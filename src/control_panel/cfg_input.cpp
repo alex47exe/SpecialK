@@ -1005,17 +1005,18 @@ SK::ControlPanel::Input::Draw (void)
           ImGui::EndTooltip      ();
         }
 
-        ImGui::SameLine ();
-
-        if (config.input.gamepad.hook_xinput && config.input.gamepad.xinput.hook_setstate)
+        if (config.input.gamepad.xinput.hook_setstate)
+        {
+          ImGui::SameLine        ();
           ImGui::Checkbox        ("Disable ALL Rumble", &config.input.gamepad.disable_rumble);
 
-        if (ImGui::BeginItemTooltip ())
-        {
-          ImGui::TextUnformatted ("Prevent the GAME from making use of controller vibration");
-          ImGui::Separator       ();
-          ImGui::BulletText      ("In some games, there is a performance penalty for rumble and it cannot be turned off in-game...");
-          ImGui::EndTooltip      ();
+          if (ImGui::BeginItemTooltip ())
+          {
+            ImGui::TextUnformatted ("Prevent the GAME from making use of controller vibration");
+            ImGui::Separator       ();
+            ImGui::BulletText      ("In some games, there is a performance penalty for rumble and it cannot be turned off in-game...");
+            ImGui::EndTooltip      ();
+          }
         }
       }
 
@@ -1449,6 +1450,9 @@ SK::ControlPanel::Input::Draw (void)
 
         ImGui::Separator ();
 
+        const auto remap_button_y =
+          ImGui::GetCursorPosY ();
+
         if (ImGui::Checkbox ("Remap Analog Sticks", &axial_remap))
         {
           if (! axial_remap)
@@ -1509,7 +1513,30 @@ SK::ControlPanel::Input::Draw (void)
 
         SK_ImGui_ProcessGamepadStatusBar (true);
 
-        ImGui::NextColumn ( );
+        ImGui::SameLine      ( ); ImGui::NextColumn ( );
+        ImGui::SameLine      ( ); ImGui::NextColumn ( );
+        ImGui::SetCursorPosY (remap_button_y);
+
+        if (ImGui::Checkbox ("Swap A and B Buttons", &config.input.gamepad.xinput.swap_a_b))
+        {
+          changed = true;
+        }
+
+        ImGui::SetItemTooltip (
+          "Applies to Xbox input; PlayStation remapping requires \"Xbox Mode\""
+        );
+
+        ImGui::SameLine      (              );
+        ImGui::SetCursorPosY (remap_button_y);
+
+        if (ImGui::Checkbox ("Swap X and Y Buttons", &config.input.gamepad.xinput.swap_x_y))
+        {
+          changed = true;
+        }
+
+        ImGui::SetItemTooltip (
+          "Applies to Xbox input; PlayStation remapping requires \"Xbox Mode\""
+        );
         ImGui::Columns    (1);
 
         ////ImGui::BeginGroup ();

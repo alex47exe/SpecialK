@@ -513,6 +513,7 @@ struct sk_config_t
     bool        is_addon              = false;  // True if ReShade AddOn registration succeeded
     bool        is_addon_hookless     = false;  // True if ReShade has no hooked effect runtimes
     bool        has_local_ini         = false;  // Using local ReShade.ini instead of SK's
+    bool        allow_unsafe_addons   = false;
     SK_ConfigSerializedKeybind
                 toggle_overlay_keybind= {
                     SK_Keybind {
@@ -1145,6 +1146,8 @@ struct sk_config_t
         bool  invert_rx           =  false;
         bool  invert_ry           =  false;
         bool  swap_sticks         =  false;
+        bool  swap_a_b            =  false;
+        bool  swap_x_y            =  false;
       } xinput;
 
       struct {
@@ -1453,6 +1456,11 @@ struct sk_config_t
     DWORD   available_cpu_cores =   1UL;
     int64_t cpu_affinity_mask   = 0xFFFFFFFFFFFFFFFFULL;
   } priority;
+
+  struct performance_profiling_s {
+    bool    enable_tasks        = false;
+    bool    enable_events       =  true;
+  } profiling;
 
   struct skif_s {
     int     auto_stop_behavior  = 1; // 0=Never, 1=AtStart, 2=AtExit

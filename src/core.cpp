@@ -253,194 +253,222 @@ SK_StartPerfMonThreads (void)
 void
 SK_LoadGPUVendorAPIs (void)
 {
-  dll_log->LogEx (false, L"================================================"
-                         L"===========================================\n" );
+#define THREADED_VENDOR_API_INIT
 
-  // None of the GPU vendor-specific APIs work in WINE.
-  //
-  if (config.compatibility.using_wine)
-    return;
-
-  dll_log->Log (L"[  NvAPI   ] Initializing NVIDIA API           (NvAPI)...");
-
-  SK_NvAPI_SetAppName         (       SK_GetFullyQualifiedApp () );
-  SK_NvAPI_SetAppFriendlyName (
-    app_cache_mgr->getAppNameFromID ( SK_Steam_GetAppID_NoAPI () ).c_str ()
-                              );
-
-  nvapi_init =
-    sk::NVAPI::InitializeLibrary (sk::NVAPI::app_name.c_str ());
-
-  dll_log->Log (L"[  NvAPI   ]              NvAPI Init         { %s }",
-                                                     nvapi_init ? L"Success" :
-                                                                  L"Failed ");
-
-  if (nvapi_init)
+#ifdef THREADED_VENDOR_API_INIT
+  static HANDLE hVendorInitThread =
+  SK_Thread_CreateEx ([](LPVOID)->DWORD
   {
-    if (config.apis.NvAPI.vulkan_bridge != SK_NoPreference)
-    {
-      SK_NvAPI_EnableVulkanBridge (config.apis.NvAPI.vulkan_bridge);
-    }
-
-    if (SK_GetModuleHandleW (L"_nvngx.dll") != nullptr)
-    {
-      SK_NGX_Init ();
-    }
-
-    const int num_sli_gpus =
-      sk::NVAPI::CountSLIGPUs ();
-
-    dll_log->Log ( L"[  NvAPI   ] >> NVIDIA Driver Version: %s",
-                    sk::NVAPI::GetDriverVersion ().c_str () );
-
-    const int gpu_count =
-      sk::NVAPI::CountPhysicalGPUs ();
-
-    dll_log->Log ( gpu_count > 1 ? L"[  NvAPI   ]  * Number of Installed NVIDIA GPUs: %i  "
-                                   L"{ SLI: '%s' }"
-                                 :
-                                   L"[  NvAPI   ]  * Number of Installed NVIDIA GPUs: %i  { '%s' }",
-                                     gpu_count > 1 ? num_sli_gpus :
-                                                     num_sli_gpus + 1,
-                                       sk::NVAPI::EnumGPUs_DXGI ()[0].Description );
-
-    if (num_sli_gpus > 0)
-    {
-      DXGI_ADAPTER_DESC* sli_adapters =
-        sk::NVAPI::EnumSLIGPUs ();
-
-      int sli_gpu_idx = 0;
-
-      while (*sli_adapters->Description != L'\0')
-      {
-        dll_log->Log ( L"[  NvAPI   ]   + SLI GPU %d: %s",
-                         sli_gpu_idx++,
-                           (sli_adapters++)->Description );
-      }
-    }
-
-    //
-    // Setup a framerate limiter and (if necessary) restart
-    //
-    bool restart = (! sk::NVAPI::SetFramerateLimit (0));
-
-    //
-    // Install SLI Override Settings
-    //
-    if (sk::NVAPI::CountSLIGPUs () && config.nvidia.sli.override)
-    {
-      if (! sk::NVAPI::SetSLIOverride
-              ( SK_GetDLLRole (),
-                  config.nvidia.sli.mode.c_str (),
-                    config.nvidia.sli.num_gpus.c_str (),
-                      config.nvidia.sli.compatibility.c_str ()
-              )
-         )
-      {
-        restart = true;
-      }
-    }
-
-    if (! config.nvidia.bugs.snuffed_ansel)
-    {
-#if 0
-      if (SK_NvAPI_DisableAnsel (SK_GetDLLRole ()))
-      {
-        restart = true;
-
-        SK_MessageBox (
-          L"To Avoid Potential Compatibility Issues, Special K has Disabled Ansel for this Game.\r\n\r\n"
-          L"You may re-enable Ansel for this Game using the Help Menu in Special K's Control Panel.",
-            L"Special K Compatibility Layer:  [ Ansel Disabled ]",
-              MB_ICONWARNING | MB_OK
-        );
-      }
 #endif
+    SK_PROFILE_FIRST_CALL
 
-      config.nvidia.bugs.snuffed_ansel = true;
-
-      SK_GetDLLConfig ()->write ();
-    }
-
-    if (restart)
-    {
-      dll_log->Log (L"[  Nv API  ] >> Restarting to apply NVIDIA driver settings <<");
-
-      SK_ShellExecuteW ( GetDesktopWindow (),
-                          L"OPEN",
-                            SK_GetHostApp (),
-                              nullptr,
-                                nullptr,
-                                  SW_SHOWDEFAULT );
-      exit (0);
-    }
-  }
-
-  // Not NVIDIA, maybe AMD?
-  else
-  {
-    dll_log->Log (L"[DisplayLib] Initializing AMD Display Library (ADL)...");
-
-    BOOL adl_init =
-      SK_InitADL ();
-
-    dll_log->Log   (L"[DisplayLib]              ADL   Init         { %s }",
-                                                      adl_init ? L"Success" :
-                                                                 L"Failed ");
-
-    // Yes, AMD driver is in working order ...
-    if (adl_init > 0)
-    {
-      dll_log->Log ( L"[DisplayLib]  * Number of Reported AMD Adapters: %i (%i active)",
-                       SK_ADL_CountPhysicalGPUs (),
-                         SK_ADL_CountActiveGPUs () );
-    }
-  }
-
-  const HMODULE hMod =
-    SK_GetModuleHandle (SK_GetHostApp ());
-
-  if (hMod != nullptr)
-  {
-    const auto* dwOptimus =
-      reinterpret_cast <DWORD *> (
-        SK_GetProcAddress ( SK_GetHostApp (),
-                              "NvOptimusEnablement" )
-      );
-
-    if (dwOptimus != nullptr)
-    {
-      dll_log->Log ( L"[Hybrid GPU]  NvOptimusEnablement..................: 0x%02X (%s)",
-                       *dwOptimus,
-                     ((*dwOptimus) & 0x1) ? L"Max Perf." :
-                                            L"Don't Care" );
-    }
-
-    else
-    {
-      dll_log->Log (L"[Hybrid GPU]  NvOptimusEnablement..................: UNDEFINED");
-    }
-
-    const auto* dwPowerXpress =
-      reinterpret_cast <DWORD *> (
-        SK_GetProcAddress ( SK_GetHostApp (),
-                              "AmdPowerXpressRequestHighPerformance" )
-      );
-
-    if (dwPowerXpress != nullptr)
-    {
-      dll_log->Log (L"[Hybrid GPU]  AmdPowerXpressRequestHighPerformance.: 0x%02X (%s)",
-         *dwPowerXpress,
-         (*dwPowerXpress & 0x1) ? L"High Perf." :
-                                  L"Don't Care" );
-    }
-
-    else
-      dll_log->Log (L"[Hybrid GPU]  AmdPowerXpressRequestHighPerformance.: UNDEFINED");
+    SK_Thread_SetCurrentPriority (THREAD_PRIORITY_TIME_CRITICAL);
 
     dll_log->LogEx (false, L"================================================"
                            L"===========================================\n" );
-  }
+
+    // None of the GPU vendor-specific APIs work in WINE.
+    //
+    if (config.compatibility.using_wine)
+    {
+#ifdef THREADED_VENDOR_API_INIT
+      SK_Thread_CloseSelf ();
+
+      return 0;
+#else
+      return;
+#endif
+    }
+
+    dll_log->Log (L"[  NvAPI   ] Initializing NVIDIA API           (NvAPI)...");
+
+    SK_NvAPI_SetAppName         (       SK_GetFullyQualifiedApp () );
+    SK_NvAPI_SetAppFriendlyName (
+      app_cache_mgr->getAppNameFromID ( SK_Steam_GetAppID_NoAPI () ).c_str ()
+                                );
+
+    nvapi_init =
+      sk::NVAPI::InitializeLibrary (sk::NVAPI::app_name.c_str ());
+
+    dll_log->Log (L"[  NvAPI   ]              NvAPI Init         { %s }",
+                                                       nvapi_init ? L"Success" :
+                                                                    L"Failed ");
+
+    if (nvapi_init)
+    {
+      if (config.apis.NvAPI.vulkan_bridge != SK_NoPreference)
+      {
+        SK_NvAPI_EnableVulkanBridge (config.apis.NvAPI.vulkan_bridge);
+      }
+
+      if (SK_GetModuleHandleW (L"_nvngx.dll") != nullptr)
+      {
+        SK_NGX_Init ();
+      }
+
+      const int num_sli_gpus =
+        sk::NVAPI::CountSLIGPUs ();
+
+      dll_log->Log ( L"[  NvAPI   ] >> NVIDIA Driver Version: %s",
+                      sk::NVAPI::GetDriverVersion ().c_str () );
+
+      const int gpu_count =
+        sk::NVAPI::CountPhysicalGPUs ();
+
+      dll_log->Log ( gpu_count > 1 ? L"[  NvAPI   ]  * Number of Installed NVIDIA GPUs: %i  "
+                                     L"{ SLI: '%s' }"
+                                   :
+                                     L"[  NvAPI   ]  * Number of Installed NVIDIA GPUs: %i  { '%s' }",
+                                       gpu_count > 1 ? num_sli_gpus :
+                                                       num_sli_gpus + 1,
+                                         sk::NVAPI::EnumGPUs_DXGI ()[0].Description );
+
+      if (num_sli_gpus > 0)
+      {
+        DXGI_ADAPTER_DESC* sli_adapters =
+          sk::NVAPI::EnumSLIGPUs ();
+
+        int sli_gpu_idx = 0;
+
+        while (*sli_adapters->Description != L'\0')
+        {
+          dll_log->Log ( L"[  NvAPI   ]   + SLI GPU %d: %s",
+                           sli_gpu_idx++,
+                             (sli_adapters++)->Description );
+        }
+      }
+
+      //
+      // Setup a framerate limiter and (if necessary) restart
+      //
+      bool restart = (! sk::NVAPI::SetFramerateLimit (0));
+
+      //
+      // Install SLI Override Settings
+      //
+      if (sk::NVAPI::CountSLIGPUs () && config.nvidia.sli.override)
+      {
+        if (! sk::NVAPI::SetSLIOverride
+                ( SK_GetDLLRole (),
+                    config.nvidia.sli.mode.c_str (),
+                      config.nvidia.sli.num_gpus.c_str (),
+                        config.nvidia.sli.compatibility.c_str ()
+                )
+           )
+        {
+          restart = true;
+        }
+      }
+
+#if 0 // This is no longer used
+      if (! config.nvidia.bugs.snuffed_ansel)
+      {
+#if 0
+        if (SK_NvAPI_DisableAnsel (SK_GetDLLRole ()))
+        {
+          restart = true;
+
+          SK_MessageBox (
+            L"To Avoid Potential Compatibility Issues, Special K has Disabled Ansel for this Game.\r\n\r\n"
+            L"You may re-enable Ansel for this Game using the Help Menu in Special K's Control Panel.",
+              L"Special K Compatibility Layer:  [ Ansel Disabled ]",
+                MB_ICONWARNING | MB_OK
+          );
+        }
+#endif
+
+        config.nvidia.bugs.snuffed_ansel = true;
+
+        SK_GetDLLConfig ()->write ();
+      }
+#endif
+
+      if (restart)
+      {
+        dll_log->Log (L"[  Nv API  ] >> Restarting to apply NVIDIA driver settings <<");
+
+        SK_ShellExecuteW ( GetDesktopWindow (),
+                            L"OPEN",
+                              SK_GetHostApp (),
+                                nullptr,
+                                  nullptr,
+                                    SW_SHOWDEFAULT );
+        exit (0);
+      }
+    }
+
+    // Not NVIDIA, maybe AMD?
+    else
+    {
+      dll_log->Log (L"[DisplayLib] Initializing AMD Display Library (ADL)...");
+
+      BOOL adl_init =
+        SK_InitADL ();
+
+      dll_log->Log   (L"[DisplayLib]              ADL   Init         { %s }",
+                                                        adl_init ? L"Success" :
+                                                                   L"Failed ");
+
+      // Yes, AMD driver is in working order ...
+      if (adl_init > 0)
+      {
+        dll_log->Log ( L"[DisplayLib]  * Number of Reported AMD Adapters: %i (%i active)",
+                         SK_ADL_CountPhysicalGPUs (),
+                           SK_ADL_CountActiveGPUs () );
+      }
+    }
+
+    const HMODULE hMod =
+      SK_GetModuleHandle (SK_GetHostApp ());
+
+    if (hMod != nullptr)
+    {
+      const auto* dwOptimus =
+        reinterpret_cast <DWORD *> (
+          SK_GetProcAddress ( SK_GetHostApp (),
+                                "NvOptimusEnablement" )
+        );
+
+      if (dwOptimus != nullptr)
+      {
+        dll_log->Log ( L"[Hybrid GPU]  NvOptimusEnablement..................: 0x%02X (%s)",
+                         *dwOptimus,
+                       ((*dwOptimus) & 0x1) ? L"Max Perf." :
+                                              L"Don't Care" );
+      }
+
+      else
+      {
+        dll_log->Log (L"[Hybrid GPU]  NvOptimusEnablement..................: UNDEFINED");
+      }
+
+      const auto* dwPowerXpress =
+        reinterpret_cast <DWORD *> (
+          SK_GetProcAddress ( SK_GetHostApp (),
+                                "AmdPowerXpressRequestHighPerformance" )
+        );
+
+      if (dwPowerXpress != nullptr)
+      {
+        dll_log->Log (L"[Hybrid GPU]  AmdPowerXpressRequestHighPerformance.: 0x%02X (%s)",
+           *dwPowerXpress,
+           (*dwPowerXpress & 0x1) ? L"High Perf." :
+                                    L"Don't Care" );
+      }
+
+      else
+        dll_log->Log (L"[Hybrid GPU]  AmdPowerXpressRequestHighPerformance.: UNDEFINED");
+
+      dll_log->LogEx (false, L"================================================"
+                             L"===========================================\n" );
+    }
+
+#ifdef THREADED_VENDOR_API_INIT
+    SK_Thread_CloseSelf ();
+
+    return 0;
+  }, L"[SK] GPU Vendor API Init");
+#endif
 }
 
 void SK_FetchBuiltinSounds (void)
@@ -754,6 +782,8 @@ void
 __stdcall
 SK_InitFinishCallback (void)
 {
+  SK_PROFILE_FIRST_CALL
+
   // Needed for CAPCOM's D3D12 games to not crash
   ModifyPrivilege (L"SeIncreaseBasePriorityPrivilege", TRUE);
 
@@ -973,7 +1003,7 @@ SK_InitFinishCallback (void)
     game_debug->silent = true;
   }
 
-
+#if 0 // Async should be perfectly fine
   const wchar_t* config_name =
     SK_GetBackend ();
 
@@ -983,6 +1013,9 @@ SK_InitFinishCallback (void)
     config_name = L"SpecialK";
 
   SK_SaveConfig (config_name);
+#else
+  config.utility.save_async ();
+#endif
 
   SK_Console::getInstance ()->Start ();
 
@@ -1638,10 +1671,17 @@ void
 __stdcall
 SK_EstablishRootPath (void)
 {
+  SK_PROFILE_FIRST_CALL
+
   wchar_t   wszConfigPath [MAX_PATH + 2] = { };
+#if 0
   GetCurrentDirectory     (MAX_PATH,
             wszConfigPath);
-  lstrcatW (wszConfigPath, LR"(\)");
+#else
+  wcsncpy_s (wszConfigPath, MAX_PATH,
+            SK_GetHostPath (), _TRUNCATE);
+#endif
+  lstrcatW  (wszConfigPath, LR"(\)");
 
   // File permissions don't permit us to store logs in the game's directory,
   //   so implicitly turn on the option to relocate this stuff.
@@ -1815,6 +1855,8 @@ SK_StartupCore (const wchar_t* backend, void* callback)
   {
     return false;
   }
+
+  SK_Thread_ScopedPriority _(THREAD_PRIORITY_TIME_CRITICAL);
 
   // Not a saved INI setting; use an alternate initialization
   //   strategy when Streamline is detected...
@@ -2714,6 +2756,8 @@ SK_Log_CleanupLogs (void)
 bool
 SK_Inject_IsWindowSKIF (HWND hWnd)
 {
+  SK_PROFILE_SCOPED_TASK (SK_Inject_IsWindowSKIF)
+
   DWORD                               dwPid = 0x0;
   SK_GetWindowThreadProcessId (hWnd, &dwPid);
 
@@ -2757,6 +2801,8 @@ SK_Inject_IsWindowSKIF (HWND hWnd)
 void
 SK_Inject_PostHeartbeatToSKIF (void)
 {
+  SK_PROFILE_SCOPED_TASK (SK_Inject_PostHeartbeatToSKIF)
+
   static HWND hWndSKIF =
     FindWindow (L"SK_Injection_Frontend", nullptr);
 
@@ -2979,15 +3025,8 @@ SK_ShutdownCore (const wchar_t* backend)
 #ifndef _M_IX86
     // Need more precision for the profiling code below
     SK_FPU_SetPrecision (_PC_64);
-
-    dll_log->Log (L"[ SK Perf. ] -----------------------");
-    dll_log->Log (L"[ SK Perf. ]  Micro Profiled Tasks: ");
-    dll_log->Log (L"[ SK Perf. ] -----------------------");
     SK_Perf_PrintProfiledTasks ();
 #endif
-    dll_log->Log (L"[ SK Perf. ] -----------------------");
-    dll_log->Log (L"[ SK Perf. ]  Initialization Steps: ");
-    dll_log->Log (L"[ SK Perf. ] -----------------------");
     SK_Perf_PrintEvents        ();
     dll_log->LogEx ( false,
                   L"========================================================="
@@ -3007,7 +3046,9 @@ SK_ShutdownCore (const wchar_t* backend)
 
   if (sk::NVAPI::app_name.find (L"ds3t.exe") == std::wstring::npos)
   {
+#ifdef SK_USE_CLEAN_EXIT
     config.system.clean_exit = !SK_Debug_IsCrashing ();
+#endif
 
     dll_log->LogEx  (true,  L"[ SpecialK ] Saving user preferences to"
                             L" %10s.ini... ", config_name);
@@ -3280,6 +3321,8 @@ SK_FrameCallback ( SK_RenderBackend& rb,
                    ULONG64           frames_drawn =
                                        SK_GetFramesDrawn () )
 {
+  SK_PROFILE_SCOPED_TASK (SK_FrameCallback)
+
   void
   ActivateWindow ( HWND hWnd,
                    bool active          = false,
@@ -3667,6 +3710,8 @@ void
 __stdcall
 SK_BeginBufferSwapEx (BOOL bWaitOnFail)
 {
+  SK_PROFILE_SCOPED_TASK (SK_BeginBufferSwapEx)
+
   void SK_Render_CountVBlanks (void);
        SK_Render_CountVBlanks ();
 
@@ -3753,6 +3798,8 @@ SK_BeginBufferSwap (void)
 void
 SK_Input_PollKeyboard (void)
 {
+  SK_PROFILE_SCOPED_TASK (SK_Input_PollKeyboard)
+
   constexpr ULONGLONG poll_interval = 1ULL;
 
   //
@@ -3856,6 +3903,8 @@ SK_Input_PollKeyboard (void)
 void
 SK_BackgroundRender_EndFrame (void)
 {
+  SK_PROFILE_SCOPED_TASK (SK_BackgroundRender_EndFrame)
+
   // Side-effect:  Evaluates Steam AppId Override
   SK_ImGui_WantGamepadCapture ();
 
@@ -4062,7 +4111,7 @@ SK_SLI_UpdateStatus (IUnknown *device)
   {
     // Get SLI status for the frame we just displayed... this will show up
     //   one frame late, but this is the safest approach.
-    if (nvapi_init && sk::NVAPI::CountSLIGPUs () > 0)
+    if (nvapi_init && sk::NVAPI::CountSLIGPUs () > 1)
     {
       *SK_NV_sli_state =
         sk::NVAPI::GetSLIState (device);
@@ -4073,6 +4122,8 @@ SK_SLI_UpdateStatus (IUnknown *device)
 void
 SK_Battery_UpdateRemainingPowerForAllDevices (void)
 {
+  SK_PROFILE_SCOPED_TASK (SK_Battery_UpdateRemainingPowerForAllDevices)
+
   static auto lastTimeChecked =
     SK::ControlPanel::current_time - 1000;
 
@@ -4087,12 +4138,14 @@ SK_Battery_UpdateRemainingPowerForAllDevices (void)
   SYSTEM_POWER_STATUS  sps = { };
   SYSTEM_BATTERY_STATE sbs = { };
 
-  const NTSTATUS ntStatus =
+  NTSTATUS ntStatus = -1;
+
+  if (has_battery) ntStatus =
     CallNtPowerInformation ( SystemBatteryState,
                              nullptr, 0,
                              &sbs, sizeof (sbs) );
 
-  if (has_battery || (SUCCEEDED (ntStatus) && sbs.Rate != 0))
+  if (SUCCEEDED (ntStatus) && sbs.Rate != 0)
   {
     if (GetSystemPowerStatus (&sps))
     {
@@ -4235,6 +4288,8 @@ HRESULT
 __stdcall
 SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
 {
+  SK_PROFILE_SCOPED_TASK (SK_EndBufferSwap)
+
   auto qpcTimeOfSwap =
     SK_QueryPerf ();
 
@@ -4998,6 +5053,13 @@ void SK_Perf_PrintEvents (void)
   std::vector <std::pair <const wchar_t*, uint64_t>> start_times;
   std::vector <std::pair <const wchar_t*, uint64_t>> end_times;
 
+  if (SK_EventMarker_StartTimes->empty ())
+    return;
+
+  dll_log->Log (L"[ SK Perf. ] -----------------------");
+  dll_log->Log (L"[ SK Perf. ]  Initialization Steps: ");
+  dll_log->Log (L"[ SK Perf. ] -----------------------");
+
   for (const auto& start : *SK_EventMarker_StartTimes)
   {
     start_times.push_back (start);
@@ -5116,6 +5178,13 @@ void SK_Perf_PrintProfiledTasks (void)
     std::pair <const wchar_t *, const SK_ProfiledTask_Accum *>
   > tasks;
 
+  if (SK_ProfileAccumulator->empty ())
+    return;
+
+  dll_log->Log (L"[ SK Perf. ] -----------------------");
+  dll_log->Log (L"[ SK Perf. ]  Micro Profiled Tasks: ");
+  dll_log->Log (L"[ SK Perf. ] -----------------------");
+
   for ( const auto& task : *SK_ProfileAccumulator )
   {
     tasks.emplace_back (
@@ -5155,3 +5224,38 @@ void SK_Perf_PrintProfiledTasks (void)
     }
   }
 }
+
+SK_AutoProfileAccumulator::SK_AutoProfileAccumulator (const wchar_t* wszTaskName)
+{
+  if (config.profiling.enable_tasks)
+  {
+    name  = wszTaskName;
+    start = SK_ProfiledTask_Begin ();
+  }
+};
+
+SK_AutoProfileAccumulator::~SK_AutoProfileAccumulator (void)
+{
+  if (config.profiling.enable_tasks)
+  {
+    SK_ProfiledTask_End (name, start);
+  }
+};
+
+SK_AutoEventMarker::SK_AutoEventMarker (const wchar_t* wszEventName)
+{
+  if (config.profiling.enable_events)
+  {
+    name = wszEventName;
+    
+    SK_PerfEvent_Begin (name);
+  }
+};
+
+SK_AutoEventMarker::~SK_AutoEventMarker (void)
+{
+  if (config.profiling.enable_events)
+  {
+    SK_PerfEvent_End (name);
+  }
+};

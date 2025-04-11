@@ -158,24 +158,35 @@ SK_Import_GetShimmedLibrary (HMODULE hModShim, HMODULE& hModReal)
   return false;
 }
 
+#include <ReShade/reshade.hpp>
+
 HMODULE
 SK_ReShade_LoadDLL (const wchar_t *wszDllFile, const wchar_t *wszMode)
 {
+  const bool file_exists =
+    PathFileExistsW (wszDllFile);
+
   // Allow ReShade 5.2+ to be loaded globally, and rebase its config
-  if (StrStrIW (wszDllFile, L"ReShade") != nullptr)
+  if (StrStrIW (wszDllFile, L"ReShade") != nullptr && file_exists)
   {
-    SK_RunOnce (
+    // If ReShade is already loaded, then don't do this again :)
+    if (! reshade::internal::get_reshade_module_handle ()) SK_RunOnce(
     {
-      if (0 != _wcsicmp (wszMode, L"Normal"))
+      bool want_hookless =
+        (0 != _wcsicmp (wszMode, L"Normal"));
+
+      if (want_hookless)
       {
-        config.reshade.is_addon_hookless = true;
         SetEnvironmentVariableW (L"RESHADE_DISABLE_GRAPHICS_HOOK", L"1");
       }
 
       SetEnvironmentVariableW (L"RESHADE_DISABLE_LOADING_CHECK", L"1");
 
+      wchar_t          wszReShadeINIPath [MAX_PATH] = {};
+      SK_PathCombineW (wszReShadeINIPath, SK_GetHostPath (), L"ReShade.ini");
+
       config.reshade.has_local_ini =
-        PathFileExistsW (L"ReShade.ini");
+        PathFileExistsW (wszReShadeINIPath);
 
       // If user already has a local ReShade.ini file, prefer the default ReShade behavior
       if (! config.reshade.has_local_ini)
@@ -272,8 +283,16 @@ SK_ReShade_LoadDLL (const wchar_t *wszDllFile, const wchar_t *wszMode)
         WriteULongRelease (&_d3d12_rbk->reset_needed, 1);
       }
 
-      return
+      auto dll =
         SK_LoadLibraryW (wszDllFile);
+
+      // Don't set this unless we well and truly have loaded the intended DLL
+      if (want_hookless && dll != nullptr)
+      {
+        config.reshade.is_addon_hookless = true;
+      }
+
+      return dll;
     });
   }
 
@@ -1253,6 +1272,49 @@ SK_Import_HasEarlyImport (const wchar_t* wszName)
         if (StrStrIW (import.name.c_str (), wszName))
         {
           return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+bool
+SK_Import_ChangeLoadOrder (const wchar_t* wszName, const wchar_t* wszNewOrder)
+{
+  const std::wstring target_arch =
+    SK_RunLHIfBitness ( 64, SK_IMPORT_ARCH_X64,
+                            SK_IMPORT_ARCH_WIN32 );
+
+  for (auto & import : imports->imports)
+  {
+    if (import.name.empty ())
+      continue;
+
+    if (_IsArchSame (import.architecture->get_value_ref (), target_arch))
+    {
+      if (! import.when->is_equal (wszNewOrder))
+      {
+        if (StrStrIW (import.name.c_str (), wszName))
+        {
+          auto& sections =
+            SK_GetDLLConfig ()->get_sections ();
+
+          for (auto &[name, section] : sections)
+          {
+            if ( StrStrIW (name.c_str (), L"Import.") &&
+                 StrStrIW (name.c_str (), wszName) )
+            {
+              section.     get_value (L"When").assign (wszNewOrder);
+              import.when->set_value                  (wszNewOrder);
+
+              SK_SaveConfig  ();
+              SK_RestartGame ();
+
+              return true;
+            }
+          }
         }
       }
     }

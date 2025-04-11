@@ -2981,6 +2981,8 @@ void TryRunCallbacksSEH (void)
 
 void TryRunCallbacks (void)
 {
+  SK_PROFILE_SCOPED_TASK (SteamAPI_RunCallbacks)
+
   TryRunCallbacksSEH ();
 }
 
@@ -6206,6 +6208,8 @@ SK_SteamInput_Unfux0r (void)
 void
 SK_Steam_ProcessWindowActivation (bool active)
 {
+  SK_PROFILE_SCOPED_TASK (SK_Steam_ProcessWindowActivation)
+
   if (config.steam.appid <= 0)
     return;
 

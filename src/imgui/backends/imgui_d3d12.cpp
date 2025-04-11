@@ -1168,6 +1168,8 @@ ImGui_ImplDX12_Init ( ID3D12Device*               device,
                       D3D12_GPU_DESCRIPTOR_HANDLE font_srv_gpu_desc_handle,
                       HWND                        hwnd )
 {
+  SK_ReShade_HasRenoDX ();
+
   ImGuiIO& io =
     ImGui::GetIO ();
 
@@ -1402,6 +1404,7 @@ D3D12GraphicsCommandList_OMSetRenderTargets_Detour (
 {
   SK_LOG_FIRST_CALL
 
+#ifdef D3D12_STATE_TRACK
   if (config.reshade.is_addon)
   {
     UINT                        size       = sizeof (D3D12_CPU_DESCRIPTOR_HANDLE);
@@ -1417,6 +1420,7 @@ D3D12GraphicsCommandList_OMSetRenderTargets_Detour (
     This->SetPrivateData (
       SKID_D3D12RenderTarget0, size, &rtv_handle );
   }
+#endif
 
   return
     D3D12GraphicsCommandList_OMSetRenderTargets_Original (
@@ -1603,6 +1607,7 @@ _InitDrawCommandHooks (ID3D12GraphicsCommandList* pCmdList)
                     (void **)&D3D12GraphicsCommandList_DrawIndexedInstanced_Original );
   }
 
+#ifdef D3D12_STATE_TRACK
   if (D3D12GraphicsCommandList_SetPipelineState_Original == nullptr)
   {
     SK_CreateVFTableHook2 ( L"ID3D12GraphicsCommandList::SetPipelineState",
@@ -1610,6 +1615,7 @@ _InitDrawCommandHooks (ID3D12GraphicsCommandList* pCmdList)
                                D3D12GraphicsCommandList_SetPipelineState_Detour,
                      (void **)&D3D12GraphicsCommandList_SetPipelineState_Original );
   }
+#endif
 
   if (D3D12GraphicsCommandList_ResourceBarrier_Original == nullptr)
   {
@@ -1654,6 +1660,7 @@ _InitDrawCommandHooks (ID3D12GraphicsCommandList* pCmdList)
   // 58 EndEvent
   // 59 ExecuteIndirect
 
+#ifdef D3D12_STATE_TRACK
   if (D3D12GraphicsCommandList_OMSetRenderTargets_Original == nullptr)
   {
     SK_CreateVFTableHook2 ( L"ID3D12GraphicsCommandList::OMSetRenderTargets",
@@ -1661,7 +1668,9 @@ _InitDrawCommandHooks (ID3D12GraphicsCommandList* pCmdList)
                                D3D12GraphicsCommandList_OMSetRenderTargets_Detour,
                      (void **)&D3D12GraphicsCommandList_OMSetRenderTargets_Original );
   }
+#endif
 
+#ifdef D3D12_STATE_TRACK
   if (D3D12GraphicsCommandList_ExecuteIndirect_Original == nullptr)
   {
     SK_CreateVFTableHook2 ( L"ID3D12GraphicsCommandList::ExecuteIndirect",
@@ -1669,7 +1678,9 @@ _InitDrawCommandHooks (ID3D12GraphicsCommandList* pCmdList)
                                D3D12GraphicsCommandList_ExecuteIndirect_Detour,
                      (void **)&D3D12GraphicsCommandList_ExecuteIndirect_Original );
   }
+#endif
 
+#if 0
   if (D3D12GraphicsCommandList_ClearRenderTargetView_Original == nullptr)
   {
     SK_CreateVFTableHook2 ( L"ID3D12GraphicsCommandList::ClearRenderTargetView",
@@ -1677,6 +1688,7 @@ _InitDrawCommandHooks (ID3D12GraphicsCommandList* pCmdList)
                            D3D12GraphicsCommandList_ClearRenderTargetView_Detour,
                  (void **)&D3D12GraphicsCommandList_ClearRenderTargetView_Original );
   }
+#endif
 
   SK_ApplyQueuedHooks ();
 }
@@ -2722,8 +2734,8 @@ SK_D3D12_RenderCtx::present (IDXGISwapChain3 *pSwapChain)
     {
       if (! config.reshade.is_addon_hookless)
       {
-        if (_pReShadeRuntime == nullptr)
-            _pReShadeRuntime = SK_ReShadeAddOn_GetRuntimeForSwapChain (_pSwapChain);
+        _pReShadeRuntime =
+          SK_ReShadeAddOn_GetRuntimeForSwapChain (_pSwapChain);
       }
       else
       {
@@ -3139,35 +3151,12 @@ SK_D3D12_RenderCtx::init (IDXGISwapChain3 *pSwapChain, ID3D12CommandQueue *pComm
   if (SK_slGetNativeInterface (pSwapChain, (void **)&pNativeSwapChain.p) == sl::Result::eOk)
                                pSwapChain =          pNativeSwapChain.p;
 
-  if (pSwapChain != nullptr)
-  {
-    UINT  uiSize    = sizeof (void *);
-    void *pCmdQueue = nullptr;
-
-    if (SUCCEEDED (pSwapChain->GetPrivateData (SKID_D3D12_SwapChainCommandQueue, &uiSize, pCmdQueue)))
-    {
-      if (pCmdQueue != nullptr)
-      {
-        pCommandQueue = (ID3D12CommandQueue *)pCmdQueue;
-      }
-    }
-  }
-
   SK_ComPtr <ID3D12CommandQueue>                        pNativeQueue;
   if (SK_slGetNativeInterface (pCommandQueue, (void **)&pNativeQueue.p) == sl::Result::eOk)
   {
     if (                       _pCommandQueue != nullptr)
       _ExchangeProxyForNative (_pCommandQueue,          pNativeQueue)
     else                       _pCommandQueue         = pNativeQueue;
-  }
-
-  if (pNativeSwapChain != nullptr &&
-      pNativeQueue.p   != nullptr)
-  {
-    const UINT uiSize = sizeof (void *);
-
-    if (pSwapChain != nullptr)
-        pSwapChain->SetPrivateData (SKID_D3D12_SwapChainCommandQueue, uiSize, _pCommandQueue);
   }
 
   // Turn HDR off in dgVoodoo2 so it does not crash
