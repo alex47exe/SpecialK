@@ -1831,7 +1831,7 @@ SK_ImGui_PollGamepad_EndFrame (XINPUT_STATE* pState)
   bool bUseGamepad =
     SK_IsGameWindowActive () ||
       ( config.window.background_render &&
-        config.input.gamepad.disabled_to_game != SK_InputEnablement::DisabledInBackground );
+        config.input.gamepad.disabled_to_game != SK_InputEnablement::DisabledInBackground ) || config.window.screensaver_active;
 
   // Steam may corrupt the stack, we can try to recover...
   bUseGamepad &= SK_XInput_ValidateStatePointer (pState);
@@ -1990,13 +1990,6 @@ SK_ImGui_PollGamepad_EndFrame (XINPUT_STATE* pState)
           }
 
           bChordActivated = true;
-        }
-
-        if ((     state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE) &&
-            (     state.Gamepad.wButtons & XINPUT_GAMEPAD_A)     &&
-          (!(last_state.Gamepad.wButtons & XINPUT_GAMEPAD_A)))
-        {
-          SendMessageTimeout (GetDesktopWindow (), WM_SYSCOMMAND, SC_SCREENSAVE, 0, SMTO_BLOCK, INFINITE, nullptr);
         }
 
         if ((     state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE) &&
@@ -3171,11 +3164,16 @@ SK_Input_UpdateGamepadActivityTimestamp (void)
   if (_LastGamepadTimestamp != SK_Input_LastGamepadActivity &&
       _Ignore_TimestampUntil < SK_Input_LastGamepadActivity)
   {
+    if (! config.window.screensaver_active)
+    {
+      BOOL                                                  bScreensaverActive = FALSE;
+      SystemParametersInfoA (SPI_GETSCREENSAVERRUNNING, 0, &bScreensaverActive, 0);
+
+      config.window.screensaver_active |= bScreensaverActive;
+    }
+
     if (config.input.gamepad.blocks_screensaver)
     {
-      BOOL                                                  bScreenSaverRunning;
-      SystemParametersInfoA (SPI_GETSCREENSAVERRUNNING, 0, &bScreenSaverRunning, 0);
-
       // Deactivate screensaver on gamepad input
       //
       //   * This looks stupid, and it is, but attempting to send the screensaver
@@ -3184,7 +3182,7 @@ SK_Input_UpdateGamepadActivityTimestamp (void)
       //
       //    @ Even disabling SendInput Blockage has no effect running screensavers
       //
-      if (bScreenSaverRunning)
+      if (config.window.screensaver_active)
       {
         SK_TerminateProcesses (L"scrnsave.scr", true);
       }
@@ -3358,10 +3356,51 @@ SK_ImGui_BackupInputThread (LPVOID)
     if (! SK_ImGui_Active ())
                 SK_GetCursorPos
   (&SK_ImGui_LastKnownCursorPos);
-    SK_ImGui_LastKnownCursor =
-                SK_GetCursor ();
+    // This is thread-local, and this thread doesn't have a window, so it's meaningless to do this.
+    //SK_ImGui_LastKnownCursor =
+    //            SK_GetCursor ();
     SK_ImGui_IsHWCursorVisible =
-    SK_InputUtil_IsHWCursorVisible ();
+    SK_InputUtil_IsHWCursorVisible (); // This checks global cursor state, it does not mean that
+                                       //   the game window's thread is showing the cursor...
+
+    // Screensaver deactivation when background render is disabled is tricky
+    if (! game_window.wantBackgroundRender ())
+    {
+      // Handle fake screensaver scenario; game window will not be foreground
+      if ((! config.window.screensaver_active) && (! game_window.active))
+      {
+        if (static DWORD dwLastExhaustiveCheck = 0;
+                         dwLastExhaustiveCheck < SK_timeGetTime () - 25UL)
+        {
+          BOOL                                                  bScreensaverActive = FALSE;
+          SystemParametersInfoA (SPI_GETSCREENSAVERRUNNING, 0, &bScreensaverActive, 0);
+
+          config.window.screensaver_active =
+            bScreensaverActive ? TRUE : SK_IsProcessRunning (L"scrnsave.scr") ?
+                                 TRUE : FALSE;
+
+          dwLastExhaustiveCheck = SK_timeGetTime ();
+        }
+      }
+    }
+
+    // Screensaver cannot be active if the game window is...
+    if (game_window.active)
+      config.window.screensaver_active = false;
+
+    if (! game_window.wantBackgroundRender ())
+    {
+      if (config.window.screensaver_active)
+      {
+        // Poll input manually; game may have stopped drawing frames because the screensaver
+        //   window is active / has keyboard focus instead of the game.
+        SK_ImGui_PollGamepad ();
+
+        // The timestamp update will kill the screensaver on non-idle gamepad input if the user
+        //   has configured this behavior.
+        SK_Input_UpdateGamepadActivityTimestamp ();
+      }
+    }
   }
 
   SK_Thread_CloseSelf ();
@@ -3983,10 +4022,13 @@ SK_ImGui_User_NewFrame (void)
   SK_GetCursorPos  (&SK_ImGui_LastKnownCursorPos);
   POINT cursor_pos = SK_ImGui_LastKnownCursorPos;
 
+  if (SK_ImGui_Active ())
+  SK_ImGui_LastKnownCursor = SK_GetCursor ();
+
   bool capture_mouse    = SK_ImGui_WantMouseCapture  (false, &cursor_pos);
   bool anything_hovered = SK_ImGui_IsAnythingHovered ();
   HWND hWndForeground   = SK_GetForegroundWindow     ();
-  BOOL bHWCursorVisible = SK_ImGui_IsHWCursorVisible;
+  BOOL bHWCursorVisible = SK_ImGui_IsHWCursorVisible && SK_ImGui_LastKnownCursor != 0;
 
   __SK_EnableSetCursor = true;
 
@@ -4399,7 +4441,7 @@ SK_ImGui_User_NewFrame (void)
 
   if (! SK_ImGui_Cursor.idle)
   {
-    if (capture_mouse && anything_hovered && (last_x != SK_ImGui_Cursor.pos.x || last_y != SK_ImGui_Cursor.pos.y))
+    if (capture_mouse && anything_hovered && (last_x != SK_ImGui_Cursor.pos.x || last_y != SK_ImGui_Cursor.pos.y || ImGui::IsAnyMouseDown ()))
     {
       SK_SendMsgSetCursor (ImGui_DesiredCursor ());
     }
@@ -4545,4 +4587,17 @@ bool
 SK_ImGui_IsEULAVisible (void)
 {
   return eula.show;
+}
+
+void
+SK_ImGui_BeginDisabled (bool disabled)
+{
+  if (disabled)
+    SKIF_ImGui_PushDisableState ();
+}
+
+void
+SK_ImGui_EndDisabled (void)
+{
+  SKIF_ImGui_PopDisableState ();
 }

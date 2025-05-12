@@ -1166,7 +1166,7 @@ public:
     {
       // Background Input is enabled, undo what the Steam client just did...
       if ( config.input.gamepad.disabled_to_game == SK_InputEnablement::Enabled &&
-           config.window.background_render )
+           game_window.wantBackgroundRender () )
       {
         if (! SK::SteamAPI::SetWindowFocusState (true))
         {
@@ -2671,7 +2671,6 @@ public:
 
       popup.window      = nullptr;
       popup.final_pos   = false;
-      popup.time        = SK_timeGetTime ();
       popup.achievement = achievement;
 
       popups.push_back (popup);
@@ -6214,7 +6213,7 @@ SK_Steam_ProcessWindowActivation (bool active)
     return;
 
   // Hacky code for Steam Input background input
-  if (config.window.background_render && config.input.gamepad.disabled_to_game == SK_InputEnablement::Enabled)
+  if (game_window.wantBackgroundRender () && config.input.gamepad.disabled_to_game == SK_InputEnablement::Enabled)
   {
     if (! SK::SteamAPI::SetWindowFocusState (true))
     {

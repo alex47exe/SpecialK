@@ -841,9 +841,9 @@ class SK_FramerateLimiter_CfgProxy : public SK_IVariableListener {
   }
 } __ProdigalFramerateSon;
 
-extern NtQueryTimerResolution_pfn NtQueryTimerResolution;
-extern NtSetTimerResolution_pfn   NtSetTimerResolution;
-extern NtSetTimerResolution_pfn   NtSetTimerResolution_Original;
+extern ZwQueryTimerResolution_pfn ZwQueryTimerResolution;
+extern ZwSetTimerResolution_pfn   ZwSetTimerResolution;
+extern ZwSetTimerResolution_pfn   ZwSetTimerResolution_Original;
 
 void
 SK::Framerate::Init (void)
@@ -915,19 +915,31 @@ SK::Framerate::Init (void)
   pCommandProc->AddVariable ( "MaxDeltaTime",
       new SK_IVarStub <int> (&config.render.framerate.max_delta_time));
 
-  if ( NtQueryTimerResolution != nullptr &&
-       NtSetTimerResolution   != nullptr )
+  // Disable Windows 11 process resolution tinkering when the game is in the background
+  PROCESS_POWER_THROTTLING_STATE
+    state             = {                                      };
+    state.Version     = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+    state.ControlMask = PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION;
+    state.StateMask   = 0;
+
+  SetProcessInformation (
+    SK_GetCurrentProcess (),
+     ProcessPowerThrottling, &state,
+                      sizeof (state) );
+
+  if ( ZwQueryTimerResolution != nullptr &&
+       ZwSetTimerResolution   != nullptr )
   {
     auto _SetTimerResolution =
-      ( NtSetTimerResolution_Original != nullptr ) ?
-        NtSetTimerResolution_Original              :
-        NtSetTimerResolution;
+      ( ZwSetTimerResolution_Original != nullptr ) ?
+        ZwSetTimerResolution_Original              :
+        ZwSetTimerResolution;
 
     double& dTimerRes =
       SK::Framerate::Limiter::timer_res_ms;
 
     ULONG                         min,  max,  cur;
-    if ( NtQueryTimerResolution (&min, &max, &cur) ==
+    if ( ZwQueryTimerResolution (&min, &max, &cur) ==
            STATUS_SUCCESS )
     {
       dTimerRes =
@@ -1426,8 +1438,29 @@ SK::Framerate::Limiter::try_wait (void)
 
 
 //#define _RESTORE_TIMER_RES
-extern NtSetTimerResolution_pfn
-       NtSetTimerResolution_Original;
+extern ZwSetTimerResolution_pfn
+       ZwSetTimerResolution_Original;
+
+void SK_Framerate_SetPowerThrottlingPolicy (bool always_high_res)
+{
+  // Disable Windows 11 process resolution tinkering when the game is in the background
+  PROCESS_POWER_THROTTLING_STATE
+    state             = {                                      };
+    state.Version     = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+    state.ControlMask = PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION;
+    state.StateMask   = always_high_res ?
+                                      0 : PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION;
+
+  static bool last_policy = !always_high_res;
+
+  if (std::exchange (last_policy, always_high_res) != always_high_res)
+  {
+    SetProcessInformation (
+      SK_GetCurrentProcess (),
+       ProcessPowerThrottling, &state,
+                        sizeof (state) );
+  }
+}
 
 void
 SK::Framerate::Limiter::wait (void)
@@ -1459,6 +1492,11 @@ SK::Framerate::Limiter::wait (void)
 
   if (! standalone)
   {
+    SK_Framerate_SetPowerThrottlingPolicy (
+      (! background) ||
+         background && __target_fps_bg <= 0.0f
+    );
+
     if (! background)
     {
       set_limit ( __target_fps );
@@ -1474,10 +1512,10 @@ SK::Framerate::Limiter::wait (void)
 
 
 
-  if (NtSetTimerResolution_Original != nullptr)
+  if (ZwSetTimerResolution_Original != nullptr)
   {
     ULONG                         min,  max,  cur;
-    if ( NtQueryTimerResolution (&min, &max, &cur) ==
+    if ( ZwQueryTimerResolution (&min, &max, &cur) ==
            STATUS_SUCCESS )
     {
       double& dTimerRes =
@@ -1486,13 +1524,14 @@ SK::Framerate::Limiter::wait (void)
       dTimerRes =
         static_cast <double> (cur) / 10000.0;
 
+      // Windows 11 does not allow setting this while the window is not foreground
       if (max != cur)
       {
         SK_LOG1 ( ( L"Kernel resolution.: %f ms", dTimerRes ),
                     L"  Timing  " );
 
         NTSTATUS status =
-          NtSetTimerResolution_Original (max, TRUE, &cur);
+          ZwSetTimerResolution_Original (max, TRUE, &cur);
         if (                             max   ==    cur &&
                  status == STATUS_SUCCESS )
         {
@@ -1514,7 +1553,7 @@ SK::Framerate::Limiter::wait (void)
           {
             SK_ReleaseAssert (status == STATUS_SUCCESS || max == cur);
             SK_LOGi0         (
-              L"NtSetTimerResolution (...) unexpected behavior -- NtStatus=%x, "
+              L"ZwSetTimerResolution (...) unexpected behavior -- NtStatus=%x, "
               L"max=%d, cur=%d", status, max, cur
             );
           }

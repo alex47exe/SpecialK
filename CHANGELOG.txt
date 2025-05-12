@@ -1,4 +1,128 @@
-﻿25.4.30
+﻿25.5.11.4
+=========
+ + Added support for remapping Analog Sticks, Share / Trackpad Click and
+     Cross / Circle and Square / Triangle face buttons in USB DualSense games.
+
+   >> Bluetooth requires a checksum algorithm that is currently unknown, or
+        software using libScePad will simply ignore any data that it receives.
+
+    * The config UI still refers to the Cross/Circle and Square/Triangle swap
+        features by the Xbox button names.
+
+25.5.11.3
+=========
+ + Added support for overriding RGB on Bluetooth DualSense [Edge] controllers
+     in games that use DualSense natively.
+
+25.5.11.2
+=========
+ + Hide HID Attach notifications unless there is a potential conflict between
+     the game using native input features (i.e. haptics) and Steam Input, or
+       the user configures "HID Notifications" from the input management
+         control panel.
+ + Delayed achievement unlock screenshots until the popup is the first in queue
+ + Fixed possible crash when taking achievement unlock screenshots
+
+25.5.11.1
+=========
+ + Restored support for displaying multiple achievement popups at once
+     (functionality was lost when CEGUI was removed in favor of ImGui)
+ + Added settings for maximum number of achievement popups to draw at once
+     and the number of columns to use for overflow when they do not fit.
+
+25.5.11
+=======
+ + Changed wording on HID Gamepad Attach notification to indicate that the game
+     itself is using the native HID protocol, and that Steam Input / DS4Windows
+       mey lead to loss of native features (i.e. DualSense Haptics).
+ + Only display the HID Gamepad Attach notification the first time a game reads
+     from a specific gamepad; ignore the first time it _writes_.
+
+25.5.10
+=======
+ + Fixed the position of XInput USB/Bluetooth battery charge indicators so they
+     do not overlay with the Swap A/B and Swap X/Y button settings.
+
+25.5.9.1
+========
+ + Correctly set the StateMask bits for
+     PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION when a background FPS
+       limit is active.
+
+25.5.9
+======
+ + Set PROCESS_POWER_THROTTLING_IGNORE_TIMER_RESOLUTION when initializing
+     SK's Framerate Limiter to keep the system-wide timer resolution from
+       applying in the background.
+
+25.5.8.1
+========
+ + Allow gamepad input to wake the screensaver while the window is in the
+     background (because the screensaver is active) and gamepad input in
+       background is disabled.
+
+25.5.8
+======
+ + Added 240 frame initialization delay to Assassin's Creed Shadows plug-in
+ + Call ZwSetTimerResolution (...) instead of NtSetTimerResolution (...) to
+     ensure that the Windows 11 kernel allows 1 ms timer resolution instead of
+       15 ms when the game window is in the background.
+
+25.5.7
+======
+ + Pre-load Streamline Interposer in Assassin's Creed Shadows
+ + Disable asynchronous init in Assassin's Creed Shadows
+ + Disable Over the Air DLSS updates in Assassin's Creed Shadows
+ + Added DLSS-G initialization delay in Assassin's Creed Shadows
+ - Gah, Ubisoft, wtf?
+
+25.5.6
+======
+ + Updated Assassin's Creed Shadows plug-in for compatibility with 1.0.4 patch.
+
+25.5.5.2
+========
+ + Fixed various ImGui state stack over/underflows.
+ + Disabled OpenGL hooks if the Epic Overlay is loaded because recent updates
+     to the overlay will cause crashing.
+ + Block GOG overlay in OpenGL on NVIDIA drivers as well as AMD.
+
+25.5.5.1
+========
+ + Fixed cursor auto-hide behavior accidentally broken in 25.5.4.1
+
+25.5.5
+======
+ + Removed remnants of PlayStation+Cross / Xbox+A Screensaver Activation code,
+     configure SKIF's gamepad support instead if you want this functionality.
+
+25.5.4.1
+========
+ + Enable "Keep Inside Window" cursor boundaries by default in Clair Obscur,
+     because the game may stop responding to keyboard/gamepad input if the
+       cursor moves offscreen to a different display.
+
+25.5.4
+======
+ + Improved handling of screensaver deactivation in response to gamepad input
+     (for games that stop polling gamepad when their window is not focused).
+ + Disable crash sound at game exit, since Clair Obscur crashes 99/100 times.
+
+25.5.3
+======
+ + Use the value of [Input.libScePad] ShareClicksTouchpad={true|false} to
+     control whether clicking the touchpad will trigger XInput Back button
+       (equiv. to the PlayStation share button).
+
+    - This setting is in Global\input.ini (and enabled by default)
+
+   * In other words, the trackpad may be used to click the Back button for
+       consistency with gamepad bindings when emulating Xbox controllers.
+
+ + Disable Epic Overlay activation callbacks in *ALL* EGS games because many
+     are pausing the game while popups are active and it is beyond obnoxious.
+
+25.4.30
 =======
  + Detect and ignore synthetic Reflex injected by RTSS instead of considering it
      native Reflex.

@@ -506,6 +506,20 @@ SK_BootOpenGL (void)
     return;
   }
 
+  if (SK_GetModuleHandleW (L"EOSOVH-Win64-Shipping.dll") ||
+      SK_GetModuleHandleW (L"EOSOVH-Win32-Shipping.dll"))
+  {
+    SK_LOGi0 (L"Skipping OpenGL Initialization because the Epic Overlay is Loaded and Will Crash.");
+    if (config.apis.OpenGL.hook)
+    {
+      SK_ImGui_Warning (
+        L"OpenGL render backend temporarily disabled due to Epic Overlay\r\n\r\n\t"
+        L"Turn OpenGL off under Compatibility Settings | Render Backends, or disable the Epic Overlay to get rid of this message."
+      );
+    }
+    return;
+  }
+
   if (SK_GetCurrentGameID () == SK_GAME_ID::yuzu)
   {
     static bool          once = false;
@@ -3108,23 +3122,25 @@ SK_WDDM_CAPS::init (D3DKMT_HANDLE hAdapter)
          queryAdapterInfo.Type                  = KMTQAITYPE_DRIVERVERSION;
          queryAdapterInfo.PrivateDriverData     = &version;
          queryAdapterInfo.PrivateDriverDataSize = sizeof (D3DKMT_DRIVERVERSION);
-  
+
+  SK_D3DKMT_QueryAdapterInfo (&queryAdapterInfo);
+
          queryAdapterInfo.Type                  = KMTQAITYPE_WDDM_3_0_CAPS;
          queryAdapterInfo.PrivateDriverData     = &_3_0;
          queryAdapterInfo.PrivateDriverDataSize = sizeof (D3DKMT_WDDM_3_0_CAPS);
-  
+
   SK_D3DKMT_QueryAdapterInfo (&queryAdapterInfo);
-  
+
          queryAdapterInfo.Type                  = KMTQAITYPE_WDDM_2_9_CAPS;
          queryAdapterInfo.PrivateDriverData     = &_2_9;
          queryAdapterInfo.PrivateDriverDataSize = sizeof (D3DKMT_WDDM_2_9_CAPS);
-  
+
   SK_D3DKMT_QueryAdapterInfo (&queryAdapterInfo);
-  
+
          queryAdapterInfo.Type                  = KMTQAITYPE_WDDM_2_7_CAPS;
          queryAdapterInfo.PrivateDriverData     = &_2_7;
          queryAdapterInfo.PrivateDriverDataSize = sizeof (D3DKMT_WDDM_2_7_CAPS);
-  
+
   SK_D3DKMT_QueryAdapterInfo (&queryAdapterInfo);
 
   // For Windows 10, just fill-in WDDM 2.9 values using what's available.
@@ -3782,7 +3798,7 @@ SK_RenderBackend_V2::updateOutputTopology (void)
                  )
              )
           {
-            SK_LOGi0 (L"Display Change Handled");
+            SK_LOGi1 (L"Display Change Handled");
 
             display.nvapi.display_handle = nvDisplayHandle;
             display.nvapi.gpu_handle     = nvGpuHandles [0];

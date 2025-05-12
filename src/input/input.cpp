@@ -32,12 +32,6 @@
 #include <imgui/backends/imgui_d3d11.h>
 #include <SpecialK/injection/injection.h>
 
-bool SK_WantBackgroundRender (void)
-{
-  return
-    config.window.background_render;
-}
-
 extern "C" {
   extern LONG g_sHookedPIDs [MAX_INJECTED_PROCS];
 }
@@ -140,7 +134,7 @@ SK_ImGui_WantGamepadCapture (bool update)
     {
       // Implicitly block input to this game if SK is currently injected
       //   into two games at once, and the other game is currently foreground.
-      if (! game_window.active)
+      if (! SK_IsGameWindowActive ())
       {
         HWND hWndForeground =
           SK_GetForegroundWindow ();

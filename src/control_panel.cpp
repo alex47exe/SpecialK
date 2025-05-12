@@ -475,10 +475,11 @@ void
 SKIF_ImGui_PopDisableState (void)
 {
   // Pop the states in the reverse order that we pushed them in
-  ImGui::PopStyleColor ( ); // ImGuiCol_FrameBg
-  ImGui::PopStyleColor ( ); // ImGuiCol_CheckMark
-  ImGui::PopStyleColor ( ); // ImGuiCol_SliderGrab
-  ImGui::PopStyleColor ( ); // ImGuiCol_Text
+  //ImGui::PopStyleColor ( ); // ImGuiCol_FrameBg
+  //ImGui::PopStyleColor ( ); // ImGuiCol_CheckMark
+  //ImGui::PopStyleColor ( ); // ImGuiCol_SliderGrab
+  //ImGui::PopStyleColor ( ); // ImGuiCol_Text
+  ImGui::PopStyleColor (4);
   //ImGui::PopStyleVar ( ); // ImGuiStyleVar_Alpha [UNUSED]
   ImGui::PopItemFlag   ( ); // ImGuiItemFlags_Disabled
 }
@@ -2035,8 +2036,11 @@ SK_Display_ResolutionSelectUI (bool bMarkDirty)
       ImGui::EndTooltip      (    );
     }
 
-    if (! config.display.focus_mode)
-      ImGui::BeginDisabled ();
+    const bool display_focus_mode =
+        config.display.focus_mode;
+
+    if (! display_focus_mode)
+      SK_ImGui_BeginDisabled ();
 
     ImGui::TreePush ("");
 
@@ -2069,8 +2073,8 @@ SK_Display_ResolutionSelectUI (bool bMarkDirty)
     }
     ImGui::TreePop           (  );
 
-    if (! config.display.focus_mode)
-      ImGui::EndDisabled     (  );
+    if (! display_focus_mode)
+      SK_ImGui_EndDisabled   (  );
   }
 
   ImGui::EndGroup     ();
@@ -8891,7 +8895,11 @@ SK_ImGui_Toggle (void)
   SK_ImGui_Visible = (! SK_ImGui_Visible);
 
   if (SK_ImGui_Visible)
+  {
+    // Kill screensaver when opening the control panel
+    SK_TerminateProcesses (L"scrnsave.scr", true);
     ImGui::SetNextWindowFocus ();
+  }
 
   static HMODULE hModTBFix = SK_GetModuleHandle (L"tbfix.dll");
   static HMODULE hModTZFix = SK_GetModuleHandle (L"tzfix.dll");

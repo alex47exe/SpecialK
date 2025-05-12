@@ -53,8 +53,6 @@ bool SK_ImGui_WantKeyboardCapture (bool update = false);
 bool SK_ImGui_WantTextCapture     (void);
 void SK_ImGui_UpdateMouseTracker  (void);
 
-bool SK_WantBackgroundRender (void);
-
 void SK_Input_HookDI8         (void);
 void SK_Input_HookHID         (void);
 void SK_Input_HookRawInput    (void);
@@ -1202,6 +1200,7 @@ struct SK_HID_DeviceFile {
   bool isInputAllowed (void) const;
 
   bool filterHidOutput    (uint8_t report_id, DWORD dwSize, LPVOID data);
+  bool filterHidInput     (uint8_t report_id, DWORD dwSize, LPVOID data);
   int  neutralizeHidInput (uint8_t report_id, DWORD dwSize);
   int  remapHidInput      (void);
 

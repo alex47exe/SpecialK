@@ -680,6 +680,8 @@ struct
     sk::ParameterStringW* origin                  = nullptr;
     sk::ParameterFloat*   inset                   = nullptr;
     sk::ParameterInt*     duration                = nullptr;
+    sk::ParameterInt*     columns                 = nullptr;
+    sk::ParameterInt*     max_on_screen           = nullptr;
     } popup;
   } achievements;
 
@@ -1148,6 +1150,7 @@ struct {
 
     struct {
       sk::ParameterInt*   max_allowed_buffers     = nullptr;
+      sk::ParameterBool*  always_show_attach      = nullptr;
     } hid;
 
     sk::ParameterInt*     disabled_to_game        = nullptr;
@@ -1851,6 +1854,7 @@ auto DeclKeybind =
     ConfigEntry (input.gamepad.scepad.right_paddle_bind, L"Keyboard Input to Generate when Right Paddle is Pressed",   dll_ini,         L"Input.libScePad",       L"RightPaddle"),
     ConfigEntry (input.gamepad.scepad.touch_click_bind,  L"Keyboard Input to Generate when Touch Pad is Clicked",      dll_ini,         L"Input.libScePad",       L"TouchpadClick"),
 
+    ConfigEntry (input.gamepad.hid.always_show_attach,   L"Show HID Attach Notifications if no Conflicts are Detected",input_ini,       L"Input.HID",             L"AlwaysShowAttachNotifications"),
     ConfigEntry (input.gamepad.low_battery_warning,      L"Percentage when SK will warn controller batteries are low", input_ini,       L"Input.Battery",         L"WarnIfPercentIsBelow"),
 
  //DEPRECATED  (                                                                                                                       L"Input.XInput",          L"DisableRumble"),
@@ -2234,6 +2238,9 @@ auto DeclKeybind =
     ConfigEntry (platform.achievements.popup.show_title, L"Achievement Popup Includes Game Title?",                    platform_ini,    L"Platform.Achievements", L"ShowPopupTitle"),
     ConfigEntry (platform.achievements.popup.inset,      L"Achievement Notification Inset X",                          platform_ini,    L"Platform.Achievements", L"PopupInset"),
     ConfigEntry (platform.achievements.popup.duration,   L"Achievement Popup Duration (in ms)",                        platform_ini,    L"Platform.Achievements", L"PopupDuration"),
+    ConfigEntry (platform.achievements.popup.columns,    L"Maximum columns to fill if achievement popups do not fit",  platform_ini,    L"Platform.Achievements", L"MaxPopupColumns"),
+    ConfigEntry (platform.achievements.popup.
+                                        max_on_screen,   L"Maximum number of achievement popups visible at once",      platform_ini,    L"Platform.Achievements", L"MaxPopupsOnScreen"),
 
     ConfigEntry (platform.system.notify_corner,          L"Overlay Notification Position  (non-Big Picture Mode)",     dll_ini,         L"Platform.System",       L"NotifyCorner"),
     ConfigEntry (platform.system.reuse_overlay_pause,    L"Pause Overlay Aware games when control panel is visible",   dll_ini,         L"Platform.System",       L"ReuseOverlayPause"),
@@ -3428,6 +3435,13 @@ auto DeclKeybind =
                                  blackout_gamepads =  true;
         config.input.keyboard.disable_ime          =  true;
 
+        config.compatibility.init_on_separate_thread
+                                                   =  false;
+        compatibility.async_init->store (
+          config.compatibility.init_on_separate_thread
+        );
+        SK_LoadLibraryW (LR"(NVStreamline\production\sl.interposer.dll)");
+
         // Delay the application of framerate patch in case other mods are
         //   doing the same thing...
         SK_RunOnce (plugin_mgr->init_fns.insert (SK_ACS_InitPlugin));
@@ -3795,6 +3809,23 @@ auto DeclKeybind =
         config.input.gamepad.xinput.placehold [1]   = false;
         config.input.gamepad.xinput.placehold [2]   = false;
         config.input.gamepad.xinput.placehold [3]   = false;
+      } break;
+
+      case SK_GAME_ID::ClairObscur_Expedition33:
+      {
+        // Game may stop responding to keyboard/gamepad input if cursor leaves game window!
+        config.window.confine_cursor = true;
+
+        config.apis.d3d9.hook        = false;
+        config.apis.d3d9ex.hook      = false;
+        config.apis.OpenGL.hook      = false;
+        config.apis.Vulkan.hook      = false;
+
+        apis.d3d9.hook->store   (config.apis.d3d9.  hook);
+        apis.d3d9ex.hook->store (config.apis.d3d9ex.hook);
+        apis.OpenGL.hook->store (config.apis.OpenGL.hook);
+
+        config.apis.last_known       = SK_RenderAPI::D3D12;
       } break;
 
       case SK_GAME_ID::Metro2033:
@@ -5085,6 +5116,8 @@ auto DeclKeybind =
   input.gamepad.hook_scepad->load                 (config.input.gamepad.hook_scepad);
   input.gamepad.scepad.disable_touchpad->load     (config.input.gamepad.scepad.disable_touch);
   input.gamepad.scepad.share_clicks_touch->load   (config.input.gamepad.scepad.share_clicks_touch);
+  if (config.input.gamepad.scepad.share_clicks_touch)
+      config.input.gamepad.scepad.alias_trackpad_share = true;
   input.gamepad.scepad.mute_applies_to_game->load (config.input.gamepad.scepad.mute_applies_to_game);
   input.gamepad.scepad.enhanced_ps_button->load   (config.input.gamepad.scepad.enhanced_ps_button);
   input.gamepad.scepad.power_save_mode->load      (config.input.gamepad.scepad.power_save_mode);
@@ -5102,6 +5135,7 @@ auto DeclKeybind =
   input.gamepad.scepad.right_fn_bind->load        (config.input.gamepad.scepad.right_fn);
   input.gamepad.scepad.touch_click_bind->load     (config.input.gamepad.scepad.touch_click);
 
+  input.gamepad.hid.always_show_attach->load      (config.input.gamepad.hid.always_show_attach);
   input.gamepad.low_battery_warning->load         (config.input.gamepad.low_battery_percent);
 
   input.gamepad.xinput.ui_slot->load   ((int &)config.input.gamepad.xinput.ui_slot);
@@ -5592,7 +5626,10 @@ auto DeclKeybind =
   }
 
   platform.achievements.popup.inset->load    (config.platform.achievements.popup.inset);
+  platform.achievements.popup.max_on_screen
+                                      ->load (config.platform.achievements.popup.max_on_screen);
   platform.achievements.popup.duration->load (config.platform.achievements.popup.duration);
+  platform.achievements.popup.columns->load  (config.platform.achievements.popup.max_columns);
 
   if (config.platform.achievements.popup.duration == 0)
   {
@@ -6615,6 +6652,7 @@ SK_SaveConfig ( std::wstring name,
   input.gamepad.scepad.right_fn_bind->store        (config.input.gamepad.scepad.right_fn);
   input.gamepad.scepad.touch_click_bind->store     (config.input.gamepad.scepad.touch_click);
 
+  input.gamepad.hid.always_show_attach->store      (config.input.gamepad.hid.always_show_attach);
   input.gamepad.low_battery_warning->store         (config.input.gamepad.low_battery_percent);
 
 
@@ -7119,6 +7157,9 @@ SK_SaveConfig ( std::wstring name,
   platform.achievements.popup.duration->store     (config.platform.achievements.popup.duration);
   platform.achievements.popup.animate->store      (config.platform.achievements.popup.animate);
   platform.achievements.popup.show_title->store   (config.platform.achievements.popup.show_title);
+  platform.achievements.popup.columns->store      (config.platform.achievements.popup.max_columns);
+  platform.achievements.popup.max_on_screen
+                                     ->store      (config.platform.achievements.popup.max_on_screen);
 
   if (config.steam.appid == 0)
   {
