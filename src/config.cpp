@@ -289,7 +289,8 @@ SK_GetCurrentGameID (void)
           { L"SandFallEos-Win64-Shipping.exe",         SK_GAME_ID::ClairObscur_Expedition33     }, // Epic Version
           { L"SandFall-Win64-Shipping.exe",            SK_GAME_ID::ClairObscur_Expedition33     }, // Steam Version
           { L"SandFall-WinGDK-Shipping.exe",           SK_GAME_ID::ClairObscur_Expedition33     }, // Microsoft Store Version
-          { L"metro.exe",                              SK_GAME_ID::Metro2033                    }
+          { L"metro.exe",                              SK_GAME_ID::Metro2033                    },
+          { L"DOOMTheDarkAges.exe",                    SK_GAME_ID::DOOMTheDarkAges              }
         };
 
     first_check  = false;
@@ -1059,11 +1060,14 @@ struct {
     sk::ParameterInt*     enable_win_key          = nullptr;
     sk::ParameterInt*     alt_tab_adhd_pace       = nullptr;
     sk::ParameterBool*    disable_ime             = nullptr;
+    sk::ParameterBool*    prevent_no_legacy       = nullptr;
+    sk::ParameterBool*    prevent_no_hotkeys      = nullptr;
   } keyboard;
 
   struct
   {
     sk::ParameterInt*     disabled_to_game        = nullptr;
+    sk::ParameterBool*    prevent_no_legacy       = nullptr;
   } mouse;
 
   struct {
@@ -1769,8 +1773,11 @@ auto DeclKeybind =
     ConfigEntry (input.keyboard.enable_win_key,          L"Block, Unblock or use Game Behavior for Windows key",       dll_ini,         L"Input.Keyboard",        L"EnableWinKey"),
     ConfigEntry (input.keyboard.alt_tab_adhd_pace,       L"Minimum time, in milliseconds, between Alt-Tab usage",      dll_ini,         L"Input.Keyboard",        L"AltTabPacing"),
     ConfigEntry (input.keyboard.disable_ime,             L"Disable IME input services for the game",                   dll_ini,         L"Input.Keyboard",        L"DisableIME"),
+    ConfigEntry (input.keyboard.prevent_no_legacy,       L"Prevent games from disabling legacy keyboard messages",     dll_ini,         L"Input.Keyboard",        L"PreventRawInputNoLegacy"),
+    ConfigEntry (input.keyboard.prevent_no_hotkeys,      L"Prevent games from disabling hotkeys",                      dll_ini,         L"Input.Keyboard",        L"PreventRawInputNoHotkeys"),
 
     ConfigEntry (input.mouse.disabled_to_game,           L"Completely stop all mouse input from reaching the Game",    dll_ini,         L"Input.Mouse",           L"DisabledToGame"),
+    ConfigEntry (input.mouse.prevent_no_legacy,          L"Prevent games from disabling legacy mouse messages",        dll_ini,         L"Input.Mouse",           L"PreventRawInputNoLegacy"),
 
     ConfigEntry (input.cursor.manage,                    L"Manage Cursor Visibility (due to inactivity)",              dll_ini,         L"Input.Cursor",          L"Manage"),
     ConfigEntry (input.cursor.keys_activate,             L"Keyboard Input Activates Cursor",                           dll_ini,         L"Input.Cursor",          L"KeyboardActivates"),
@@ -2223,12 +2230,15 @@ auto DeclKeybind =
     ConfigEntry (skif_autostop_behavior,                 L"Control when SKIF auto-stops, 0=Never, 1=AtStart, 2=AtExit",platform_ini,    L"SKIF.System",           L"AutoStopBehavior"),
 
 
+    // --- Not anymore, now it's global
+    //
     // The one odd-ball Steam achievement setting that can be specified per-game
-    ConfigEntry (platform.achievements.sound_file,       L"Achievement Sound File",                                    dll_ini,         L"Platform.Achievements", L"SoundFile"),
+    //ConfigEntry (platform.achievements.sound_file,       L"Achievement Sound File",                                    dll_ini,         L"Platform.Achievements", L"SoundFile"),
 
     // Steam Achievement Enhancements  (Global Settings)
     //////////////////////////////////////////////////////////////////////////
 
+    ConfigEntry (platform.achievements.sound_file,       L"Achievement Sound File",                                    platform_ini,    L"Platform.Achievements", L"SoundFile"),
     ConfigEntry (platform.achievements.play_sound,       L"Silence is Bliss?",                                         platform_ini,    L"Platform.Achievements", L"PlaySound"),
     ConfigEntry (platform.achievements.take_screenshot,  L"Precious Memories",                                         platform_ini,    L"Platform.Achievements", L"TakeScreenshot"),
     ConfigEntry (platform.achievements.
@@ -4104,6 +4114,17 @@ auto DeclKeybind =
       case SK_GAME_ID::DOOMEternal:
         config.apis.NvAPI.vulkan_bridge   = 1;
         config.system.global_inject_delay = 0.0f;
+        config.apis.last_known            = SK_RenderAPI::D3D11;
+        apis.last_known->store             ((int)config.apis.last_known);
+        break;
+
+      case SK_GAME_ID::DOOMTheDarkAges:
+        config.apis.last_known                = SK_RenderAPI::D3D11;
+        apis.last_known->store                 ((int)config.apis.last_known);
+        // Do not output Streamline debug, because it will create a terminal window
+        config.nvidia.dlss.streamline_dbg_out = false;
+        config.nvidia.reflex.native           =  true;
+        config.nvidia.reflex.vulkan           =  true;
         break;
 
       case SK_GAME_ID::GranblueFantasyRelink:
@@ -4955,10 +4976,13 @@ auto DeclKeybind =
   config.input.keyboard.
                     org_disabled_to_game= config.input.keyboard.disabled_to_game;
   input.keyboard.disable_ime->load       (config.input.keyboard.disable_ime);
+  input.keyboard.prevent_no_legacy->load (config.input.keyboard.prevent_no_legacy);
+  input.keyboard.prevent_no_hotkeys->load(config.input.keyboard.prevent_no_hotkeys);
 
   input.mouse.disabled_to_game->load     (config.input.mouse.disabled_to_game);
   config.input.mouse.
                  org_disabled_to_game =   config.input.mouse.disabled_to_game;
+  input.mouse.prevent_no_legacy->load    (config.input.mouse.prevent_no_legacy);
 
   input.cursor.manage->load              (config.input.cursor.manage);
   input.cursor.keys_activate->load       (config.input.cursor.keys_activate);
@@ -6522,8 +6546,11 @@ SK_SaveConfig ( std::wstring name,
   input.keyboard.enable_win_key->store        (config.input.keyboard.enable_win_key);
   input.keyboard.alt_tab_adhd_pace->store     (config.input.keyboard.alt_tab_adhd_pace);
   input.keyboard.disable_ime->store           (config.input.keyboard.disable_ime);
+  input.keyboard.prevent_no_legacy->store     (config.input.keyboard.prevent_no_legacy);
+  input.keyboard.prevent_no_hotkeys->store    (config.input.keyboard.prevent_no_hotkeys);
 
   input.mouse.disabled_to_game->store         (config.input.mouse.org_disabled_to_game);
+  input.mouse.prevent_no_legacy->store        (config.input.mouse.prevent_no_legacy);
 
   input.cursor.manage->store                  (config.input.cursor.manage);
   input.cursor.keys_activate->store           (config.input.cursor.keys_activate);

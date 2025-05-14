@@ -1037,7 +1037,8 @@ struct sk_config_t
       bool    low_latency_boost   =  false;
       bool    marker_optimization =  false;
       bool    enable              =  false;
-      bool    native              =  false;
+      bool    native              =  false; // Status, not settings
+      bool    vulkan              =  false; // Status, not settings
       bool    override            =  false;
       bool    combined_limiter    =  false;
       bool    disable_native      =  false;
@@ -1059,6 +1060,7 @@ struct sk_config_t
       float   forced_sharpness    =   0.0f;
       int     forced_multiframe   = SK_NoPreference;
       bool    allow_flip_metering =  false;
+      bool    streamline_dbg_out  =   true;
       struct {
         float performance         =   0.0f;
         float balanced            =   0.0f;
@@ -1241,8 +1243,10 @@ struct sk_config_t
       int     alt_tab_adhd_pace   = 0UL;
       volatile
       UINT64  temporarily_allow   =     0; // Up until temporarily_allow + 1 frames,
-      bool    disable_ime         = false;
-    } keyboard;                            //   ignore "disabled_to_game"
+      bool    disable_ime         = false; //   ignore "disabled_to_game"
+      bool    prevent_no_legacy   = false;
+      bool    prevent_no_hotkeys  = false;
+    } keyboard;                            
 
     struct mouse_s {
       // Translate WM_MOUSEWHEEL messages into actual events that will trigger
@@ -1255,10 +1259,11 @@ struct sk_config_t
       bool    ignore_small_clips  = false;// Ignore mouse clipping rects < 75% the
                                           //   dimensions of the client window, so
                                           //     that UI input works.
-      int     disabled_to_game    =    0; //0 = Never, 1 = Always, 2 = In Background
-      int     org_disabled_to_game=    0;
-      UINT64  temporarily_allow   =    0; // Up until temporarily_allow + 1 frames,
+      int     disabled_to_game    =     0;//0 = Never, 1 = Always, 2 = In Background
+      int     org_disabled_to_game=     0;
+      UINT64  temporarily_allow   =     0;// Up until temporarily_allow + 1 frames,
                                           //   ignore "disabled_to_game"
+      bool    prevent_no_legacy   = false;
     } mouse;
 
     // Avoids calling SK_Input_PreInit (...)
@@ -1834,6 +1839,7 @@ enum class SK_GAME_ID
   RiseOfRonin,                  // Ronin.exe
   ClairObscur_Expedition33,     // SandFallEos-Win64-Shipping.exe
   Metro2033,                    // metro.exe
+  DOOMTheDarkAges,              // DOOMTheDarkAges.exe
 
   UNKNOWN_GAME               = 0xffff
 };

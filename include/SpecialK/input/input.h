@@ -1071,6 +1071,7 @@ struct SK_HID_PlayStationDevice
   std::vector <BYTE>            input_report;
   std::vector <BYTE>            output_report;
   std::vector <BYTE>            feature_report;
+  HIDP_CAPS                     hid_caps;
 
   struct output_s {
              uint32_t           last_crc32c      = 0; // Avoid unnecessary output reports
@@ -1201,7 +1202,8 @@ struct SK_HID_DeviceFile {
 
   bool filterHidOutput    (uint8_t report_id, DWORD dwSize, LPVOID data);
   bool filterHidInput     (uint8_t report_id, DWORD dwSize, LPVOID data);
-  int  neutralizeHidInput (uint8_t report_id, DWORD dwSize);
+  int  neutralizeHidInput (uint8_t report_id, DWORD dwSize, LPVOID data = nullptr);
+  bool canNeutralizeInput (uint8_t report_id, DWORD dwSize);
   int  remapHidInput      (void);
 
   concurrency::concurrent_unordered_map <LPOVERLAPPED, SK_HID_OverlappedRequest> _overlappedRequests;

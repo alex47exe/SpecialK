@@ -2606,9 +2606,7 @@ public:
 
         if (config.platform.achievements.play_sound && (! unlock_sound.empty ()))
         {
-          SK_PlaySound ( (LPCWSTR)unlock_sound.data (),
-                                   nullptr, SND_ASYNC |
-                                            SND_MEMORY );
+          playSound ();
         }
 
         steam_log->Log ( L" Achievement: '%ws' (%ws) - Unlocked!",
@@ -2839,6 +2837,13 @@ private:
 
 static std::unique_ptr <SK_Steam_AchievementManager> steam_achievements = nullptr;
 static std::unique_ptr <SK_Steam_ScreenshotManager>  steam_screenshots  = nullptr;
+
+void
+SK_Steam_PlayUnlockSound (void)
+{
+  if (steam_achievements != nullptr)
+      steam_achievements->playSound ();
+}
 
 void
 SK_Steam_LoadUnlockSound (const wchar_t* wszUnlockSound)

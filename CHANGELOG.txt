@@ -1,4 +1,60 @@
-﻿25.5.11.4
+﻿25.5.14
+=======
+ + Added INI settings to control whether RawInput Keyboards/Mice are allowed
+     to disable legacy messages (default=yes) or disable hotkeys (default=yes).
+
+25.5.12.8
+=========
+ + Added support for (most) DLSS functionality in Vulkan.
+
+     >> Native Pacing mode and DLSS-G Pacing are both non-functional.
+        
+    * How much of that is due to DOOM's broken Reflex code is not clear yet.
+
+25.5.12.7
+=========
+ + Remove forced Vulkan bridge setting from DOOM The Dark Ages, it already
+     uses DXGI interop...
+
+25.5.12.6
+=========
+ + Disable minimumIntervalUs override in Vulkan Reflex for VRR displays.
+
+25.5.12.5
+=========
+ + Added Vulkan-based Reflex (NvLowLatencyVk.dll) latency analysis and override
+     support for games that natively support it.
+   * VK_NV_low_latency2 analysis and non-native Reflex injection unsupported.
+
+25.5.12.4
+=========
+ + Disable Streamline debug output in DOOM The Dark Ages, because it causes a
+     debug terminal to spawn.
+ + Added window activation hack for DOOM The Dark Ages to ensure that DualSense
+     controllers behave correctly after hot-plug.
+
+25.5.12.3
+=========
+ + Since Reflex is broken in DOOM The Dark Ages, whenever the game is set to
+     Low Latency mode on a VRR display, SK will force the correct framerate.
+
+   * User may supply a custom framerate limit even lower, but SK will enforce
+       the same upper-limit that Reflex normally would if it actually worked.
+
+25.5.12.2
+=========
+ + Add Vulkan extension hooks to disable Flip Metering in DOOM The Dark Ages.
+     * VK_NV_present_metering
+
+25.5.12.1
+=========
+ + Added compatibility hack for DOOM The Dark Ages' launcher.
+
+25.5.12
+=======
+ + Added file dialog to select a custom achievement unlock sound in-game.
+
+25.5.11.4
 =========
  + Added support for remapping Analog Sticks, Share / Trackpad Click and
      Cross / Circle and Square / Triangle face buttons in USB DualSense games.
