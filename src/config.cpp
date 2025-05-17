@@ -908,6 +908,8 @@ struct {
     sk::ParameterBool*    use_amd_mwaitx          = nullptr;
     sk::ParameterBool*    apply_streamline_pacing = nullptr;
     sk::ParameterInt*     streamline_limit_policy = nullptr;
+    sk::ParameterBool*    force_vk_mailbox        = nullptr;
+    sk::ParameterBool*    force_vk_adaptive       = nullptr;
 
     struct
     {
@@ -1068,6 +1070,7 @@ struct {
   {
     sk::ParameterInt*     disabled_to_game        = nullptr;
     sk::ParameterBool*    prevent_no_legacy       = nullptr;
+    sk::ParameterBool*    prevent_capture         = nullptr;
   } mouse;
 
   struct {
@@ -1778,6 +1781,7 @@ auto DeclKeybind =
 
     ConfigEntry (input.mouse.disabled_to_game,           L"Completely stop all mouse input from reaching the Game",    dll_ini,         L"Input.Mouse",           L"DisabledToGame"),
     ConfigEntry (input.mouse.prevent_no_legacy,          L"Prevent games from disabling legacy mouse messages",        dll_ini,         L"Input.Mouse",           L"PreventRawInputNoLegacy"),
+    ConfigEntry (input.mouse.prevent_capture,            L"Prevent games from blocking external window activation",    dll_ini,         L"Input.Mouse",           L"PreventRawInputCapture"),
 
     ConfigEntry (input.cursor.manage,                    L"Manage Cursor Visibility (due to inactivity)",              dll_ini,         L"Input.Cursor",          L"Manage"),
     ConfigEntry (input.cursor.keys_activate,             L"Keyboard Input Activates Cursor",                           dll_ini,         L"Input.Cursor",          L"KeyboardActivates"),
@@ -2027,6 +2031,8 @@ auto DeclKeybind =
     ConfigEntry (render.framerate.latent_sync.
                                           max_auto_bias, L"Maximum percentage to bias towards low input latency",      dll_ini,         L"FrameRate.LatentSync",  L"MaxAutoBias"),
 
+    ConfigEntry (render.framerate.force_vk_mailbox,      L"Force Vulkan to use Mailbox Presentation Mode",             dll_ini,         L"Render.Vulkan",         L"ForceMailboxPresent"),
+    ConfigEntry (render.framerate.force_vk_adaptive,     L"Force Vulkan to use FIFO Relaxed Presentation Mode",        dll_ini,         L"Render.Vulkan",         L"ForceAdaptiveVSYNC"),
     ConfigEntry (render.framerate.allow_dwm_tearing,     L"Enable DWM Tearing (Windows 10+)",                          dll_ini,         L"Render.DXGI",           L"AllowTearingInDWM"),
     ConfigEntry (render.framerate.drop_late_frames,      L"Enable Flip Model to Render (and drop) frames at rates >"
                                                          L"refresh rate with VSYNC enabled (similar to NV Fast Sync).",dll_ini,         L"Render.DXGI",           L"DropLateFrames"),
@@ -4728,6 +4734,8 @@ auto DeclKeybind =
     config.render.framerate.disable_flip = false;
   }
 
+  render.framerate.force_vk_mailbox->load  (config.render.framerate.force_vk_mailbox);
+  render.framerate.force_vk_adaptive->load (config.render.framerate.force_vk_adaptive);
   render.framerate.allow_dwm_tearing->load (config.render.dxgi.allow_tearing);
   render.framerate.flip_sequential->load   (config.render.framerate.flip_sequential);
 
@@ -4983,6 +4991,7 @@ auto DeclKeybind =
   config.input.mouse.
                  org_disabled_to_game =   config.input.mouse.disabled_to_game;
   input.mouse.prevent_no_legacy->load    (config.input.mouse.prevent_no_legacy);
+  input.mouse.prevent_capture->load      (config.input.mouse.prevent_capture);
 
   input.cursor.manage->load              (config.input.cursor.manage);
   input.cursor.keys_activate->load       (config.input.cursor.keys_activate);
@@ -6551,6 +6560,7 @@ SK_SaveConfig ( std::wstring name,
 
   input.mouse.disabled_to_game->store         (config.input.mouse.org_disabled_to_game);
   input.mouse.prevent_no_legacy->store        (config.input.mouse.prevent_no_legacy);
+  input.mouse.prevent_capture->store          (config.input.mouse.prevent_capture);
 
   input.cursor.manage->store                  (config.input.cursor.manage);
   input.cursor.keys_activate->store           (config.input.cursor.keys_activate);
@@ -6968,6 +6978,8 @@ SK_SaveConfig ( std::wstring name,
       render.framerate.flip_discard->store        (config.render.framerate.flip_discard);
       render.framerate.flip_sequential->store     (config.render.framerate.flip_sequential);
       render.framerate.disable_flip_model->store  (config.render.framerate.disable_flip);
+      render.framerate.force_vk_mailbox->store    (config.render.framerate.force_vk_mailbox);
+      render.framerate.force_vk_adaptive->store   (config.render.framerate.force_vk_adaptive);
       render.framerate.allow_dwm_tearing->store   (config.render.dxgi.allow_tearing);
       render.framerate.drop_late_frames->store    (config.render.framerate.drop_late_flips);
       if                                          (config.render.hdr.enable_32bpc)

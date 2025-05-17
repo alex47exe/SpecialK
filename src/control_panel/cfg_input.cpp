@@ -879,6 +879,11 @@ SK::ControlPanel::Input::Draw (void)
       if (changed)
       {   changed_once = true;
 
+        // Implicit RawInput keyboard flags to set for windows key
+        if (enable_win_key == 2) // Allow
+             config.input.keyboard.prevent_no_hotkeys =  true;
+        else config.input.keyboard.prevent_no_hotkeys = false;
+
         config.input.keyboard.enable_win_key = enable_win_key - 1;
         config.input.keyboard.enable_alt_tab = enable_alt_tab - 1;
 
@@ -3449,16 +3454,19 @@ SK_ImGui_CursorBoundaryConfig (bool window_mgmt = false)
     switch (ovr)
     {
       case 0:
-        config.window.confine_cursor   = 0;
-        config.window.unconfine_cursor = 0;
+        config.window.confine_cursor       = 0;
+        config.window.unconfine_cursor     = 0;
+        config.input.mouse.prevent_capture = false;
         break;
       case 1:
-        config.window.confine_cursor   = 1;
-        config.window.unconfine_cursor = 0;
+        config.window.confine_cursor       = 1;
+        config.window.unconfine_cursor     = 0;
+        config.input.mouse.prevent_capture = false;
         break;
       case 2:
-        config.window.confine_cursor   = 0;
-        config.window.unconfine_cursor = 1;
+        config.window.confine_cursor       = 0;
+        config.window.unconfine_cursor     = 1;
+        config.input.mouse.prevent_capture = true;
         break;
     }
 

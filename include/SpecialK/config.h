@@ -720,6 +720,8 @@ struct sk_config_t
       bool    sleepless_render    = false;
       bool    sleepless_window    = false;
       bool    enable_mmcss        =  true;
+      bool    force_vk_mailbox    = false;
+      bool    force_vk_adaptive   = false;
       int     enforcement_policy  =     4; // Refer to framerate.cpp
       struct {
         bool  waiting             =  true; // VRR users have the limiter default to low-latency
@@ -1264,6 +1266,7 @@ struct sk_config_t
       UINT64  temporarily_allow   =     0;// Up until temporarily_allow + 1 frames,
                                           //   ignore "disabled_to_game"
       bool    prevent_no_legacy   = false;
+      bool    prevent_capture     = false;
     } mouse;
 
     // Avoids calling SK_Input_PreInit (...)
