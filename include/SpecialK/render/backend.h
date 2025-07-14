@@ -283,6 +283,12 @@ public:
       DXGI_RATIONAL       refresh              = { 0, 0 };
     } native;
 
+    struct vrr_caps_s {
+      uint16_t            min_refresh          =   0;
+      uint16_t            max_refresh          =   0;
+      char                type [32]            = "NVIDIA G-SYNC";
+    } vrr;
+
     struct nvapi_ctx_s {
       NvPhysicalGpuHandle gpu_handle           =   nullptr;
       NvDisplayHandle     display_handle       =   nullptr;
@@ -291,6 +297,7 @@ public:
       NV_MONITOR_CAPABILITIES
                           monitor_caps         = { };
       BOOL                vrr_enabled          =  -1;
+      BOOL                true_gsync           =   0;
 
       static output_s*    getDisplayFromId     (NvU32           display_id)     noexcept;
       static output_s*    getDisplayFromHandle (NvDisplayHandle display_handle) noexcept;
@@ -577,6 +584,7 @@ public:
     //   to flag the game and start disabling features!
     bool                  unity                = false;
     bool                  unreal               = false;
+    bool                  xgs_Framework        = false;
     bool                  capcom               = false;
     bool                  sdl                  = false;
     bool                  atlus                = false;
@@ -697,8 +705,16 @@ public:
       VK_NV_low_latency2 = 2
     } api = None;
 
-    bool getLatencyReport (NV_LATENCY_RESULT_PARAMS*) const;
-    bool isSupported      (void) const;
+    // Last frame that Reflex Sleep was called
+    volatile ULONG64 last_slept = 0;
+
+    // Returns the previous frame slept
+    ULONG64 sleep (void);
+
+    bool getLatencyReport   (NV_LATENCY_RESULT_PARAMS*) const;
+    bool isSupported        (void) const;
+    bool isPacingEligible   (void) const;
+    bool needsFallbackSleep (void) const;
   } vulkan_reflex;
 
 
@@ -742,6 +758,8 @@ public:
 
   std::string decodeEDIDForName      (uint8_t* edid, size_t length) const;
   POINT       decodeEDIDForNativeRes (uint8_t* edid, size_t length) const;
+  output_s::vrr_caps_s
+              decodeEDIDForVRRCaps   (uint8_t* edid, size_t length) const;
 
   bool resetTemporaryDisplayChanges (void);
 
@@ -810,6 +828,9 @@ const wchar_t*
 SK_Render_GetAPIName (SK_RenderAPI api);
 
 extern volatile ULONG64 SK_Reflex_LastFrameMarked;
+
+UINT SK_Reflex_CalculateSleepMinIntervalForVulkan (bool bLowLatency);
+bool SK_Reflex_IsVulkanNativePacingEligible       (void);
 
 __forceinline
 ULONG64

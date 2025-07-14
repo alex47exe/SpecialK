@@ -274,8 +274,8 @@
       <AdditionalOptions>/GUARD:NO /IGNORE:4099,4286 %(AdditionalOptions)</AdditionalOptions>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <CETCompat>false</CETCompat>
-      <StackReserveSize>0x200000</StackReserveSize>
-      <StackCommitSize>0x4000</StackCommitSize>
+      <StackReserveSize>0x800000</StackReserveSize>
+      <StackCommitSize>0x10000</StackCommitSize>
       <CreateHotPatchableImage>X86Image</CreateHotPatchableImage>
     </Link>
     <ProjectReference />
@@ -391,8 +391,8 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <AdditionalOptions>/GUARD:NO /IGNORE:4099,4286 %(AdditionalOptions)</AdditionalOptions>
       <RandomizedBaseAddress>false</RandomizedBaseAddress>
       <CETCompat>false</CETCompat>
-      <StackReserveSize>0x200000</StackReserveSize>
-      <StackCommitSize>0x4000</StackCommitSize>
+      <StackReserveSize>0x800000</StackReserveSize>
+      <StackCommitSize>0x10000</StackCommitSize>
       <CreateHotPatchableImage>X64Image</CreateHotPatchableImage>
     </Link>
     <ProjectReference />
@@ -462,6 +462,8 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <SDLCheck>false</SDLCheck>
       <DiagnosticsFormat>Caret</DiagnosticsFormat>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <FloatingPointExceptions>false</FloatingPointExceptions>
+      <IntelJCCErratum>true</IntelJCCErratum>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -492,12 +494,14 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <RegisterOutput>false</RegisterOutput>
       <CLRUnmanagedCodeCheck>false</CLRUnmanagedCodeCheck>
-      <CETCompat>true</CETCompat>
+      <CETCompat>false</CETCompat>
       <SectionAlignment>
       </SectionAlignment>
       <ShowProgress>NotSet</ShowProgress>
-      <StackReserveSize>0x200000</StackReserveSize>
-      <StackCommitSize>0x4000</StackCommitSize>
+      <StackReserveSize>
+      </StackReserveSize>
+      <StackCommitSize>
+      </StackCommitSize>
       <CreateHotPatchableImage>X86Image</CreateHotPatchableImage>
       <TurnOffAssemblyGeneration>true</TurnOffAssemblyGeneration>
       <IgnoreSpecificDefaultLibraries>MSVCRT</IgnoreSpecificDefaultLibraries>
@@ -611,8 +615,8 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <SectionAlignment>
       </SectionAlignment>
       <ShowProgress>NotSet</ShowProgress>
-      <StackReserveSize>0x200000</StackReserveSize>
-      <StackCommitSize>0x4000</StackCommitSize>
+      <StackReserveSize>0x800000</StackReserveSize>
+      <StackCommitSize>0x10000</StackCommitSize>
       <CreateHotPatchableImage>ItaniumImage</CreateHotPatchableImage>
       <TurnOffAssemblyGeneration>true</TurnOffAssemblyGeneration>
     </Link>
@@ -687,6 +691,8 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <SDLCheck>false</SDLCheck>
       <DiagnosticsFormat>Caret</DiagnosticsFormat>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <FloatingPointExceptions>false</FloatingPointExceptions>
+      <IntelJCCErratum>true</IntelJCCErratum>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
@@ -719,12 +725,14 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <RandomizedBaseAddress>true</RandomizedBaseAddress>
       <RegisterOutput>false</RegisterOutput>
       <CLRUnmanagedCodeCheck>false</CLRUnmanagedCodeCheck>
-      <CETCompat>true</CETCompat>
+      <CETCompat>false</CETCompat>
       <SectionAlignment>
       </SectionAlignment>
       <ShowProgress>NotSet</ShowProgress>
-      <StackReserveSize>0x200000</StackReserveSize>
-      <StackCommitSize>0x4000</StackCommitSize>
+      <StackReserveSize>
+      </StackReserveSize>
+      <StackCommitSize>
+      </StackCommitSize>
       <CreateHotPatchableImage>X64Image</CreateHotPatchableImage>
       <TurnOffAssemblyGeneration>true</TurnOffAssemblyGeneration>
       <IgnoreSpecificDefaultLibraries>MSVCRT</IgnoreSpecificDefaultLibraries>
@@ -842,8 +850,8 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <SectionAlignment>
       </SectionAlignment>
       <ShowProgress>NotSet</ShowProgress>
-      <StackReserveSize>0x200000</StackReserveSize>
-      <StackCommitSize>0x4000</StackCommitSize>
+      <StackReserveSize>0x800000</StackReserveSize>
+      <StackCommitSize>0x10000</StackCommitSize>
       <CreateHotPatchableImage>ItaniumImage</CreateHotPatchableImage>
       <TurnOffAssemblyGeneration>true</TurnOffAssemblyGeneration>
     </Link>
@@ -1795,6 +1803,7 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
     <ClInclude Include="include\SpecialK\steam_api.h" />
     <ClInclude Include="include\SpecialK\storefront\achievements.h" />
     <ClInclude Include="include\SpecialK\storefront\epic.h" />
+    <ClInclude Include="include\SpecialK\storefront\xbox.h" />
     <ClInclude Include="include\SpecialK\targetver.h" />
     <ClInclude Include="include\SpecialK\thread.h" />
     <ClInclude Include="include\SpecialK\tls.h" />
@@ -1855,13 +1864,6 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
     <ClInclude Include="include\vulkan\vulkan_xlib_xrandr.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="assassins_creed_shadows.cpp">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">stdcpp23</LanguageStandard>
-      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp23</LanguageStandard>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
-    </ClCompile>
     <ClCompile Include="depends\src\implot\implot.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release (clang)|Win32'">NotUsing</PrecompiledHeader>
@@ -1954,6 +1956,13 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release (clang)|x64'">false</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\plugins\armoredcore6.cpp" />
+    <ClCompile Include="src\plugins\assassins_creed_shadows.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">stdcpp23</LanguageStandard>
+      <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Release|x64'">stdcpp23</LanguageStandard>
+    </ClCompile>
     <ClCompile Include="src\plugins\bethesda.cpp" />
     <ClCompile Include="src\plugins\chrono_cross.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
@@ -2266,6 +2275,7 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
     <ClCompile Include="src\storefront\achievements.cpp" />
     <ClCompile Include="src\storefront\epic.cpp" />
     <ClCompile Include="src\storefront\platform.cpp" />
+    <ClCompile Include="src\storefront\xbox.cpp" />
     <ClCompile Include="src\thread.cpp" />
     <ClCompile Include="src\tls.cpp" />
     <ClCompile Include="src\update\archive.cpp" />

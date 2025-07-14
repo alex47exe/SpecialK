@@ -1592,8 +1592,8 @@ SK_ImGui_ToggleEx ( bool& toggle_ui,
   // Only allow one toggle per-frame, even if we wind up calling
   //   this function multiple times to translate HID to XInput...
   //
-  static ULONG64              ulLastToggleFrame = 0;
-  if (SK_GetFramesDrawn () != ulLastToggleFrame)
+  static ULONG64             ulLastToggleFrame = 0;
+  if (SK_GetFramesDrawn () > ulLastToggleFrame + 2)
   {
     if (toggle_ui||toggle_nav)
     {
@@ -2463,6 +2463,7 @@ SK_ImGui_PollGamepad_EndFrame (XINPUT_STATE* pState)
 
 #include <SpecialK/core.h>
 #include <SpecialK/widgets/widget.h>
+#include <SpecialK/storefront/xbox.h>
 
 #define SK_Threshold(x,y) (x) > (y) ? ( (x) - (y) ) : 0
 
@@ -2651,6 +2652,161 @@ SK_ImGui_PollGamepad (void)
           );
       }
     }
+
+#if 0 // HOWTO synthesize input for GameBar...?
+    if (SK_Xbox_GetOverlayState (false))
+    {
+      if (last_state.dwPacketNumber <= state.dwPacketNumber)
+      {
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_UP) != 0)
+        {
+          BYTE bScancode =
+            (BYTE)MapVirtualKey (VK_UP, 0);
+      
+          DWORD dwFlags =
+            ( bScancode & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_UP, bScancode, dwFlags,                   0);
+          SK_keybd_event (VK_UP, bScancode, dwFlags | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_DOWN) != 0)
+        {
+          BYTE bScancode =
+            (BYTE)MapVirtualKey (VK_DOWN, 0);
+      
+          DWORD dwFlags =
+            ( bScancode & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_DOWN, bScancode, dwFlags,                   0);
+          SK_keybd_event (VK_DOWN, bScancode, dwFlags | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_LEFT) != 0)
+        {
+          BYTE bScancode =
+            (BYTE)MapVirtualKey (VK_LEFT, 0);
+      
+          DWORD dwFlags =
+            ( bScancode & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_LEFT, bScancode, dwFlags,                   0);
+          SK_keybd_event (VK_LEFT, bScancode, dwFlags | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) != 0)
+        {
+          BYTE bScancode =
+            (BYTE)MapVirtualKey (VK_RIGHT, 0);
+      
+          DWORD dwFlags =
+            ( bScancode & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_RIGHT, bScancode, dwFlags,                   0);
+          SK_keybd_event (VK_RIGHT, bScancode, dwFlags | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) != 0)
+        {
+          BYTE bScancode =
+            (BYTE)MapVirtualKey (VK_TAB, 0);
+      
+          DWORD dwFlags =
+            ( bScancode & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_TAB, bScancode, dwFlags,                   0);
+          SK_keybd_event (VK_TAB, bScancode, dwFlags | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) != 0)
+        {
+          BYTE bScancode0 =
+            (BYTE)MapVirtualKey (VK_TAB, 0);
+      
+          DWORD dwFlags0 =
+            ( bScancode0 & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+
+          BYTE bScancode1 =
+            (BYTE)MapVirtualKey (VK_SHIFT, 0);
+      
+          DWORD dwFlags1 =
+            ( bScancode1 & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_SHIFT, bScancode1, dwFlags1,                   0);
+          SK_keybd_event (VK_TAB,   bScancode0, dwFlags0,                   0);
+          SK_keybd_event (VK_TAB,   bScancode0, dwFlags0 | KEYEVENTF_KEYUP, 0);
+          SK_keybd_event (VK_SHIFT, bScancode1, dwFlags1 | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_A) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_A) != 0)
+        {
+          BYTE bScancode =
+            (BYTE)MapVirtualKey (VK_RETURN, 0);
+      
+          DWORD dwFlags =
+            ( bScancode & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_RETURN, bScancode, dwFlags,                   0);
+          SK_keybd_event (VK_RETURN, bScancode, dwFlags | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_B) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_B) != 0)
+        {
+          BYTE bScancode0 =
+            (BYTE)MapVirtualKey (VK_TAB, 0);
+      
+          DWORD dwFlags0 =
+            ( bScancode0 & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+
+          BYTE bScancode1 =
+            (BYTE)MapVirtualKey (VK_CONTROL, 0);
+      
+          DWORD dwFlags1 =
+            ( bScancode1 & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_CONTROL, bScancode1, dwFlags1,                   0);
+          SK_keybd_event (VK_TAB,     bScancode0, dwFlags0,                   0);
+          SK_keybd_event (VK_TAB,     bScancode0, dwFlags0 | KEYEVENTF_KEYUP, 0);
+          SK_keybd_event (VK_CONTROL, bScancode1, dwFlags1 | KEYEVENTF_KEYUP, 0);
+        }
+        if (((last_state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE) == 0) &&
+                  (state.Gamepad.wButtons & XINPUT_GAMEPAD_GUIDE) != 0)
+        {
+          BYTE bScancode =
+            (BYTE)MapVirtualKey (VK_ESCAPE, 0);
+      
+          DWORD dwFlags =
+            ( bScancode & 0xE0 ) == 0   ?
+              static_cast <DWORD> (0x0) :
+              static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY);
+      
+          SK_keybd_event (VK_ESCAPE, bScancode, dwFlags,                   0);
+          SK_keybd_event (VK_ESCAPE, bScancode, dwFlags | KEYEVENTF_KEYUP, 0);
+        }
+      }
+    }
+#endif
 
     last_state = state;
   }
@@ -2996,6 +3152,33 @@ ImGui::PlotLinesC ( const char*  label,         const float* values,
 }
 
 
+void
+SK_ImGui_KillScreensaver (void)
+{
+  static HANDLE hSignalScreensaver =
+    SK_CreateEvent (nullptr, FALSE, FALSE, nullptr);
+
+  static HANDLE hScreensaverTerminator =
+    SK_Thread_CreateEx ([](LPVOID)->DWORD
+    {
+      const HANDLE events [] = {
+        __SK_DLL_TeardownEvent, hSignalScreensaver
+      };
+
+      while ( WAIT_OBJECT_0 != WaitForMultipleObjects (2, events, FALSE, INFINITE) )
+      {
+        SK_TerminateProcesses (L"scrnsave.scr", true);
+      }
+
+      SK_Thread_CloseSelf ();
+
+      return 0;
+    }, L"[SK] Screensaver Terminator"
+  );
+
+  SetEvent (hSignalScreensaver);
+}
+
 #include <SpecialK/render/dxgi/dxgi_backend.h>
 
 static int64_t g_Time           = { };
@@ -3166,8 +3349,15 @@ SK_Input_UpdateGamepadActivityTimestamp (void)
   {
     if (! config.window.screensaver_active)
     {
-      BOOL                                                  bScreensaverActive = FALSE;
-      SystemParametersInfoA (SPI_GETSCREENSAVERRUNNING, 0, &bScreensaverActive, 0);
+      static auto constexpr RECHECK_TIME_IN_MS = 125UL;
+
+      static DWORD dwLastScreensaverCheck = 0;
+      static BOOL      bScreensaverActive = FALSE;
+
+      if (dwLastScreensaverCheck < SK::ControlPanel::current_time - RECHECK_TIME_IN_MS)
+      {   dwLastScreensaverCheck = SK::ControlPanel::current_time;
+        SystemParametersInfoA (SPI_GETSCREENSAVERRUNNING, 0, &bScreensaverActive, 0);
+      }
 
       config.window.screensaver_active |= bScreensaverActive;
     }
@@ -3184,7 +3374,7 @@ SK_Input_UpdateGamepadActivityTimestamp (void)
       //
       if (config.window.screensaver_active)
       {
-        SK_TerminateProcesses (L"scrnsave.scr", true);
+        SK_ImGui_KillScreensaver ();
       }
     }
 
@@ -3293,11 +3483,12 @@ SK_ImGui_UpdateClassCursor (void)
       game_window.game_cursor = game_window.real_cursor;
 }
 
-                HANDLE SK_ImGui_SignalBackupInputThread = 0;
-                bool   SK_ImGui_IsHWCursorVisible       = false;
-extern          BOOL  SK_ImGui_NewInput;
-extern volatile DWORD SK_ImGui_LastKeyboardProcMessageTime;
-extern volatile DWORD SK_ImGui_LastMouseProcMessageTime;
+                HANDLE SK_ImGui_SignalBackupInputThread                         = 0;
+                bool   SK_ImGui_IsHWCursorVisible                               = false;
+                bool   SK_ImGui_BackupInput_DisableGetKeyboardStateOptimization = false;
+extern          BOOL   SK_ImGui_NewInput;
+extern volatile DWORD  SK_ImGui_LastKeyboardProcMessageTime;
+extern volatile DWORD  SK_ImGui_LastMouseProcMessageTime;
 
 DWORD
 WINAPI
@@ -3309,8 +3500,9 @@ SK_ImGui_BackupInputThread (LPVOID)
     { __SK_DLL_TeardownEvent,
         SK_ImGui_SignalBackupInputThread };
 
-  DWORD  dwWaitState  = WAIT_TIMEOUT;
-  while (dwWaitState != WAIT_OBJECT_0)
+  static BYTE  last_keyboard_state [256] = {};
+  DWORD        dwWaitState  = WAIT_TIMEOUT;
+  while       (dwWaitState != WAIT_OBJECT_0)
   {
     dwWaitState = 
       WaitForMultipleObjects (2, hEvents, FALSE, SK_ImGui_Active () ? 3 : 100);
@@ -3332,22 +3524,36 @@ SK_ImGui_BackupInputThread (LPVOID)
         dwLastInput =
           std::max (dwLastInput, lii.dwTime);
 
-        auto& io =
-          ImGui::GetIO ();
+        bool bProcessInput = true;
+        if (!SK_ImGui_BackupInput_DisableGetKeyboardStateOptimization && SK_GetForegroundWindow () != game_window.hWnd) {
+          static BYTE       keyboard_state [256] = {};
+          GetKeyboardState (keyboard_state);
 
-        bool    last_keys              [256] = {};
-        memcpy (last_keys, io.KeysDown, 256);
+          bProcessInput = memcmp (keyboard_state, last_keyboard_state, sizeof (BYTE) * 256) != 0;
 
-        for (UINT i = 7 ; i < 255 ; ++i)
+          memcpy (last_keyboard_state,
+                  keyboard_state, sizeof (BYTE) * 256);
+        }
+
+        if (bProcessInput)
         {
-          bool last_state =
-            last_keys [i];
-          io.KeysDown [i] =
-            ((SK_GetAsyncKeyState (i) & 0x8000) != 0x0);
-          if (   last_state !=
-                io.KeysDown [i])
-          { if (io.KeysDown [i]) SK_Console::getInstance ()->KeyDown ((BYTE)(i & 0xFF), MAXDWORD);
-            else                 SK_Console::getInstance ()->KeyUp   ((BYTE)(i & 0xFF), MAXDWORD);
+          auto& io =
+            ImGui::GetIO ();
+
+          bool    last_keys              [256] = {};
+          memcpy (last_keys, io.KeysDown, 256);
+
+          for (UINT i = 7 ; i < 255 ; ++i)
+          {
+            bool last_state =
+              last_keys [i];
+            io.KeysDown [i] =
+              ((SK_GetAsyncKeyState (i) & 0x8000) != 0x0);
+            if (   last_state !=
+                  io.KeysDown [i])
+            { if (io.KeysDown [i]) SK_Console::getInstance ()->KeyDown ((BYTE)(i & 0xFF), MAXDWORD);
+              else                 SK_Console::getInstance ()->KeyUp   ((BYTE)(i & 0xFF), MAXDWORD);
+            }
           }
         }
       }
@@ -3372,8 +3578,15 @@ SK_ImGui_BackupInputThread (LPVOID)
         if (static DWORD dwLastExhaustiveCheck = 0;
                          dwLastExhaustiveCheck < SK_timeGetTime () - 25UL)
         {
-          BOOL                                                  bScreensaverActive = FALSE;
-          SystemParametersInfoA (SPI_GETSCREENSAVERRUNNING, 0, &bScreensaverActive, 0);
+          static auto constexpr RECHECK_TIME_IN_MS = 125UL;
+
+          static DWORD dwLastScreensaverCheck = 0;
+          static BOOL      bScreensaverActive = FALSE;
+
+          if (dwLastScreensaverCheck < SK::ControlPanel::current_time - RECHECK_TIME_IN_MS)
+          {   dwLastScreensaverCheck = SK::ControlPanel::current_time;
+            SystemParametersInfoA (SPI_GETSCREENSAVERRUNNING, 0, &bScreensaverActive, 0);
+          }
 
           config.window.screensaver_active =
             bScreensaverActive ? TRUE : SK_IsProcessRunning (L"scrnsave.scr") ?
@@ -3460,545 +3673,36 @@ SK_ImGui_HandleBorderlessMinimizeMaximize (void)
     last_up   = (SK_GetAsyncKeyState (VK_UP)   & 0x8000);
 }
 
-#include <SpecialK/update/network.h>
-#include <ShlGuid.h>
-#include <ShlObj_core.h>
-
-class SK_DropTarget : public IDropTarget {
-public:
-  SK_DropTarget (HWND hWnd)
-  {
-    m_hWnd       = hWnd;
-    m_ulRefCount = 1;
-    
-    // CLSCTX_INPROC_SERVER
-    if (FAILED (CoCreateInstance (CLSID_DragDropHelper, NULL, CLSCTX_INPROC_SERVER,
-                                 IID_IDropTargetHelper, reinterpret_cast <LPVOID *>(&m_pDropTargetHelper))))
-    {
-      m_pDropTargetHelper = nullptr;
-    }
-
-    else
-    {
-      // Initialize our supported clipboard formats
-      m_fmtSupported = {
-        { CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, // Unicode text (URLs)
-      //{ CF_HDROP,       nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, // Files
-        { CF_TEXT,        nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }  // ANSI text (URLs)
-      };
-    }
-  }
-
-  ~SK_DropTarget (void) = default;
-
-  // IUnknown methods
-  STDMETHODIMP QueryInterface (REFIID riid, void** ppvObject) override
-  {
-    if ( IsEqualIID (riid, IID_IUnknown) ||
-         IsEqualIID (riid, IID_IDropTarget) )
-    {
-      *ppvObject = this;
-
-      AddRef ();
-
-      return S_OK;
-    }
-
-    *ppvObject = nullptr;
-
-    return
-      E_NOINTERFACE;
-  }
-
-  STDMETHODIMP_(ULONG) AddRef (void) override
-  {
-    return
-      InterlockedIncrement (&m_ulRefCount);
-  }
-
-  STDMETHODIMP_(ULONG) Release (void) override
-  {
-    ULONG newRefCount =
-      InterlockedDecrement (&m_ulRefCount);
-
-    if (newRefCount == 0)
-    {
-      delete this;
-    }
-
-    return
-      newRefCount;
-  }
-
-  // IDropTarget methods
-  STDMETHODIMP DragEnter (IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
-  {
-    UNREFERENCED_PARAMETER (grfKeyState);
-
-    // Reset stuff
-    m_bAllowDrop  = false;
-    m_fmtDropping = nullptr;
-
-    if (pdwEffect == nullptr)
-      return E_INVALIDARG;
-
-    if (pDataObj == nullptr)
-      return E_UNEXPECTED;
-
-    // We are only interested in copy operations (for now)
-    if ((*pdwEffect & DROPEFFECT_COPY) == DROPEFFECT_COPY)
-    {
-      SK_ComPtr <IEnumFORMATETC>                            pEnumFormatEtc;
-      if (SUCCEEDED (pDataObj->EnumFormatEtc (DATADIR_GET, &pEnumFormatEtc.p)))
-      {
-        FORMATETC s_fmtSupported = { }; // FormatEtc supported by the source
-        ULONG     fetched        =   0;
-
-        // We need to find a matching format that both we and the source supports
-        while (pEnumFormatEtc->Next (1, &s_fmtSupported, &fetched) == S_OK)
-        {
-          for ( auto& fmt : m_fmtSupported )
-          {
-            if (fmt.cfFormat == s_fmtSupported.cfFormat && // Are we dealing with the same format type?
-                SUCCEEDED (pDataObj->QueryGetData (&fmt))) // Does it accept our format specification?
-            {
-              m_bAllowDrop  = true;
-              m_fmtDropping = &fmt;
-              *pdwEffect    = DROPEFFECT_COPY;
-
-              if (m_pDropTargetHelper != nullptr)
-                  m_pDropTargetHelper->DragEnter (m_hWnd, pDataObj, reinterpret_cast <LPPOINT> (&pt), *pdwEffect);
-
-              return S_OK;
-            }
-          }
-        }
-      }
-    }
-
-    *pdwEffect = DROPEFFECT_NONE;
-
-    return S_FALSE;
-  }
-
-  STDMETHODIMP DragOver (DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
-  {
-    UNREFERENCED_PARAMETER (grfKeyState);
-
-    if (pdwEffect == nullptr)
-      return E_INVALIDARG;
-
-    // Here we could theoretically check if an ImGui component that supports the text is being hovered
-    if (m_bAllowDrop && (*pdwEffect & DROPEFFECT_COPY) == DROPEFFECT_COPY)
-    {
-      *pdwEffect = DROPEFFECT_COPY;
-
-      if (m_pDropTargetHelper != nullptr)
-          m_pDropTargetHelper->DragOver (reinterpret_cast <LPPOINT> (&pt), *pdwEffect);
-
-      return S_OK;
-    }
-
-    *pdwEffect = DROPEFFECT_NONE;
-
-    return S_FALSE;
-  }
-
-  STDMETHODIMP DragLeave (void) override
-  {
-    if (m_pDropTargetHelper != nullptr)
-        m_pDropTargetHelper->DragLeave ();
-
-    m_bAllowDrop  = false;
-    m_fmtDropping = nullptr;
-
-    return S_OK;
-  }
-
-  STDMETHODIMP Drop (IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
-  {
-    UNREFERENCED_PARAMETER (grfKeyState);
-
-    if (pdwEffect == nullptr)
-      return E_INVALIDARG;
-
-    if (pDataObj == nullptr || m_fmtDropping == nullptr)
-      return E_UNEXPECTED;
-
-    if ((*pdwEffect & DROPEFFECT_COPY) == DROPEFFECT_COPY)
-    {
-      *pdwEffect = DROPEFFECT_COPY;
-
-      if (m_pDropTargetHelper != nullptr)
-          m_pDropTargetHelper->Drop (pDataObj, reinterpret_cast <LPPOINT> (&pt), *pdwEffect);
-
-      STGMEDIUM medium;
-
-      auto ReturnAndCleanUp = [&](void)
-      {
-        ReleaseStgMedium (&medium);
-
-        m_bAllowDrop  = false;
-        m_fmtDropping = nullptr;
-
-        return S_OK;
-      };
-
-      auto& rb =
-        SK_GetCurrentRenderBackend ();
-
-      // Unicode URLs
-      if (m_fmtDropping->cfFormat == CF_UNICODETEXT && SUCCEEDED (pDataObj->GetData (m_fmtDropping, &medium)))
-      {
-        const wchar_t* wszSource =
-          static_cast <const wchar_t *> (GlobalLock (medium.hGlobal));
-
-        if (wszSource != nullptr)
-        {
-          if (StrStrIW (wszSource, L".ini"))
-          {
-            wchar_t               wszHostApp [MAX_PATH + 2] = { };
-            wcsncpy_s            (wszHostApp, MAX_PATH, SK_GetHostApp (),
-                                   _TRUNCATE);
-            PathRemoveExtensionW (wszHostApp);
-
-            if (StrStrIW (wszSource, L"SpecialK_import") ||
-                StrStrIW (wszSource, wszHostApp))
-            {
-              std::filesystem::path dest =
-                SK_GetConfigPath ();
-
-              sk_download_request_s fetch_this (
-                  L"", wszSource,
-                    []( const std::vector <uint8_t>&& concat_buffer,
-                        const std::wstring_view       path)
-                     -> bool
-                        {
-                          const auto fs_path   = std::filesystem::path (path);
-                          auto       directory = fs_path.parent_path   (    );
-                          auto       filename  = fs_path.filename      (    );
-
-                          std::error_code                                       ec = { };
-                          if (! std::filesystem::exists             (directory, ec))
-                                std::filesystem::create_directories (directory, ec);
-
-                          if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
-                                     fOut != nullptr )
-                          {
-                            fwrite ( concat_buffer.data (),
-                                     concat_buffer.size (), 1, fOut );
-                            fclose (                           fOut );
-
-                            if (SK_GetDLLConfig ()->import_file (fs_path.wstring ().c_str ()))
-                            {   SK_GetDLLConfig ()->write ();
-                                  SK_LoadConfig ();
-
-                              SK_ImGui_CreateNotification (
-                                "INI.Import.Download", SK_ImGui_Toast::Success,
-                                  SK_FormatString ( "\n\t%ws successfully applied\n\n"
-                                                    "Some setting changes may require a game restart...",
-                                                    filename.wstring ().c_str () ).c_str(),
-                                  "INI Settings Imported", 30000,
-                                                                   SK_ImGui_Toast::UseDuration |
-                                                                   SK_ImGui_Toast::ShowTitle   |
-                                                                   SK_ImGui_Toast::ShowCaption |
-                                                                   SK_ImGui_Toast::ShowNewest );
-                            }
-
-                            DeleteFileW (fs_path.wstring ().c_str ());
-                          }
-
-                          return true;
-                        }
-                );
-
-              wchar_t        wszFileName [2050] = {};
-              wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
-              PathStripPath (wszFileName);
-
-              // Get rid of stuff that's not part of the actual filename.
-              wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
-              if (     wszHTTPArgs != nullptr)
-                      *wszHTTPArgs  = L'\0';
-
-              fetch_this.path =
-                (dest / wszFileName).wstring ();
-
-              SK_Network_EnqueueDownload (
-                std::move (fetch_this), true
-              );
-            }
-          }
-
-          if (SK_API_IsLayeredOnD3D11 (rb.api) && StrStrIW (wszSource, L".dds"))
-          {
-            std::filesystem::path dest =
-              *SK_D3D11_res_root;
-
-            dest /= LR"(inject\textures)";
-
-            sk_download_request_s fetch_this (
-                L"", wszSource,
-                  []( const std::vector <uint8_t>&& concat_buffer,
-                      const std::wstring_view       path)
-                   -> bool
-                      {
-                        const auto fs_path   = std::filesystem::path (path);
-                        auto       directory = fs_path.parent_path   (    );
-                        auto       filename  = fs_path.filename      (    );
-
-                        std::error_code                                       ec = { };
-                        if (! std::filesystem::exists             (directory, ec))
-                              std::filesystem::create_directories (directory, ec);
-
-                        if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
-                                   fOut != nullptr )
-                        {
-                          fwrite ( concat_buffer.data (),
-                                   concat_buffer.size (), 1, fOut );
-                          fclose (                           fOut );
-
-                          SK_ImGui_CreateNotification (
-                            "D3D11.TexMod.Download", SK_ImGui_Toast::Success,
-                              SK_FormatString ( "\t%ws successfully downloaded\t(%5.3f MiB)\n",
-                                                filename.wstring ().c_str (), (double)concat_buffer.size () / (1024.0 * 1024.0)).c_str(),
-                              "Injectable D3D11 Textures Downloaded", 30000,
-                                                               SK_ImGui_Toast::UseDuration |
-                                                               SK_ImGui_Toast::ShowTitle   |
-                                                               SK_ImGui_Toast::ShowCaption |
-                                                               SK_ImGui_Toast::ShowNewest );
-
-                          SK_D3D11_ReloadAllTextures ();
-                        }
-
-                        return true;
-                      }
-            );
-
-            wchar_t        wszFileName [2050] = {};
-            wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
-            PathStripPath (wszFileName);
-
-        // Get rid of stuff that's not part of the actual filename.
-            wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
-            if (     wszHTTPArgs != nullptr)
-                    *wszHTTPArgs  = L'\0';
-
-            fetch_this.path =
-              (dest / wszFileName).wstring ();
-
-            SK_Network_EnqueueDownload (
-              std::move (fetch_this), true
-            );
-          }
-
-          GlobalUnlock (medium.hGlobal);
-        }
-
-        ReturnAndCleanUp ();
-      }
-
-      // Files
-      else if (m_fmtDropping->cfFormat == CF_HDROP && SUCCEEDED (pDataObj->GetData (m_fmtDropping, &medium)))
-      {
-        HDROP hDrop =
-          static_cast<HDROP> (GlobalLock (medium.hGlobal));
-
-        if (hDrop != nullptr)
-        {
-          UINT numFiles =
-            DragQueryFile (hDrop, 0xFFFFFFFF, nullptr, 0);
-
-          if (numFiles > 0)
-          {
-            wchar_t                  wszFilePath [MAX_PATH + 2];
-            DragQueryFile (hDrop, 0, wszFilePath, MAX_PATH);
-
-            //dragDroppedFilePath =
-            //  std::wstring (wszFilePath);
-          }
-
-          GlobalUnlock (medium.hGlobal);
-        }
-
-        ReturnAndCleanUp ();
-      }
-
-      // URLs
-      else if (m_fmtDropping->cfFormat == CF_TEXT && SUCCEEDED (pDataObj->GetData (m_fmtDropping, &medium)))
-      {
-        const char* szSource =
-          static_cast <const char *> (GlobalLock (medium.hGlobal));
-
-        if (szSource != nullptr)
-        {
-          if (StrStrIA (szSource, ".ini"))
-          {
-            wchar_t               wszHostApp [MAX_PATH + 2] = { };
-            wcsncpy_s            (wszHostApp, MAX_PATH, SK_GetHostApp (),
-                                   _TRUNCATE);
-            PathRemoveExtensionW (wszHostApp);
-
-            if (StrStrIA (szSource, "SpecialK_import") ||
-                StrStrIA (szSource, SK_WideCharToUTF8 (wszHostApp).c_str ()))
-            {
-              std::filesystem::path dest =
-                SK_GetConfigPath ();
-
-              sk_download_request_s fetch_this (
-                  L"", szSource,
-                    []( const std::vector <uint8_t>&& concat_buffer,
-                        const std::wstring_view       path)
-                     -> bool
-                        {
-                          const auto fs_path   = std::filesystem::path (path);
-                          auto       directory = fs_path.parent_path   (    );
-                          auto       filename  = fs_path.filename      (    );
-
-                          std::error_code                                       ec = { };
-                          if (! std::filesystem::exists             (directory, ec))
-                                std::filesystem::create_directories (directory, ec);
-
-                          if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
-                                     fOut != nullptr )
-                          {
-                            fwrite ( concat_buffer.data (),
-                                     concat_buffer.size (), 1, fOut );
-                            fclose (                           fOut );
-
-                            if (SK_GetDLLConfig ()->import_file (fs_path.wstring ().c_str ()))
-                            {   SK_GetDLLConfig ()->write ();
-                                  SK_LoadConfig ();
-
-                              SK_ImGui_CreateNotification (
-                                "INI.Import.Download", SK_ImGui_Toast::Success,
-                                  SK_FormatString ( "\n\t%ws successfully applied\n\n"
-                                                    "Some setting changes may require a game restart...",
-                                                    filename.wstring ().c_str () ).c_str(),
-                                  "INI Settings Imported", 30000,
-                                                                   SK_ImGui_Toast::UseDuration |
-                                                                   SK_ImGui_Toast::ShowTitle   |
-                                                                   SK_ImGui_Toast::ShowCaption |
-                                                                   SK_ImGui_Toast::ShowNewest );
-                            }
-
-                            DeleteFileW (fs_path.wstring ().c_str ());
-                          }
-
-                          return true;
-                        }
-                );
-
-              wchar_t        wszFileName [2050] = {};
-              wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
-              PathStripPath (wszFileName);
-
-              // Get rid of stuff that's not part of the actual filename.
-              wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
-              if (     wszHTTPArgs != nullptr)
-                      *wszHTTPArgs  = L'\0';
-
-              fetch_this.path =
-                (dest / wszFileName).wstring ();
-
-              SK_Network_EnqueueDownload (
-                std::move (fetch_this), true
-              );
-            }
-          }
-
-          if (SK_API_IsLayeredOnD3D11 (rb.api) && StrStrIA (szSource, ".dds"))
-          {
-            std::filesystem::path dest =
-              *SK_D3D11_res_root;
-
-            dest /= LR"(inject\textures)";
-
-            sk_download_request_s fetch_this (
-                L"", szSource,
-                  []( const std::vector <uint8_t>&& concat_buffer,
-                      const std::wstring_view       path)
-                   -> bool
-                      {
-                        const auto fs_path   = std::filesystem::path (path);
-                        auto       directory = fs_path.parent_path   (    );
-                        auto       filename  = fs_path.filename      (    );
-
-                        std::error_code                                       ec = { };
-                        if (! std::filesystem::exists             (directory, ec))
-                              std::filesystem::create_directories (directory, ec);
-
-                        if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
-                                   fOut != nullptr )
-                        {
-                          fwrite ( concat_buffer.data (),
-                                   concat_buffer.size (), 1, fOut );
-                          fclose (                           fOut );
-
-                          SK_ImGui_CreateNotification (
-                            "D3D11.TexMod.Download", SK_ImGui_Toast::Success,
-                              SK_FormatString ( "\t%ws successfully downloaded\t(%5.3f MiB)\n",
-                                                filename.wstring ().c_str (), (double)concat_buffer.size () / (1024.0 * 1024.0)).c_str(),
-                              "Injectable D3D11 Textures Downloaded", 30000,
-                                                               SK_ImGui_Toast::UseDuration |
-                                                               SK_ImGui_Toast::ShowTitle   |
-                                                               SK_ImGui_Toast::ShowCaption |
-                                                               SK_ImGui_Toast::ShowNewest );
-
-                          SK_D3D11_ReloadAllTextures ();
-                        }
-
-                        return true;
-                      }
-            );
-
-            wchar_t        wszFileName [2050] = {};
-            wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
-            PathStripPath (wszFileName);
-
-            // Get rid of stuff that's not part of the actual filename.
-            wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
-            if (     wszHTTPArgs != nullptr)
-                    *wszHTTPArgs  = L'\0';
-
-            fetch_this.path =
-              (dest / wszFileName).wstring ();
-
-            SK_Network_EnqueueDownload (
-              std::move (fetch_this), true
-            );
-          }
-
-          GlobalUnlock (medium.hGlobal);
-        }
-
-        ReturnAndCleanUp ();
-      }
-    }
-
-    *pdwEffect = DROPEFFECT_NONE;
-
-    return S_FALSE;
-  }
-
-private:
-  HWND                          m_hWnd              = nullptr; // Required by m_pDropTargetHelper->DragEnter
-  ULONG                         m_ulRefCount        =       0;
-  bool                          m_bAllowDrop        =   false;
-  SK_ComPtr <IDropTargetHelper> m_pDropTargetHelper = nullptr; // Drag image/thumbnail helper
-  FORMATETC*                    m_fmtDropping       = nullptr;
-  std::vector <FORMATETC>       m_fmtSupported;
-};
+void
+SK_ImGui_InitDragAndDrop (void);
 
 void
-SK_ImGui_InitDragAndDrop (void)
+SK_ImGui_Util_TrackFgProcessChange (void)
 {
-  SK_RunOnce (
-    OleInitialize        (nullptr);
-    SK_SetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE, SK_GetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE) | WS_EX_ACCEPTFILES);
-    RevokeDragDrop       (game_window.hWnd);
-    RegisterDragDrop     (game_window.hWnd,                 new SK_DropTarget (game_window.hWnd))
+  return;
+
+  DWORD dwFgPid = 0x0;
+  GetWindowThreadProcessId (
+    SK_GetForegroundWindow (),
+      &dwFgPid
   );
+
+  static DWORD       dwFgPidLast = DWORD_MAX;
+  if (std::exchange (dwFgPidLast, dwFgPid) != dwFgPid)
+  {
+    HANDLE hProc =
+      OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, FALSE, dwFgPid);
+
+    if (hProc)
+    {
+      wchar_t                          wszProcessPath [MAX_PATH + 1];
+      GetProcessImageFileNameW (hProc, wszProcessPath, MAX_PATH);
+
+      SK_ImGui_Warning (wszProcessPath);
+
+      CloseHandle (hProc);
+    }
+  }
 }
 
 void

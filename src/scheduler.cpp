@@ -47,10 +47,7 @@ double                      dTicksPerMS                        =     0.0;
 Sleep_pfn                   Sleep_Original                     = nullptr;
 SleepEx_pfn                 SleepEx_Original                   = nullptr;
 QueryPerformanceCounter_pfn QueryPerformanceCounter_Original   = nullptr;
-QueryPerformanceCounter_pfn ZwQueryPerformanceCounter          = nullptr;
-QueryPerformanceCounter_pfn RtlQueryPerformanceCounter         = nullptr;
 QueryPerformanceCounter_pfn QueryPerformanceFrequency_Original = nullptr;
-QueryPerformanceCounter_pfn RtlQueryPerformanceFrequency       = nullptr;
 
 typedef BOOL (WINAPI *SwitchToThread_pfn)(void);
                       SwitchToThread_pfn
@@ -768,9 +765,9 @@ SwitchToThread_Detour (void)
 {
 #ifdef _M_AMD64
   struct game_s {
-    bool is_mhw   = SK_GetCurrentGameID () == SK_GAME_ID::MonsterHunterWorld;
-    bool is_aco   = SK_GetCurrentGameID () == SK_GAME_ID::AssassinsCreed_Odyssey;
-    bool is_elex2 = SK_GetCurrentGameID () == SK_GAME_ID::Elex2;
+    bool is_mhw     = SK_IsCurrentGame (SK_GAME_ID::MonsterHunterWorld);
+    bool is_aco     = SK_IsCurrentGame (SK_GAME_ID::AssassinsCreed_Odyssey);
+    bool is_elex2   = SK_IsCurrentGame (SK_GAME_ID::Elex2);
     bool is_generic = !(is_mhw || is_aco || is_elex2);
   } static game;
 
@@ -786,7 +783,6 @@ SwitchToThread_Detour (void)
     return bRet;
 #ifdef _M_AMD64
   }
-
 
   static volatile DWORD dwAntiDebugTid = 0;
 
@@ -941,9 +937,6 @@ SwitchToThread_Detour (void)
     bRet;
 #endif
 }
-
-
-#include <SpecialK/framerate.h>
 
 DWORD
 WINAPI
@@ -1366,6 +1359,17 @@ void
 WINAPI
 Sleep_Detour (DWORD dwMilliseconds)
 {
+  if (dwMilliseconds == 2)
+  {
+    if (config.input.gamepad.scepad.unlimit_polling_rate == true || config.input.gamepad.scepad.pollig_thread_tid != 0)
+    {
+      if (config.input.gamepad.scepad.pollig_thread_tid != 0 &&
+          config.input.gamepad.scepad.pollig_thread_tid == SK_GetCurrentThreadId ())
+      SK_RunOnce (SK_LOGi0 (L"libScePad Sleep(2) ignored..."));
+      return;
+    }
+  }
+
   SleepEx_Detour (dwMilliseconds, FALSE);
 }
 
@@ -1425,10 +1429,7 @@ BOOL
 WINAPI
 SK_QueryPerformanceCounter (_Out_ LARGE_INTEGER *lpPerformanceCount) noexcept
 {
-  if (RtlQueryPerformanceCounter != nullptr)
-    return RtlQueryPerformanceCounter (lpPerformanceCount);
-
-  else if (QueryPerformanceCounter_Original != nullptr)
+  if (QueryPerformanceCounter_Original != nullptr)
     return QueryPerformanceCounter_Original (lpPerformanceCount);
 
   else
@@ -1440,11 +1441,9 @@ WINAPI
 QueryPerformanceCounter_Detour (_Out_ LARGE_INTEGER* lpPerformanceCount) noexcept
 {
   return
-    RtlQueryPerformanceCounter          ?
-    RtlQueryPerformanceCounter          (lpPerformanceCount) :
-       QueryPerformanceCounter_Original ?
-       QueryPerformanceCounter_Original (lpPerformanceCount) :
-       QueryPerformanceCounter          (lpPerformanceCount);
+    QueryPerformanceCounter_Original ?
+    QueryPerformanceCounter_Original (lpPerformanceCount) :
+    QueryPerformanceCounter          (lpPerformanceCount);
 }
 
 
@@ -1522,8 +1521,6 @@ QueryPerformanceCounter_Shenmue_Detour (_Out_ LARGE_INTEGER* lpPerformanceCount)
           InterlockedExchange (&__SK_SHENMUE_FinishedButNotPresented, 0);
 
           BOOL bRet =
-            RtlQueryPerformanceCounter ?
-            RtlQueryPerformanceCounter          (lpPerformanceCount) :
                QueryPerformanceCounter_Original ?
                QueryPerformanceCounter_Original (lpPerformanceCount) :
                QueryPerformanceCounter          (lpPerformanceCount);
@@ -1571,19 +1568,12 @@ SK_GetPerfFreq (void)
 
   if (ReadAcquire (&_SK_PerfFreqInit) < 2)
   {
-    RtlQueryPerformanceFrequency =
-      (QueryPerformanceCounter_pfn)
-    SK_GetProcAddress ( L"NtDll",
-                         "RtlQueryPerformanceFrequency" );
-
     if (0 == InterlockedCompareExchange (&_SK_PerfFreqInit, 1, 0))
     {
-      if (RtlQueryPerformanceFrequency != nullptr)
-          RtlQueryPerformanceFrequency            (&_SK_PerfFreq);
-      else if (QueryPerformanceFrequency_Original != nullptr)
-               QueryPerformanceFrequency_Original (&_SK_PerfFreq);
+      if (QueryPerformanceFrequency_Original != nullptr)
+          QueryPerformanceFrequency_Original (&_SK_PerfFreq);
       else
-        QueryPerformanceFrequency                 (&_SK_PerfFreq);
+        QueryPerformanceFrequency            (&_SK_PerfFreq);
 
       InterlockedIncrement (&_SK_PerfFreqInit);
 
@@ -1594,12 +1584,10 @@ SK_GetPerfFreq (void)
     {
       LARGE_INTEGER freq2 = { };
 
-      if (RtlQueryPerformanceFrequency != nullptr)
-          RtlQueryPerformanceFrequency            (&freq2);
-      else if (QueryPerformanceFrequency_Original != nullptr)
-               QueryPerformanceFrequency_Original (&freq2);
+      if (QueryPerformanceFrequency_Original != nullptr)
+          QueryPerformanceFrequency_Original (&freq2);
       else
-        QueryPerformanceFrequency                 (&freq2);
+        QueryPerformanceFrequency            (&freq2);
 
       return
         freq2;
@@ -1766,21 +1754,6 @@ void SK_Scheduler_Init (void)
   {
     dTicksPerMS =
       static_cast <double> (SK_GetPerfFreq ().QuadPart) / 1000.0;
-
-    RtlQueryPerformanceFrequency =
-      (QueryPerformanceCounter_pfn)
-      SK_GetProcAddress ( L"NtDll",
-                           "RtlQueryPerformanceFrequency" );
-
-    RtlQueryPerformanceCounter =
-    (QueryPerformanceCounter_pfn)
-      SK_GetProcAddress ( L"NtDll",
-                           "RtlQueryPerformanceCounter" );
-
-    ZwQueryPerformanceCounter =
-      (QueryPerformanceCounter_pfn)
-      SK_GetProcAddress ( L"NtDll",
-                           "ZwQueryPerformanceCounter" );
 
     NtDelayExecution =
       (NtDelayExecution_pfn)

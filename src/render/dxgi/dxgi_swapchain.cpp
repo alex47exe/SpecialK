@@ -82,6 +82,15 @@ SK_DXGI_ReleaseSwapChainOnHWnd (
 );
 
 
+uint64_t SK_DXGI_SwapChainDestroyedOnFrame = 0;
+
+uint64_t
+SK_DXGI_LastFrameSwapChainDestroyed (void)
+{
+  return
+    SK_DXGI_SwapChainDestroyedOnFrame;
+}
+
 void
 __stdcall
 SK_DXGI_SwapChainDestructionCallback (void *pData)
@@ -95,6 +104,8 @@ SK_DXGI_SwapChainDestructionCallback (void *pData)
     SK_LOGi0 (
       L"SwapChain (%ph) and Framerate Limiter Destroyed",
        pSwapChain );
+
+    SK_DXGI_SwapChainDestroyedOnFrame = SK_GetFramesDrawn ();
   }
 
   if ( SK::Framerate::limiters_->count (pSwapChain->pReal) &&
@@ -103,6 +114,8 @@ SK_DXGI_SwapChainDestructionCallback (void *pData)
     SK_LOGi0 (
       L"SwapChain (%ph) and Framerate Limiter Destroyed",
        pSwapChain->pReal );
+
+    SK_DXGI_SwapChainDestroyedOnFrame = SK_GetFramesDrawn ();
   }
 }
 
@@ -409,7 +422,8 @@ HRESULT
 STDMETHODCALLTYPE
 IWrapDXGISwapChain::SetPrivateDataInterface (REFGUID Name, const IUnknown *pUnknown)
 {
-  SK_LOG_FIRST_CALL
+  // SK calls through its own wrapper, ignore those calls...
+  SK_LOG_FIRST_EXTERNAL_CALL
 
   return
     pReal->SetPrivateDataInterface (Name, pUnknown);
@@ -1086,7 +1100,8 @@ HRESULT
 STDMETHODCALLTYPE
 IWrapDXGISwapChain::GetFrameStatistics (DXGI_FRAME_STATISTICS *pStats)
 {
-  SK_LOG_FIRST_CALL
+  // SK calls through its own wrapper, ignore those calls...
+  SK_LOG_FIRST_EXTERNAL_CALL
 
   return
     pReal->GetFrameStatistics (pStats);
@@ -1299,7 +1314,8 @@ IWrapDXGISwapChain::SetMaximumFrameLatency (UINT MaxLatency)
 {
   assert (ver_ >= 2);
 
-  SK_LOG_FIRST_CALL
+  // SK calls through its own wrapper, ignore those calls...
+  SK_LOG_FIRST_EXTERNAL_CALL
 
   HRESULT hr = E_UNEXPECTED;
 
@@ -1338,7 +1354,8 @@ IWrapDXGISwapChain::GetMaximumFrameLatency (UINT *pMaxLatency)
 {
   assert (ver_ >= 2);
 
-  SK_LOG_FIRST_CALL
+  // SK calls through its own wrapper, ignore those calls...
+  SK_LOG_FIRST_EXTERNAL_CALL
 
   HRESULT hr = S_OK;
 
@@ -1382,9 +1399,10 @@ HANDLE
 STDMETHODCALLTYPE
 IWrapDXGISwapChain::GetFrameLatencyWaitableObject (void)
 {
-  assert(ver_ >= 2);
+  assert (ver_ >= 2);
 
-  SK_LOG_FIRST_CALL
+  // SK calls through its own wrapper, ignore those calls...
+  SK_LOG_FIRST_EXTERNAL_CALL
 
 #if 1
   if (config.render.framerate.pre_render_limit > 0)
@@ -1574,19 +1592,19 @@ IWrapDXGISwapChain::SetHDRMetaData ( DXGI_HDR_METADATA_TYPE  Type,
         }
       }
 
-      metadata.MinMasteringLuminance     = sk::narrow_cast <UINT>   (display.gamut.minY / 0.0001);
-      metadata.MaxMasteringLuminance     = sk::narrow_cast <UINT>   (display.gamut.maxY);
-      metadata.MaxContentLightLevel      = sk::narrow_cast <UINT16> (display.gamut.maxLocalY);
-      metadata.MaxFrameAverageLightLevel = sk::narrow_cast <UINT16> (display.gamut.maxAverageY);
+      metadata.MinMasteringLuminance     = sk::narrow_cast <UINT>   (round  (display.gamut.minY / 0.0001));
+      metadata.MaxMasteringLuminance     = sk::narrow_cast <UINT>   (roundf (display.gamut.maxY));
+      metadata.MaxContentLightLevel      = sk::narrow_cast <UINT16> (roundf (display.gamut.maxLocalY));
+      metadata.MaxFrameAverageLightLevel = sk::narrow_cast <UINT16> (roundf (display.gamut.maxAverageY));
 
-      metadata.BluePrimary  [0]          = sk::narrow_cast <UINT16> (0.1500/*display.gamut.xb*/ * 50000.0F);
-      metadata.BluePrimary  [1]          = sk::narrow_cast <UINT16> (0.0600/*display.gamut.yb*/ * 50000.0F);
-      metadata.RedPrimary   [0]          = sk::narrow_cast <UINT16> (0.6400/*display.gamut.xr*/ * 50000.0F);
-      metadata.RedPrimary   [1]          = sk::narrow_cast <UINT16> (0.3300/*display.gamut.yr*/ * 50000.0F);
-      metadata.GreenPrimary [0]          = sk::narrow_cast <UINT16> (0.3000/*display.gamut.xg*/ * 50000.0F);
-      metadata.GreenPrimary [1]          = sk::narrow_cast <UINT16> (0.6000/*display.gamut.yg*/ * 50000.0F);
-      metadata.WhitePoint   [0]          = sk::narrow_cast <UINT16> (0.3127/*display.gamut.Xw*/ * 50000.0F);
-      metadata.WhitePoint   [1]          = sk::narrow_cast <UINT16> (0.3290/*display.gamut.Yw*/ * 50000.0F);
+      metadata.BluePrimary  [0]          = sk::narrow_cast <UINT16> (round (0.1500/*display.gamut.xb*/ * 50000.0F));
+      metadata.BluePrimary  [1]          = sk::narrow_cast <UINT16> (round (0.0600/*display.gamut.yb*/ * 50000.0F));
+      metadata.RedPrimary   [0]          = sk::narrow_cast <UINT16> (round (0.6400/*display.gamut.xr*/ * 50000.0F));
+      metadata.RedPrimary   [1]          = sk::narrow_cast <UINT16> (round (0.3300/*display.gamut.yr*/ * 50000.0F));
+      metadata.GreenPrimary [0]          = sk::narrow_cast <UINT16> (round (0.3000/*display.gamut.xg*/ * 50000.0F));
+      metadata.GreenPrimary [1]          = sk::narrow_cast <UINT16> (round (0.6000/*display.gamut.yg*/ * 50000.0F));
+      metadata.WhitePoint   [0]          = sk::narrow_cast <UINT16> (round (0.3127/*display.gamut.Xw*/ * 50000.0F));
+      metadata.WhitePoint   [1]          = sk::narrow_cast <UINT16> (round (0.3290/*display.gamut.Yw*/ * 50000.0F));
         
       SK_RunOnce (
         SK_LOGi0 (
@@ -1762,6 +1780,14 @@ SK_DXGI_SwapChain_SetFullscreenState_Impl (
 
     else if ((game_window.wantBackgroundRender () || config.display.force_windowed) && Fullscreen != FALSE && config.render.dxgi.fake_fullscreen_mode == false)
     {
+      // This behavior is unintiuitive enough to warrant a warning every time it happens.
+      if (game_window.wantBackgroundRender () && !config.display.force_windowed)
+      {
+        SK_ImGui_Warning (
+          L"Requested Fullscreen Mode Has Been Ignored Because \"Continue Rendering\" is Configured."
+        );
+      }
+
       Fullscreen = FALSE;
       pTarget    = nullptr;
       dll_log->Log ( L"[   DXGI   ]  >> Display Override "
@@ -1819,6 +1845,11 @@ SK_DXGI_SwapChain_SetFullscreenState_Impl (
   HRESULT    ret = E_UNEXPECTED;
   DXGI_CALL (ret, IDXGISwapChain_SetFullscreenState (pSwapChain, Fullscreen, pTarget))
 
+  // It may be necessary to trigger a manual G-Sync status check after calling SetFullscreenState.
+  //InterlockedIncrement  (&__SK_NVAPI_UpdateGSync);
+  //rb.queueUpdateOutputs (    );
+  //rb.gsync_state.update (true);
+
   if ( SUCCEEDED (ret) )
   {
     if (SK_DXGI_IsFlipModelSwapChain (sd))
@@ -1869,6 +1900,9 @@ SK_DXGI_SwapChain_SetFullscreenState_Impl (
   if (SUCCEEDED (pSwapChain->GetFullscreenState (&bFinalState, nullptr)))
                         rb.fullscreen_exclusive = bFinalState;
 
+  // This hack has only ever helped one game: Elex 2, and seems to break more...
+  // It will remain here, but disabled, in case it may still do something useful.
+#if 0
   // Trigger mode switch if needed
   if (SUCCEEDED (ret) && bFinalState == TRUE && (sd.Windowed == Fullscreen))
   {
@@ -1911,6 +1945,7 @@ SK_DXGI_SwapChain_SetFullscreenState_Impl (
       }
     }
   }
+#endif
 
   return
     _Return (ret);
@@ -2664,6 +2699,27 @@ SK_DXGI_SwapChain_ResizeTarget_Impl (
 
   bool borderless = config.window.borderless || rb.isFakeFullscreen ();
 
+  if ( rb.isFakeFullscreen () &&
+        ( ((LONG)new_new_params.Width  != rb.displays [rb.active_display].rect.right  - rb.displays [rb.active_display].rect.left) ||
+          ((LONG)new_new_params.Height != rb.displays [rb.active_display].rect.bottom - rb.displays [rb.active_display].rect.top ) ) )
+  {
+    SK_ImGui_Warning (
+      L"\"Fake Fullscreen\" Mode is Active and Game Requested a non-native Display Resolution.\r\n\r\n\t"
+      L" * This will always fail (!!)\r\n\r\n"
+      L"Please Select your Native Screen Resolution in-game, or Disable \"Fake Fullscreen\" by "
+      L"right - clicking \"Fullscreen\" Resolution in the Control Panel."
+    );
+
+    SK_LOGi0 (
+      L"Incorrect Resolution Requested (%dx%d) for \"Fake Fullscreen\" Mode!",
+        new_new_params.Width,
+        new_new_params.Height
+    );
+
+    new_new_params.Width  = 0;
+    new_new_params.Height = 0;
+  }
+
   if (! config.display.allow_refresh_change)
   {
     if (new_new_params.RefreshRate.Denominator != 0)
@@ -2721,7 +2777,7 @@ SK_DXGI_SwapChain_ResizeTarget_Impl (
         else
         {
           new_new_params.RefreshRate.Numerator   =
-            sk::narrow_cast <UINT> (std::ceilf (config.render.framerate.refresh_rate));
+            sk::narrow_cast <UINT> (ceilf (config.render.framerate.refresh_rate));
           new_new_params.RefreshRate.Denominator = 1;
         }
       }

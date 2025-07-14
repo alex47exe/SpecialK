@@ -1029,6 +1029,12 @@ ReadFile_Detour (HANDLE       hFile,
     {
       case SK_Input_DeviceFileType::HID:
       {
+        if (((SK_HID_DeviceFile *)dev_ptr)->device_vid == SK_HID_VID_SONY)
+        {
+          config.input.gamepad.scepad.pollig_thread_tid =
+            SK_GetCurrentThreadId ();
+        }
+
         if (config.input.gamepad.disable_hid)
         {
           SetLastError (ERROR_DEVICE_NOT_CONNECTED);

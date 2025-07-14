@@ -21,7 +21,46 @@
 
 #include <SpecialK/stdafx.h>
 #include <SpecialK/storefront/epic.h>
+#include <SpecialK/storefront/xbox.h>
 #include <SpecialK/steam_api.h>
+
+#include <windows.gaming.ui.h>
+
+bool SK_Platform_GetOverlayState (bool real)
+{
+  using namespace SK;
+
+  bool state =
+    ((SteamAPI::AppID () != 0      ) ? SteamAPI::GetOverlayState (real) : false) ||
+    ((    EOS::UserID () != nullptr) ?      EOS::GetOverlayState (real) : false);
+
+  if (! state)
+  {
+    state = SK_Xbox_GetOverlayState (real);
+  }
+
+  return state;
+}
+
+bool SK_Platform_SetOverlayState (bool active)
+{
+  using namespace SK;
+
+  const bool previous =
+    SK_Platform_GetOverlayState (false);
+
+  if (SteamAPI::AppID () != 0      ) SteamAPI::SetOverlayState (active);
+  if (    EOS::UserID () != nullptr)      EOS::SetOverlayState (active);
+
+  return previous;
+}
+
+bool SK_Platform_IsOverlayAware (void)
+{
+  return
+    SK::SteamAPI::IsOverlayAware () ||
+         SK::EOS::IsOverlayAware ();
+}
 
 void SK_Platform_SetNotifyCorner (void)
 {

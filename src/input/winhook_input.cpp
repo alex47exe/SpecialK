@@ -654,10 +654,12 @@ SetWindowsHookExAW_Detour (
 
   if (SK_GetCallingDLL () != SK_GetModuleHandleW (L"user32.dll"))
   {
-    SK_ImGui_Warning (
-      SK_FormatStringW (
-        L"Undocumented SetWindowsHookExAW function called directly by %ws!", SK_GetCallerName ().c_str ()
-      ).c_str ()
+    SK_RunOnce (
+      SK_ImGui_Warning (
+        SK_FormatStringW (
+          L"Undocumented SetWindowsHookExAW function called directly by %ws!", SK_GetCallerName ().c_str ()
+        ).c_str ()
+      );
     );
 
     // The actual behavior of this function is known, but we're going to ignore it... for now.
@@ -677,8 +679,8 @@ SetWindowsHookExW_Detour (
   HINSTANCE hmod,
   DWORD     dwThreadId )
 {
-  wchar_t                   wszHookMod [MAX_PATH] = { };
-  GetModuleFileNameW (hmod, wszHookMod, MAX_PATH);
+  wchar_t                                  wszHookMod [MAX_PATH] = { };
+  GetModuleFileNameW (SK_GetCallingDLL (), wszHookMod, MAX_PATH);
 
   if (StrStrIW (wszHookMod, L"dinput") != nullptr)
   {
@@ -803,8 +805,38 @@ SetWindowsHookExA_Detour (
   HINSTANCE hmod,
   DWORD     dwThreadId )
 {
-  wchar_t                   wszHookMod [MAX_PATH] = { };
-  GetModuleFileNameW (hmod, wszHookMod, MAX_PATH);
+  if (idHook == WH_KEYBOARD_LL ||
+      idHook == WH_KEYBOARD    ||
+      idHook == WH_MOUSE_LL    ||
+      idHook == WH_MOUSE)
+  {
+    if (SK_IsCurrentGame (SK_GAME_ID::StellarBlade) && hmod == SK_GetModuleHandleW (nullptr))
+    {
+      return 0;
+    }
+
+    if (idHook == WH_KEYBOARD_LL && hmod == SK_GetModuleHandleW (nullptr))
+    {
+      if (PathFileExistsW (L"NoLLKeyboardHooks")) {
+        SK_LOGi0 (
+          L"Game tried to register a low-level keyboard hook, but "
+          L"we are ignoring it..."
+        );
+
+        return 0;
+      } else {
+        SK_LOGi0 (
+          L"Game has registered a low-level keyboard hook. "
+          L"Backup input GetKeyboardState optimization will be disabled."
+        );
+
+        SK_ImGui_BackupInput_DisableGetKeyboardStateOptimization = true;
+      }
+    }
+  }
+
+  wchar_t                                  wszHookMod [MAX_PATH] = { };
+  GetModuleFileNameW (SK_GetCallingDLL (), wszHookMod, MAX_PATH);
 
   if (StrStrIW (wszHookMod, L"dinput") != nullptr)
   {

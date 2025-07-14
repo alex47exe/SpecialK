@@ -344,6 +344,25 @@ NVSDK_NGX_Parameter_SetI_Detour (NVSDK_NGX_Parameter* InParameter, const char* I
 
     else if (config.nvidia.dlss.forced_preset != -1)
     {
+      // Deprecated, not removed yet
+      //if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughE ())
+      //{
+      //  if (config.nvidia.dlss.forced_preset >= NVSDK_NGX_DLSS_Hint_Render_Preset_A &&
+      //      config.nvidia.dlss.forced_preset <= NVSDK_NGX_DLSS_Hint_Render_Preset_E)
+      //  {
+      //    config.nvidia.dlss.forced_preset = NVSDK_NGX_DLSS_Hint_Render_Preset_F;
+      //  }
+      //}
+
+      if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughD ())
+      {
+        if (config.nvidia.dlss.forced_preset >= NVSDK_NGX_DLSS_Hint_Render_Preset_A &&
+            config.nvidia.dlss.forced_preset <= NVSDK_NGX_DLSS_Hint_Render_Preset_D)
+        {
+          config.nvidia.dlss.forced_preset = NVSDK_NGX_DLSS_Hint_Render_Preset_E;
+        }
+      }
+
       InValue = config.nvidia.dlss.forced_preset;
     }
 
@@ -359,6 +378,20 @@ NVSDK_NGX_Parameter_SetI_Detour (NVSDK_NGX_Parameter* InParameter, const char* I
         InValue = NVSDK_NGX_DLSS_Hint_Render_Preset_E;
       }
     }
+
+    // Deprecated, not removed yet
+    //if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughE ())
+    //{
+    //  if (InValue >  NVSDK_NGX_DLSS_Hint_Render_Preset_Default &&
+    //      InValue <= NVSDK_NGX_DLSS_Hint_Render_Preset_E)
+    //  {
+    //    SK_RunOnce (
+    //      SK_LOGi0 (L"Replacing Non-Existent DLSS 310.3.0+ Preset With F")
+    //    );
+    //
+    //    InValue = NVSDK_NGX_DLSS_Hint_Render_Preset_F;
+    //  }
+    //}
   }
 
   NVSDK_NGX_Parameter_SetI_Original (InParameter, InName, InValue);
@@ -403,6 +436,25 @@ NVSDK_NGX_Parameter_SetUI_Detour (NVSDK_NGX_Parameter* InParameter, const char* 
 
     else if (config.nvidia.dlss.forced_preset != -1)
     {
+      // Deprecated, not removed yet
+      //if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughE ())
+      //{
+      //  if (config.nvidia.dlss.forced_preset >= NVSDK_NGX_DLSS_Hint_Render_Preset_A &&
+      //      config.nvidia.dlss.forced_preset <= NVSDK_NGX_DLSS_Hint_Render_Preset_E)
+      //  {
+      //    config.nvidia.dlss.forced_preset = NVSDK_NGX_DLSS_Hint_Render_Preset_F;
+      //  }
+      //}
+
+      if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughD ())
+      {
+        if (config.nvidia.dlss.forced_preset >= NVSDK_NGX_DLSS_Hint_Render_Preset_A &&
+            config.nvidia.dlss.forced_preset <= NVSDK_NGX_DLSS_Hint_Render_Preset_D)
+        {
+          config.nvidia.dlss.forced_preset = NVSDK_NGX_DLSS_Hint_Render_Preset_E;
+        }
+      }
+
       InValue = config.nvidia.dlss.forced_preset;
     }
 
@@ -418,6 +470,20 @@ NVSDK_NGX_Parameter_SetUI_Detour (NVSDK_NGX_Parameter* InParameter, const char* 
         InValue = NVSDK_NGX_DLSS_Hint_Render_Preset_E;
       }
     }
+
+    // Deprecated, not removed yet
+    //if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughE ())
+    //{
+    //  if (InValue >  NVSDK_NGX_DLSS_Hint_Render_Preset_Default &&
+    //      InValue <= NVSDK_NGX_DLSS_Hint_Render_Preset_E)
+    //  {
+    //    SK_RunOnce (
+    //      SK_LOGi0 (L"Replacing Non-Existent DLSS 310.3.0+ Preset With F")
+    //    );
+    //
+    //    InValue = NVSDK_NGX_DLSS_Hint_Render_Preset_F;
+    //  }
+    //}
   }
 
   NVSDK_NGX_Parameter_SetUI_Original (InParameter, InName, InValue);
@@ -462,6 +528,25 @@ NVSDK_NGX_Parameter_SetULL_Detour (NVSDK_NGX_Parameter* InParameter, const char*
 
     else if (config.nvidia.dlss.forced_preset != -1)
     {
+      // Deprecated, not removed yet
+      //if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughE ())
+      //{
+      //  if (config.nvidia.dlss.forced_preset >= NVSDK_NGX_DLSS_Hint_Render_Preset_A &&
+      //      config.nvidia.dlss.forced_preset <= NVSDK_NGX_DLSS_Hint_Render_Preset_E)
+      //  {
+      //    config.nvidia.dlss.forced_preset = NVSDK_NGX_DLSS_Hint_Render_Preset_F;
+      //  }
+      //}
+
+      if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughD ())
+      {
+        if (config.nvidia.dlss.forced_preset >= NVSDK_NGX_DLSS_Hint_Render_Preset_A &&
+            config.nvidia.dlss.forced_preset <= NVSDK_NGX_DLSS_Hint_Render_Preset_D)
+        {
+          config.nvidia.dlss.forced_preset = NVSDK_NGX_DLSS_Hint_Render_Preset_E;
+        }
+      }
+
       InValue = config.nvidia.dlss.forced_preset;
     }
 
@@ -477,6 +562,20 @@ NVSDK_NGX_Parameter_SetULL_Detour (NVSDK_NGX_Parameter* InParameter, const char*
         InValue = NVSDK_NGX_DLSS_Hint_Render_Preset_E;
       }
     }
+
+    // Deprecated, not removed yet
+    //if (! SK_DLSS_Context::dlss_s::hasPresetsAThroughE ())
+    //{
+    //  if (InValue >  NVSDK_NGX_DLSS_Hint_Render_Preset_Default &&
+    //      InValue <= NVSDK_NGX_DLSS_Hint_Render_Preset_E)
+    //  {
+    //    SK_RunOnce (
+    //      SK_LOGi0 (L"Replacing Non-Existent DLSS 310.3.0+ Preset With F")
+    //    );
+    //
+    //    InValue = NVSDK_NGX_DLSS_Hint_Render_Preset_F;
+    //  }
+    //}
   }
 
   NVSDK_NGX_Parameter_SetULL_Original (InParameter, InName, InValue);
@@ -570,17 +669,17 @@ NVSDK_NGX_Parameter_GetUI_Detour (const NVSDK_NGX_Parameter *InParameter, const 
 
       if (scale != 0.0f)
       {
-        if (! strcmp (InName, NVSDK_NGX_Parameter_OutWidth))  { NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_Width,  OutValue); *OutValue = sk::narrow_cast <UINT> (*OutValue * scale); NVSDK_NGX_Parameter_SetUI_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutWidth,  *OutValue); }
-        if (! strcmp (InName, NVSDK_NGX_Parameter_OutHeight)) { NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_Height, OutValue); *OutValue = sk::narrow_cast <UINT> (*OutValue * scale); NVSDK_NGX_Parameter_SetUI_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutHeight, *OutValue); }
+        if (! strcmp (InName, NVSDK_NGX_Parameter_OutWidth))  { NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_Width,  OutValue); *OutValue = sk::narrow_cast <UINT> (roundf (*OutValue * scale)); NVSDK_NGX_Parameter_SetUI_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutWidth,  *OutValue); }
+        if (! strcmp (InName, NVSDK_NGX_Parameter_OutHeight)) { NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_Height, OutValue); *OutValue = sk::narrow_cast <UINT> (roundf (*OutValue * scale)); NVSDK_NGX_Parameter_SetUI_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutHeight, *OutValue); }
 
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Width))  { unsigned int ui_max_width = 0; NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Width, &ui_max_width); 
-         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1u, std::min (sk::narrow_cast <UINT> (*OutValue * config.nvidia.dlss.scale.dynamic_max)  + 2, ui_max_width));  }
+         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1u, std::min (sk::narrow_cast <UINT> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_max))  + 2, ui_max_width));  }
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Height)) { unsigned int ui_max_height = 0; NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Height, &ui_max_height); 
-         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1u, std::min (sk::narrow_cast <UINT> (*OutValue * config.nvidia.dlss.scale.dynamic_max) + 2, ui_max_height)); }
+         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1u, std::min (sk::narrow_cast <UINT> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_max)) + 2, ui_max_height)); }
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Width))  { unsigned int ui_min_width = 0; NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Width, &ui_min_width); 
-         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1u, std::max (sk::narrow_cast <UINT> (*OutValue * config.nvidia.dlss.scale.dynamic_min)  - 2, ui_min_width));  }
+         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1u, std::max (sk::narrow_cast <UINT> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_min))  - 2, ui_min_width));  }
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Height)) { unsigned int ui_min_height = 0; NVSDK_NGX_Parameter_GetUI_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Height, &ui_min_height); 
-         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1u, std::max (sk::narrow_cast <UINT> (*OutValue * config.nvidia.dlss.scale.dynamic_min) - 2, ui_min_height)); }
+         NVSDK_NGX_Parameter_GetUI_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1u, std::max (sk::narrow_cast <UINT> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_min)) - 2, ui_min_height)); }
       }
     }
 
@@ -589,7 +688,7 @@ NVSDK_NGX_Parameter_GetUI_Detour (const NVSDK_NGX_Parameter *InParameter, const 
       *OutValue = SK_NGX_GameSetPerfQuality;
     }
 
-    if (config.nvidia.dlss.forced_preset != -1 && StrStrA (InName, "DLSS.Hint.Render.Preset."))
+    if (config.nvidia.dlss.forced_preset != -1 && ! strncmp (InName, "DLSS.Hint.Render.Preset.", 24))
     {
       *OutValue = config.nvidia.dlss.forced_preset;
     }
@@ -674,7 +773,7 @@ NVSDK_NGX_Parameter_GetI_Detour (const NVSDK_NGX_Parameter *InParameter, const c
       *OutValue = SK_NGX_GameSetPerfQuality;
     }
 
-    if (config.nvidia.dlss.forced_preset != -1 && StrStrA (InName, "DLSS.Hint.Render.Preset."))
+    if (config.nvidia.dlss.forced_preset != -1 && ! strncmp (InName, "DLSS.Hint.Render.Preset.", 24))
     {
       *OutValue = config.nvidia.dlss.forced_preset;
     }
@@ -731,17 +830,17 @@ NVSDK_NGX_Parameter_GetULL_Detour (const NVSDK_NGX_Parameter *InParameter, const
 
       if (scale != 0.0f)
       {
-        if (! strcmp (InName, NVSDK_NGX_Parameter_OutWidth))  { NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_Width,  OutValue); *OutValue = sk::narrow_cast <unsigned long long> (*OutValue * scale); NVSDK_NGX_Parameter_SetULL_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutWidth,  *OutValue); }
-        if (! strcmp (InName, NVSDK_NGX_Parameter_OutHeight)) { NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_Height, OutValue); *OutValue = sk::narrow_cast <unsigned long long> (*OutValue * scale); NVSDK_NGX_Parameter_SetULL_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutHeight, *OutValue); }
+        if (! strcmp (InName, NVSDK_NGX_Parameter_OutWidth))  { NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_Width,  OutValue); *OutValue = sk::narrow_cast <unsigned long long> (roundf (*OutValue * scale)); NVSDK_NGX_Parameter_SetULL_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutWidth,  *OutValue); }
+        if (! strcmp (InName, NVSDK_NGX_Parameter_OutHeight)) { NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_Height, OutValue); *OutValue = sk::narrow_cast <unsigned long long> (roundf (*OutValue * scale)); NVSDK_NGX_Parameter_SetULL_Original ((NVSDK_NGX_Parameter *)InParameter, NVSDK_NGX_Parameter_OutHeight, *OutValue); }
 
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Width))  { unsigned long long ui_max_width = 0; NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Width, &ui_max_width); 
-         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1ull, std::min (sk::narrow_cast <unsigned long long> (*OutValue * config.nvidia.dlss.scale.dynamic_max)  + 2, ui_max_width));  }
+         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1ull, std::min (sk::narrow_cast <unsigned long long> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_max))  + 2, ui_max_width));  }
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Height)) { unsigned long long ui_max_height = 0; NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Max_Render_Height, &ui_max_height); 
-         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1ull, std::min (sk::narrow_cast <unsigned long long> (*OutValue * config.nvidia.dlss.scale.dynamic_max) + 2, ui_max_height)); }
+         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1ull, std::min (sk::narrow_cast <unsigned long long> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_max)) + 2, ui_max_height)); }
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Width))  { unsigned long long ui_min_width = 0; NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Width, &ui_min_width); 
-         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1ull, std::max (sk::narrow_cast <unsigned long long> (*OutValue * config.nvidia.dlss.scale.dynamic_min)  - 2, ui_min_width));  }
+         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutWidth, OutValue); *OutValue = std::max (1ull, std::max (sk::narrow_cast <unsigned long long> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_min))  - 2, ui_min_width));  }
         if (! strcmp (InName, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Height)) { unsigned long long ui_min_height = 0; NVSDK_NGX_Parameter_GetULL_Original (InParameter, NVSDK_NGX_Parameter_DLSS_Get_Dynamic_Min_Render_Height, &ui_min_height); 
-         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1ull, std::max (sk::narrow_cast <unsigned long long> (*OutValue * config.nvidia.dlss.scale.dynamic_min) - 2, ui_min_height)); }
+         NVSDK_NGX_Parameter_GetULL_Detour (InParameter, NVSDK_NGX_Parameter_OutHeight, OutValue); *OutValue = std::max (1ull, std::max (sk::narrow_cast <unsigned long long> (roundf (*OutValue * config.nvidia.dlss.scale.dynamic_min)) - 2, ui_min_height)); }
       }
     }
 
@@ -750,7 +849,7 @@ NVSDK_NGX_Parameter_GetULL_Detour (const NVSDK_NGX_Parameter *InParameter, const
       *OutValue = SK_NGX_GameSetPerfQuality;
     }
 
-    if (config.nvidia.dlss.forced_preset != -1 && StrStrA (InName, "DLSS.Hint.Render.Preset."))
+    if (config.nvidia.dlss.forced_preset != -1 && ! strncmp (InName, "DLSS.Hint.Render.Preset.", 24))
     {
       *OutValue = config.nvidia.dlss.forced_preset;
     }
@@ -1513,6 +1612,9 @@ SK_NGX_DLSS_ControlPanel (void)
         static const bool bHasPresetE =
           SK_DLSS_Context::dlss_s::hasPresetE ();
 
+        static const bool bHasPresetA =
+          SK_DLSS_Context::dlss_s::hasPresetsAThroughE ();
+
         static const bool bHasPresetJ =
           SK_DLSS_Context::dlss_s::hasPresetJ ();
 
@@ -1760,28 +1862,49 @@ SK_NGX_DLSS_ControlPanel (void)
 
 
         static const char* combo_str =
-          bHasPresetK ? "Game Default\0"
-                        "DLSS Default\0"
-                        "Override: A\0"
-                        "Override: B\0"
-                        "Override: C\0"
-                        "Override: D\0"
-                        "Override: E (DLSS 3.7+)\0"
-                        "Override: F\0"
-                        "Override: G (Invalid)\0"
-                        "Override: J\0"
-                        "Override: K\0\0"
+          bHasPresetK ? bHasPresetA ? "Game Default\0"
+                                      "DLSS Default\0"
+                                      "Override: A\0"
+                                      "Override: B\0"
+                                      "Override: C\0"
+                                      "Override: D\0"
+                                      "Override: E (DLSS 3.7+)\0"
+                                      "Override: F\0"
+                                      "Override: G (Invalid)\0"
+                                      "Override: J\0"
+                                      "Override: K\0\0"
+                                    : "Game Default\0"
+                                      "DLSS Default\0"
+                                      "Override: A (Deprecated)\0"
+                                      "Override: B (Deprecated)\0"
+                                      "Override: C (Deprecated)\0"
+                                      "Override: D (Deprecated)\0"
+                                      "Override: E (Deprecated)\0"
+                                      "Override: F\0"
+                                      "Override: G (Invalid)\0"
+                                      "Override: J\0"
+                                      "Override: K\0\0"
                       :
-          bHasPresetJ ? "Game Default\0"
-                        "DLSS Default\0"
-                        "Override: A\0"
-                        "Override: B\0"
-                        "Override: C\0"
-                        "Override: D\0"
-                        "Override: E (DLSS 3.7+)\0"
-                        "Override: F\0"
-                        "Override: G (Invalid)\0"
-                        "Override: J\0\0"
+          bHasPresetJ ? bHasPresetA ? "Game Default\0"
+                                      "DLSS Default\0"
+                                      "Override: A\0"
+                                      "Override: B\0"
+                                      "Override: C\0"
+                                      "Override: D\0"
+                                      "Override: E (DLSS 3.7+)\0"
+                                      "Override: F\0"
+                                      "Override: G (Invalid)\0"
+                                      "Override: J\0\0"
+                                    : "Game Default\0"
+                                      "DLSS Default\0"
+                                      "Override: A (Deprecated)\0"
+                                      "Override: B (Deprecated)\0"
+                                      "Override: C (Deprecated)\0"
+                                      "Override: D (Deprecated)\0"
+                                      "Override: E (Deprecated)\0"
+                                      "Override: F\0"
+                                      "Override: G (Invalid)\0"
+                                      "Override: J\0\0"
                       :
                         "Game Default\0"
                         "DLSS Default\0"
@@ -1809,6 +1932,16 @@ SK_NGX_DLSS_ControlPanel (void)
 
           if (config.nvidia.dlss.forced_preset != -1)
           {
+            // Deprecated, not removed yet
+            //if (! bHasPresetA)
+            //{
+            //  if (config.nvidia.dlss.forced_preset >= NVSDK_NGX_DLSS_Hint_Render_Preset_A &&
+            //      config.nvidia.dlss.forced_preset <= NVSDK_NGX_DLSS_Hint_Render_Preset_E)
+            //  {
+            //    config.nvidia.dlss.forced_preset = NVSDK_NGX_DLSS_Hint_Render_Preset_F;
+            //  }
+            //}
+
             NVSDK_NGX_Parameter_SetUI_Original (params, szPresetHint, config.nvidia.dlss.forced_preset);
           }
 
@@ -2005,8 +2138,8 @@ SK_NGX_DLSS_ControlPanel (void)
                              &cfg_var : &fDefaultScale;
 
               char      fmt [128] = { };
-              sprintf ( fmt, "%%6.4f\t(%ix%i)", static_cast <INT> (swapDesc.BufferDesc.Width  * *scale),
-                                                static_cast <INT> (swapDesc.BufferDesc.Height * *scale) );
+              sprintf ( fmt, "%%6.4f\t(%ix%i)", static_cast <INT> (roundf (swapDesc.BufferDesc.Width  * *scale)),
+                                                static_cast <INT> (roundf (swapDesc.BufferDesc.Height * *scale)) );
 
               if (ImGui::SliderFloat (szName, scale, 0.01f, 0.999f, fmt))
               {

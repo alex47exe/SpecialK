@@ -19,27 +19,32 @@
  *
 **/
 
-#ifndef __SK__CPL_PLATFORM_H__
-#define __SK__CPL_PLATFORM_H__
+#ifndef __SK__XBOX_H__
+#define __SK__XBOX_H__
+
+#include <windows.gaming.ui.h>
+
+#include <cstdint>
+#include <string>
+#include <vector>
+
+#include <SpecialK/log.h>
+#include <SpecialK/command.h>
 
 namespace SK
 {
-  namespace ControlPanel
+  namespace Xbox
   {
-    namespace Platform
-    {
-      bool Draw              (void);
-      bool DrawMenu          (void);
-      bool WarnIfUnsupported (void);
-    };
-  };
-};
+    void Init     (void);
+    void Shutdown (void);
 
-// If real, then use the state of the platform's actual overlay rather than the
-//   state that Special K fakes in order to pause games...
-bool SK_Platform_GetOverlayState (bool real = false);
-bool SK_Platform_SetOverlayState (bool active      ); // Returns the previous state
-bool SK_Platform_IsOverlayAware  (void);
-void SK_Platform_SetNotifyCorner (void);
+    bool  __stdcall GetOverlayState (bool real);
+  }
+}
 
-#endif /* __SK__CPL_PLATFORM_H__ */
+bool
+__stdcall
+SK_Xbox_GetOverlayState (bool real);
+
+
+#endif /* __SK__XBOX_H__ */

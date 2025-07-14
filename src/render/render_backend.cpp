@@ -37,6 +37,7 @@
 #include <SpecialK/render/dxgi/dxgi_hdr.h>
 
 #include <SpecialK/nvapi.h>
+#include <SpecialK/adl.h>
 
 volatile ULONG64 SK_RenderBackend::frames_drawn = 0ULL;
 
@@ -587,15 +588,53 @@ SK_BootOpenGL (void)
 }
 
 
+#define VK_ENABLE_BETA_EXTENSIONS
 #include "vulkan/vulkan.h"
 #include "vulkan/vulkan_win32.h"
 
+#undef VK_NV_low_latency2
+
+static bool SK_VK_HasLowLatency  = false;
+static bool SK_VK_HasLowLatency2 = false;
+
+void SK_Reflex_SetVulkanSwapchain (VkDevice device, VkSwapchainKHR swapchain);
+
+VkDevice       SK_Reflex_VkDevice    = 0;
+VkSwapchainKHR SK_Reflex_VkSwapchain = 0;
+VkSemaphore    SK_Reflex_VkSemaphore = 0;
+VkInstance     SK_Reflex_VkInstance  = 0;
+
+typedef VkResult (VKAPI_PTR *PFN_vkSetLatencySleepModeNV)(VkDevice device, VkSwapchainKHR swapchain, const VkLatencySleepModeInfoNV* pSleepModeInfo    );
+typedef VkResult (VKAPI_PTR *PFN_vkLatencySleepNV)       (VkDevice device, VkSwapchainKHR swapchain, const VkLatencySleepInfoNV*     pSleepInfo        );
+typedef void     (VKAPI_PTR *PFN_vkSetLatencyMarkerNV)   (VkDevice device, VkSwapchainKHR swapchain, const VkSetLatencyMarkerInfoNV* pLatencyMarkerInfo);
+typedef void     (VKAPI_PTR *PFN_vkGetLatencyTimingsNV)  (VkDevice device, VkSwapchainKHR swapchain,       VkGetLatencyMarkerInfoNV* pLatencyMarkerInfo);
+
+PFN_vkSetLatencySleepModeNV vkSetLatencySleepModeNV_Original = nullptr;
+PFN_vkLatencySleepNV        vkLatencySleepNV_Original        = nullptr;
+PFN_vkSetLatencyMarkerNV    vkSetLatencyMarkerNV_Original    = nullptr;
+PFN_vkGetLatencyTimingsNV   vkGetLatencyTimingsNV_Original   = nullptr;
+
+auto& SK_vkSetLatencySleepModeNV = vkSetLatencySleepModeNV_Original;
+auto& SK_vkLatencySleepNV        = vkLatencySleepNV_Original;
+auto& SK_vkSetLatencyMarkerNV    = vkSetLatencyMarkerNV_Original;
+auto& SK_vkGetLatencyTimingsNV   = vkGetLatencyTimingsNV_Original;
+
+PFN_vkCreateInstance                       vkCreateInstance_Original                       = nullptr;
+PFN_vkCreateDevice                         vkCreateDevice_Original                         = nullptr;
+PFN_vkQueueSubmit                          vkQueueSubmit_Original                          = nullptr;
+PFN_vkQueueSubmit2                         vkQueueSubmit2_Original                         = nullptr;
+PFN_vkBeginCommandBuffer                   vkBeginCommandBuffer_Original                   = nullptr;
 PFN_vkAcquireNextImageKHR                  vkAcquireNextImageKHR_Original                  = nullptr;
 PFN_vkAcquireNextImage2KHR                 vkAcquireNextImage2KHR_Original                 = nullptr;
 PFN_vkEnumerateInstanceExtensionProperties vkEnumerateInstanceExtensionProperties_Original = nullptr;
 PFN_vkEnumerateDeviceExtensionProperties   vkEnumerateDeviceExtensionProperties_Original   = nullptr;
 PFN_vkCreateSwapchainKHR                   vkCreateSwapchainKHR_Original                   = nullptr;
+PFN_vkQueuePresentKHR                      vkQueuePresentKHR_Original                      = nullptr;
+PFN_vkGetInstanceProcAddr                  vkGetInstanceProcAddr_SK                        = nullptr;
 PFN_vkGetDeviceProcAddr                    vkGetDeviceProcAddr_SK                          = nullptr;
+PFN_vkCreateSemaphore                      vkCreateSemaphore_SK                            = nullptr;
+PFN_vkWaitSemaphores                       vkWaitSemaphores_SK                             = nullptr;
+PFN_vkGetSemaphoreCounterValue             vkGetSemaphoreCounterValue_SK                   = nullptr;
 
 VkResult
 VKAPI_CALL
@@ -609,30 +648,6 @@ SK_VK_EnumerateInstanceExtensionProperties (
   const auto result =
     vkEnumerateInstanceExtensionProperties_Original (
             pLayerName, pPropertyCount, pProperties );
-
-  if (result == VK_SUCCESS && pProperties != nullptr)
-  {
-    for ( UINT i = 0 ; i < *pPropertyCount ; ++i )
-    {
-      auto property =
-        &pProperties [i];
-
-      if (! config.nvidia.dlss.allow_flip_metering)
-      {
-        // Erase this extension by duplicating the prior extension...
-        if (strcmp (property->extensionName, "VK_NV_present_metering") == 0){
-            memcpy (property, property-1, sizeof (VkExtensionProperties));
-
-          SK_RunOnce (
-            SK_LOGi0 (
-              L"Vulkan Extension: VK_NV_present_metering disabled in call to "
-              L"vkEnumerateInstanceExtensionProperties (...)"
-            )
-          );
-        }
-      }
-    }
-  }
 
   return result;
 }
@@ -659,11 +674,23 @@ SK_VK_EnumerateDeviceExtensionProperties (
       auto property =
         &pProperties [i];
 
+      if ((! SK_VK_HasLowLatency2) &&
+          (! strcmp (property->extensionName, VK_NV_LOW_LATENCY_2_EXTENSION_NAME)))
+      {
+        SK_VK_HasLowLatency2 = true;
+      }
+
+      if ((! SK_VK_HasLowLatency) &&
+          (! strcmp (property->extensionName, VK_NV_LOW_LATENCY_EXTENSION_NAME)))
+      {
+        SK_VK_HasLowLatency = true;
+      }
+
       if (! config.nvidia.dlss.allow_flip_metering)
       {
         // Erase this extension by duplicating the prior extension...
-        if (strcmp (property->extensionName, "VK_NV_present_metering") == 0){
-            memcpy (property, property-1, sizeof (VkExtensionProperties));
+        if (strcmp (property->extensionName, "VK_NV_present_metering") == 0)
+        {   memcpy (property, property-1, sizeof (VkExtensionProperties));
 
           SK_RunOnce (
             SK_LOGi0 (
@@ -726,6 +753,51 @@ vkAcquireNextImage2KHR_Detour (
 }
 
 VkResult
+SK_VK_CreateDevice (
+        VkPhysicalDevice       physicalDevice,
+  const VkDeviceCreateInfo*    pCreateInfo,
+  const VkAllocationCallbacks* pAllocator,
+        VkDevice*              pDevice )
+{
+  SK_LOG_FIRST_CALL
+
+  std::vector <const char*> extns;
+
+  for (auto i = 0u ; i < pCreateInfo->enabledExtensionCount ; ++i)
+  {
+    extns.push_back (pCreateInfo->ppEnabledExtensionNames [i]);
+  }
+
+  extns.push_back ("VK_NV_low_latency2");
+  extns.push_back ("VK_KHR_present_id");
+  extns.push_back ("VK_KHR_timeline_semaphore");
+
+  VkDeviceCreateInfo _CreateInfo = *pCreateInfo;
+
+  _CreateInfo.ppEnabledExtensionNames =                         extns.data ();
+  _CreateInfo.enabledExtensionCount   = static_cast <uint32_t> (extns.size ());
+
+  if ( VK_SUCCESS == vkCreateDevice_Original (physicalDevice, &_CreateInfo, pAllocator, pDevice) )
+  {
+    SK_Reflex_VkDevice  =  *pDevice;
+    SK_VK_HookFirstDevice (*pDevice);
+
+    return VK_SUCCESS;
+  }
+
+  auto result =
+    vkCreateDevice_Original (physicalDevice, pCreateInfo, pAllocator, pDevice);
+
+  if ( VK_SUCCESS == result )
+  {
+    SK_Reflex_VkDevice  =  *pDevice;
+    SK_VK_HookFirstDevice (*pDevice);
+  }
+
+  return result;
+}
+
+VkResult
 VKAPI_CALL
 SK_VK_CreateSwapchainKHR (
             VkDevice                   device,
@@ -735,10 +807,14 @@ SK_VK_CreateSwapchainKHR (
 {
   SK_LOG_FIRST_CALL
 
+  VkSwapchainLatencyCreateInfoNV
+    reflex_info                   = { };
+    reflex_info.sType             = VK_STRUCTURE_TYPE_SWAPCHAIN_LATENCY_CREATE_INFO_NV;
+    reflex_info.latencyModeEnable = TRUE;
   VkSurfaceFullScreenExclusiveInfoEXT
-    fse_info                     = { };
-    fse_info.sType               = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT;
-    fse_info.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+    fse_info                      = { };
+    fse_info.sType                = VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT;
+    fse_info.fullScreenExclusive  = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
 
   const void *pNext =     pCreateInfo->pNext;
   auto _CreateInfoCopy = *pCreateInfo;
@@ -806,131 +882,495 @@ SK_VK_CreateSwapchainKHR (
     SK_LOGi0 ("Vulkan Present Mode Override: %ws", wszPresentMode);
   }
 
-  return
+  if (SK_VK_HasLowLatency2)
+  {
+    SK_VK_HookFirstDevice (device);
+
+    SK_LOGi0 (L"Enabling VK_NV_low_latency2...");
+
+    reflex_info.pNext =     fse_info.pNext;
+       fse_info.pNext = &reflex_info;
+  }
+
+  auto ret =
     vkCreateSwapchainKHR_Original (device, &_CreateInfoCopy, pAllocator, pSwapchain);
+
+  if (SUCCEEDED (ret))
+  {
+    if (*pSwapchain != SK_Reflex_VkSwapchain)
+    {
+      SK_Reflex_VkDevice    =      device;
+      SK_Reflex_VkSwapchain = *pSwapchain;
+
+      VkSemaphoreCreateInfo
+        create_info       = {                                     };
+        create_info.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+      VkSemaphoreTypeCreateInfo
+        create_type_info               = {                                          };
+        create_type_info.sType         = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
+        create_type_info.semaphoreType = VK_SEMAPHORE_TYPE_TIMELINE;
+        create_type_info.initialValue  = 0;
+
+      create_info.pNext = &create_type_info;
+
+           vkCreateSemaphore_SK =
+      (PFN_vkCreateSemaphore)vkGetDeviceProcAddr_SK          (device, "vkCreateSemaphore"         );
+           vkWaitSemaphores_SK =
+      (PFN_vkWaitSemaphores)vkGetDeviceProcAddr_SK           (device, "vkWaitSemaphores"          );
+           vkGetSemaphoreCounterValue_SK =
+      (PFN_vkGetSemaphoreCounterValue)vkGetDeviceProcAddr_SK (device, "vkGetSemaphoreCounterValue");
+
+      vkCreateSemaphore_SK (device, &create_info, nullptr, &SK_Reflex_VkSemaphore);
+    }
+  }
+
+  else
+  {
+    ret =
+      vkCreateSwapchainKHR_Original (device, pCreateInfo, pAllocator, pSwapchain);  
+  }
+
+  return ret;
 }
 
-static VkSwapchainKHR SK_Vulkan_NativeReflexSwapChain;
-static VkDevice       SK_Vulkan_NativeReflexDevice;
+void
+SK_VK_SetLatencyMarker (VkSetLatencyMarkerInfoNV& marker, VkLatencyMarkerNV type);
 
-typedef VkResult (VKAPI_PTR *PFN_vkSetLatencySleepModeNV)(VkDevice device, VkSwapchainKHR swapchain, const VkLatencySleepModeInfoNV* pSleepModeInfo    );
-typedef VkResult (VKAPI_PTR *PFN_vkLatencySleepNV)       (VkDevice device, VkSwapchainKHR swapchain, const VkLatencySleepInfoNV*     pSleepInfo        );
-typedef void     (VKAPI_PTR *PFN_vkSetLatencyMarkerNV)   (VkDevice device, VkSwapchainKHR swapchain, const VkSetLatencyMarkerInfoNV* pLatencyMarkerInfo);
-typedef void     (VKAPI_PTR *PFN_vkGetLatencyTimingsNV)  (VkDevice device, VkSwapchainKHR swapchain,       VkGetLatencyMarkerInfoNV* pLatencyMarkerInfo);
-
-PFN_vkSetLatencySleepModeNV vkSetLatencySleepModeNV_Original = nullptr;
-PFN_vkLatencySleepNV        vkLatencySleepNV_Original        = nullptr;
-PFN_vkSetLatencyMarkerNV    vkSetLatencyMarkerNV_Original    = nullptr;
-PFN_vkGetLatencyTimingsNV   vkGetLatencyTimingsNV_Original   = nullptr;
-
-auto& SK_vkSetLatencySleepModeNV = vkSetLatencySleepModeNV_Original;
-auto& SK_vkLatencySleepNV        = vkLatencySleepNV_Original;
-auto& SK_vkSetLatencyMarkerNV    = vkSetLatencyMarkerNV_Original;
-auto& SK_vkGetLatencyTimingsNV   = vkGetLatencyTimingsNV_Original;
-
-#define SK_VK_NATIVE_REFLEX_CALL SK_Vulkan_NativeReflexDevice    = device; \
-                                 SK_Vulkan_NativeReflexSwapChain = swapchain;
+static volatile uint64_t renderbatch_frame = 0;
 
 VkResult
 VKAPI_CALL
-vkLatencySleepNV_Detour (
-  VkDevice                    device,
-  VkSwapchainKHR              swapchain,
-  const VkLatencySleepInfoNV* pSleepInfo )
+SK_VK_BeginCommandBuffer(
+  VkCommandBuffer                 commandBuffer,
+  const VkCommandBufferBeginInfo* pBeginInfo)
 {
-  SK_LOG_FIRST_CALL
+  if (SK_VK_HasLowLatency2)
+  {
+    static bool bUseOldReflex =
+      SK_IsModuleLoaded (L"NvLowLatencyVk.dll");
 
-  SK_VK_NATIVE_REFLEX_CALL
+    if (! bUseOldReflex)
+    {
+      const auto frame_id =
+        SK_GetFramesDrawn ();
+
+      auto last_batched_frame =
+        ReadULong64Acquire (&renderbatch_frame);
+
+      if (last_batched_frame < frame_id)
+      {
+        if (InterlockedCompareExchange (&renderbatch_frame, frame_id, last_batched_frame) == last_batched_frame)
+        {
+          VkSetLatencyMarkerInfoNV
+          marker           = {                                          };
+          marker.sType     = VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV;
+          marker.presentID = frame_id;
+          marker.marker    = VK_LATENCY_MARKER_SIMULATION_START_NV;
+
+          SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_SIMULATION_END_NV);
+          SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_RENDERSUBMIT_START_NV);
+        }
+      }
+    }
+  }
 
   return
-    vkLatencySleepNV_Original (device, swapchain, pSleepInfo);
+    vkBeginCommandBuffer_Original (commandBuffer, pBeginInfo);
 }
 
 VkResult
 VKAPI_CALL
-vkSetLatencySleepModeNV_Detour (
-  VkDevice                        device,
-  VkSwapchainKHR                  swapchain,
-  const VkLatencySleepModeInfoNV* pSleepModeInfo )
+SK_VK_QueueSubmit2 (
+  VkQueue              queue,
+  uint32_t             submitCount,
+  const VkSubmitInfo2* pSubmits,
+  VkFence              fence )
 {
-  SK_LOG_FIRST_CALL
+  if (SK_VK_HasLowLatency2)
+  {
+    static bool bUseOldReflex =
+      SK_IsModuleLoaded (L"NvLowLatencyVk.dll");
 
-  SK_VK_NATIVE_REFLEX_CALL
+    if (! bUseOldReflex)
+    {
+      const auto frame_id =
+        SK_GetFramesDrawn ();
+
+      auto last_batched_frame =
+        ReadULong64Acquire (&renderbatch_frame);
+
+      if (last_batched_frame < frame_id)
+      {
+        if (InterlockedCompareExchange (&renderbatch_frame, frame_id, last_batched_frame) == last_batched_frame)
+        {
+          VkSetLatencyMarkerInfoNV
+          marker           = {                                          };
+          marker.sType     = VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV;
+          marker.presentID = frame_id;
+          marker.marker    = VK_LATENCY_MARKER_SIMULATION_START_NV;
+
+          SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_SIMULATION_END_NV);
+          SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_RENDERSUBMIT_START_NV);
+        }
+      }
+    }
+  }
 
   return
-    vkSetLatencySleepModeNV_Original (device, swapchain, pSleepModeInfo);
+    vkQueueSubmit2_Original (queue, submitCount, pSubmits, fence);
 }
 
-void
+VkResult
 VKAPI_CALL
-vkSetLatencyMarkerNV_Detour (
-  VkDevice                        device,
-  VkSwapchainKHR                  swapchain,
-  const VkSetLatencyMarkerInfoNV* pLatencyMarkerInfo )
+SK_VK_QueueSubmit (
+  VkQueue             queue,
+  uint32_t            submitCount,
+  const VkSubmitInfo* pSubmits,
+  VkFence             fence )
 {
-  SK_LOG_FIRST_CALL
+  if (SK_VK_HasLowLatency2)
+  {
+    static bool bUseOldReflex =
+      SK_IsModuleLoaded (L"NvLowLatencyVk.dll");
 
-  SK_VK_NATIVE_REFLEX_CALL
+    if (! bUseOldReflex)
+    {
+      const auto frame_id =
+        SK_GetFramesDrawn ();
+
+      auto last_batched_frame =
+        ReadULong64Acquire (&renderbatch_frame);
+
+      if (last_batched_frame < frame_id)
+      {
+        if (InterlockedCompareExchange (&renderbatch_frame, frame_id, last_batched_frame) == last_batched_frame)
+        {
+          VkSetLatencyMarkerInfoNV
+          marker           = {                                          };
+          marker.sType     = VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV;
+          marker.presentID = frame_id;
+          marker.marker    = VK_LATENCY_MARKER_SIMULATION_START_NV;
+
+          SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_SIMULATION_END_NV);
+          SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_RENDERSUBMIT_START_NV);
+        }
+      }
+    }
+  }
 
   return
-    vkSetLatencyMarkerNV_Original (device, swapchain, pLatencyMarkerInfo);
+    vkQueueSubmit_Original (queue, submitCount, pSubmits, fence);
 }
 
-void
-SK_VK_HookFirstDevice (VkDevice device)
-{
-  if (vkGetLatencyTimingsNV_Original == nullptr && vkGetDeviceProcAddr_SK (device, "vkSetLatencySleepModeNV") != nullptr)
-  SK_RunOnce (
-    void* vkSetLatencySleepModeNV  = (PFN_vkSetLatencySleepModeNV)vkGetDeviceProcAddr_SK (device, "vkSetLatencySleepModeNV");
-    void* vkLatencySleepNV         = (PFN_vkLatencySleepNV)       vkGetDeviceProcAddr_SK (device, "vkLatencySleepNV");
-    void* vkSetLatencyMarkerNV     = (PFN_vkSetLatencyMarkerNV)   vkGetDeviceProcAddr_SK (device, "vkSetLatencyMarkerNV");
-    vkGetLatencyTimingsNV_Original = (PFN_vkGetLatencyTimingsNV)  vkGetDeviceProcAddr_SK (device, "vkGetLatencyTimingsNV");
-
-    if (                       vkSetLatencySleepModeNV != nullptr &&
-                MH_CreateHook (vkSetLatencySleepModeNV,
-                               vkSetLatencySleepModeNV_Detour,
-      static_cast_p2p <void> (&vkSetLatencySleepModeNV_Original) ) == MH_OK )
-           MH_QueueEnableHook (vkSetLatencySleepModeNV);
-
-    if (                       vkLatencySleepNV != nullptr &&
-                MH_CreateHook (vkLatencySleepNV,
-                               vkLatencySleepNV_Detour,
-      static_cast_p2p <void> (&vkLatencySleepNV_Original) ) == MH_OK )
-           MH_QueueEnableHook (vkLatencySleepNV);
-
-    if (                       vkSetLatencyMarkerNV != nullptr &&
-                MH_CreateHook (vkSetLatencyMarkerNV,
-                               vkSetLatencyMarkerNV_Detour,
-      static_cast_p2p <void> (&vkSetLatencyMarkerNV_Original) ) == MH_OK )
-           MH_QueueEnableHook (vkSetLatencyMarkerNV);
-
-    SK_ApplyQueuedHooks ();
-  );
-}
+#include <SpecialK/render/dxgi/dxgi_swapchain.h>
 
 void
-_SK_HookVulkan (void)
+SK_Reflex_WaitOnSemaphore (VkDevice device, VkSemaphore semaphore, uint64_t value)
 {
-  if (! config.apis.Vulkan.hook)
+  // Reflex implementation is no longer broken, we should not be waiting on the game's semaphore.
+  if (SK_IsCurrentGame (SK_GAME_ID::DOOMTheDarkAges))
+  {
+    return;
+  }
+
+  if (SK_DXGI_LastFrameSwapChainDestroyed () > SK_GetFramesDrawn () - 16)
     return;
 
-  static volatile LONG hooked = FALSE;
+  if (! vkGetSemaphoreCounterValue_SK)
+    return;
 
-  if (SK_LoadLibraryW (L"vulkan-1.dll") != nullptr)
+  VkSemaphoreWaitInfo
+    sem_wait_info                = {                                   };
+    sem_wait_info.sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO;
+    sem_wait_info.pSemaphores    = &semaphore;
+    sem_wait_info.semaphoreCount = 1;
+    sem_wait_info.pValues        = &value;
+
+  uint64_t                                           semaphore_val = UINT64_MAX;
+  vkGetSemaphoreCounterValue_SK (device, semaphore, &semaphore_val);
+
+  if (semaphore_val < value)
   {
-    if (! InterlockedCompareExchangeAcquire (&hooked, TRUE, FALSE))
+    // After 100 ms, give up.
+    auto result =
+      vkWaitSemaphores_SK (device, &sem_wait_info, 100000000);
+
+    if (result == VK_TIMEOUT)
     {
-      SK_PROFILE_FIRST_CALL
+      SK_LOGi0 (L"Timeout while waiting (100 ms) for Reflex semaphore.");
+      config.nvidia.reflex.use_limiter = false;
+    }
+  }
+}
 
-      config.render.gl.disable_fullscreen = true;
+struct VkExtension {
+  VkStructureType sType;
+  const void*     pNext;
 
-      //
-      // DXGI / VK Interop Setup
-      //
+  VkExtension* getFirstInstanceOf (VkStructureType type)
+  {
+    if (sType == type)
+      return this;
+
+    else
+    {
+      if (pNext != nullptr)
+      {
+        return
+          ((VkExtension *)pNext)->getFirstInstanceOf (type);
+      }
+
+      return nullptr;
+    }
+  }
+
+  bool removeFrom (VkExtension* pBase)
+  {
+    if (pBase == this)
+      return false;
+
+    for (VkExtension* pInstance = pBase    ;
+                      pInstance != nullptr ;
+                      pInstance =
+        (VkExtension*)pInstance->pNext )
+    {
+      if (pInstance->pNext == this)
+      {
+        pInstance->pNext = pNext;
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  void insertInto (VkExtension* pBase, bool front = true)
+  {
+    if (front)
+    {
+             pNext = pBase->pNext;
+      pBase->pNext = this;
+    }
+
+    else
+    {
+      for (VkExtension* pInstance = pBase    ;
+                        pInstance != nullptr ;
+                        pInstance =
+          (VkExtension*)pInstance->pNext )
+      {
+        if (pInstance->pNext == nullptr)
+        {
+          pInstance->pNext = this;
+          break;
+        }
+      }
+    }
+  }
+};
+
+VkResult
+VKAPI_CALL
+SK_VK_QueuePresentKHR (VkQueue queue, const VkPresentInfoKHR* pPresentInfo)
+{
+  SK_LOG_FIRST_CALL
+
+  SK_ReleaseAssert (pPresentInfo->swapchainCount == 1);
+
+  uint64_t id = SK_GetFramesDrawn ();
+
+  if (VkPresentIdKHR *pNativePresentId =
+     (VkPresentIdKHR *)((VkExtension *)pPresentInfo)->getFirstInstanceOf (VK_STRUCTURE_TYPE_PRESENT_ID_KHR))
+  {
+    id =
+      (pNativePresentId)->pPresentIds [0];
+
+    SK_RunOnce (
+      SK_LOGi0 (L"Game provided a native present id (%d)", id)
+    );
+  }
+
+  VkLatencySubmissionPresentIdNV
+    latency_present_id           = {                                                };
+    latency_present_id.sType     = VK_STRUCTURE_TYPE_LATENCY_SUBMISSION_PRESENT_ID_NV;
+    latency_present_id.presentID = id;
+
+  VkPresentIdKHR
+    present_id                = {                              };
+    present_id.sType          = VK_STRUCTURE_TYPE_PRESENT_ID_KHR;
+    present_id.swapchainCount = 1;
+    present_id.pPresentIds    = &id;
+
+  static bool bUseOldReflex =
+    SK_IsModuleLoaded (L"NvLowLatencyVk.dll");
+
+  VkSetLatencyMarkerInfoNV
+    marker           = {                                          };
+    marker.sType     = VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV;
+    marker.presentID = id;
+    marker.marker    = VK_LATENCY_MARKER_SIMULATION_START_NV;
+
+  auto pPresentConfigNV = (VkSetPresentConfigNV *)
+    ((VkExtension *)pPresentInfo)->getFirstInstanceOf (VK_STRUCTURE_TYPE_SET_PRESENT_CONFIG_NV);
+
+  if (pPresentConfigNV != nullptr)
+  {
+    SK_LOGi0 (L"Ignoring VkSetPresentConfigNV w/ numFramesPerBatch=%d", pPresentConfigNV->numFramesPerBatch);
+
+    pPresentConfigNV->sType                 = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+    pPresentConfigNV->presentConfigFeedback = 0;
+  }
+
+  if ((! bUseOldReflex) && SK_VK_HasLowLatency2)
+  {
+    auto pBaseStruct       = (VkExtension *)pPresentInfo;
+    auto pPresentId        = (VkExtension *)&present_id;
+    auto pLatencyPresentId = (VkExtension *)&latency_present_id;
+
+    pPresentId->insertInto        (pBaseStruct);
+    pLatencyPresentId->insertInto (pBaseStruct);
+
+    if (id == 0) {
+      SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_SIMULATION_START_NV);
+    }
+
+    if (ReadULong64Acquire (&renderbatch_frame) != id)
+    {
+      SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_SIMULATION_END_NV);
+      SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_RENDERSUBMIT_START_NV);
+    }
+
+    SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_RENDERSUBMIT_END_NV);
+    SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_PRESENT_START_NV);
+  }
+
+  auto ret =
+    vkQueuePresentKHR_Original (queue, pPresentInfo);
+
+  if (bUseOldReflex)
+    return ret;
+
+  if (SK_VK_HasLowLatency2)
+  {
+    SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_PRESENT_END_NV);
+  }
+
+  if (VK_SUCCESS == ret && vkLatencySleepNV_Original != nullptr &&
+                           vkWaitSemaphores_SK       != nullptr && SK_Reflex_VkSemaphore != 0)
+  {
+    if (SK_VK_HasLowLatency2)
+    {
+      uint64_t semaphore_val = 0;
+
+      VkLatencySleepModeInfoNV
+        sleep_mode_info                 = {                                          };
+        sleep_mode_info.sType           = VK_STRUCTURE_TYPE_LATENCY_SLEEP_MODE_INFO_NV;
+        sleep_mode_info.lowLatencyMode  = config.nvidia.reflex.low_latency       ? 1 : 0;
+        sleep_mode_info.lowLatencyBoost = config.nvidia.reflex.low_latency_boost ? 1 : 0;
+
+      sleep_mode_info.minimumIntervalUs =
+        SK_Reflex_CalculateSleepMinIntervalForVulkan (config.nvidia.reflex.low_latency);
+
+      vkSetLatencySleepModeNV_Original (SK_Reflex_VkDevice, SK_Reflex_VkSwapchain, &sleep_mode_info);
+      vkGetSemaphoreCounterValue_SK    (SK_Reflex_VkDevice, SK_Reflex_VkSemaphore, &semaphore_val  );
+
+      semaphore_val++;
+
+      VkLatencySleepInfoNV
+        lat_info                 = {                                     };
+        lat_info.sType           = VK_STRUCTURE_TYPE_LATENCY_SLEEP_INFO_NV;
+        lat_info.signalSemaphore = SK_Reflex_VkSemaphore;
+        lat_info.value           = semaphore_val;
+
+      if (VK_SUCCESS == vkLatencySleepNV_Original (SK_Reflex_VkDevice, SK_Reflex_VkSwapchain, &lat_info))
+      {
+        auto& rb =
+          SK_GetCurrentRenderBackend ();
+          
+        rb.vulkan_reflex.sleep ();
+
+        SK_Reflex_SetVulkanSwapchain (SK_Reflex_VkDevice, SK_Reflex_VkSwapchain);
+        SK_Reflex_WaitOnSemaphore    (SK_Reflex_VkDevice, SK_Reflex_VkSemaphore, semaphore_val);
+
+        if (config.render.framerate.enforcement_policy == 2 && rb.vulkan_reflex.isPacingEligible ())
+        {
+          SK::Framerate::Tick ( true, 0.0,
+                          { 0,0 }, rb.swapchain.p);
+        }
+      }
+
+      marker.presentID = marker.presentID + 1;//SK_GetFramesDrawn ();
+
+      SK_VK_SetLatencyMarker (marker, VK_LATENCY_MARKER_SIMULATION_START_NV);
+    }
+  }
+
+  return ret;
+}
+
+VkResult
+SK_VK_CreateInstance (
+  const VkInstanceCreateInfo*  pCreateInfo,
+  const VkAllocationCallbacks* pAllocator,
+  VkInstance*                  pInstance )
+{
+  if (sk::NVAPI::nv_hardware && !SK_IsCurrentGame (SK_GAME_ID::DOOMTheDarkAges))
+  {
+    if (config.apis.NvAPI.vulkan_bridge == -1)
+    {
+      const auto ret =
+        SK_MessageBox (
+          L"Enable Special K VulkanBridge?\r\n\r\n\t(Required for some Vulkan games)",
+          L"Game is Using Native Vulkan", MB_YESNOCANCEL | MB_ICONQUESTION
+        );
+
+      if (ret == IDYES)
+      {
+        config.apis.NvAPI.vulkan_bridge = 1;
+        SK_NvAPI_EnableVulkanBridge  (TRUE);
+        SK_RestartGame               (    );
+      }
+
+      else if (ret == IDNO)
+      {
+        config.apis.NvAPI.vulkan_bridge = 0;
+        SK_RestartGame               (    );
+      }
+    }
+  }
+
+  if (config.apis.Vulkan.hook)
+  SK_RunOnce (
+         SK_CreateDLLHook2 (L"vulkan-1.dll",
+                             "vkCreateDevice",
+                          SK_VK_CreateDevice,
+     static_cast_p2p <void> (&vkCreateDevice_Original));
+
+         SK_CreateDLLHook2 (L"vulkan-1.dll",
+                             "vkQueueSubmit",
+                          SK_VK_QueueSubmit,
+     static_cast_p2p <void> (&vkQueueSubmit_Original));
+     
+         SK_CreateDLLHook2 (L"vulkan-1.dll",
+                             "vkQueueSubmit2",
+                          SK_VK_QueueSubmit2,
+     static_cast_p2p <void> (&vkQueueSubmit2_Original));
+
+         SK_CreateDLLHook2 (L"vulkan-1.dll",
+                             "vkBeginCommandBuffer",
+                          SK_VK_BeginCommandBuffer,
+     static_cast_p2p <void> (&vkBeginCommandBuffer_Original));
+
          SK_CreateDLLHook2 (L"vulkan-1.dll",
                              "vkCreateSwapchainKHR",
                           SK_VK_CreateSwapchainKHR,
      static_cast_p2p <void> (&vkCreateSwapchainKHR_Original));
+
+         SK_CreateDLLHook2 (L"vulkan-1.dll",
+                             "vkQueuePresentKHR",
+                          SK_VK_QueuePresentKHR,
+     static_cast_p2p <void> (&vkQueuePresentKHR_Original));
 
          SK_CreateDLLHook2 (L"vulkan-1.dll",
                              "vkEnumerateInstanceExtensionProperties",
@@ -952,10 +1392,202 @@ _SK_HookVulkan (void)
                               vkAcquireNextImage2KHR_Detour,
      static_cast_p2p <void> (&vkAcquireNextImage2KHR_Original));
 
-     vkGetDeviceProcAddr_SK = (PFN_vkGetDeviceProcAddr)SK_GetProcAddress (L"vulkan-1.dll",
-    "vkGetDeviceProcAddr");
+    extern bool SK_CanQueuedHooksBeApplied (void);
+
+    bool suspend_all =
+      !SK_CanQueuedHooksBeApplied ();
+
+    SK_ThreadSuspension_Ctx suspended;
+
+    if (suspend_all)
+    {
+      suspended = SK_SuspendAllOtherThreads ();
+      SK_EnableApplyQueuedHooks ();
+    }      
+
+    SK_ApplyQueuedHooks ();
+
+    if (suspend_all)
+    {
+      SK_DisableApplyQueuedHooks ();
+      SK_ResumeThreads (suspended);
+    }
+  );
+
+  SK_LOG_FIRST_CALL
+
+  auto result =
+    vkCreateInstance_Original (pCreateInfo, pAllocator, pInstance);
+
+  if ( VK_SUCCESS == result )
+  {
+    SK_Reflex_VkInstance = *pInstance;
+  }
+
+  return result;
+}
+
+#define SK_VK_NATIVE_REFLEX_CALL config.nvidia.reflex.native = true;                \
+                                 config.nvidia.reflex.vulkan = true;                \
+                                 SK_Reflex_VkDevice          = device;              \
+                                 SK_Reflex_VkSwapchain       = swapchain;           \
+                                 SK_VK_HookFirstDevice        (SK_Reflex_VkDevice); \
+                                 SK_Reflex_SetVulkanSwapchain (SK_Reflex_VkDevice,  \
+                                                               SK_Reflex_VkSwapchain);
+
+VkResult
+VKAPI_CALL
+vkSetLatencySleepModeNV_Detour (
+  VkDevice                        device,
+  VkSwapchainKHR                  swapchain,
+  const VkLatencySleepModeInfoNV* pSleepModeInfo )
+{
+  SK_LOG_FIRST_CALL
+
+  SK_VK_NATIVE_REFLEX_CALL
+
+  if (pSleepModeInfo != nullptr)
+  {
+    VkLatencySleepModeInfoNV sleep_mode_info =
+    pSleepModeInfo != nullptr ?
+   *pSleepModeInfo            : VkLatencySleepModeInfoNV { };
+
+    if (config.nvidia.reflex.override)
+    {
+      if (config.nvidia.reflex.enable)
+      {
+        sleep_mode_info.lowLatencyMode  = config.nvidia.reflex.low_latency;
+        sleep_mode_info.lowLatencyBoost = config.nvidia.reflex.low_latency_boost;
+      }
+
+      else
+      {
+        sleep_mode_info.lowLatencyMode  = false;
+        sleep_mode_info.lowLatencyBoost = false;
+      }
+    }
+
+    const auto reflex_interval_us =
+      SK_Reflex_CalculateSleepMinIntervalForVulkan (sleep_mode_info.lowLatencyMode);
+
+    sleep_mode_info.minimumIntervalUs =
+      std::max (sleep_mode_info.minimumIntervalUs, reflex_interval_us);
+
+    return
+      vkSetLatencySleepModeNV_Original (device, swapchain, &sleep_mode_info);
+  }
+
+  return
+    vkSetLatencySleepModeNV_Original (device, swapchain, pSleepModeInfo);
+}
+
+VkResult
+VKAPI_CALL
+vkLatencySleepNV_Detour (
+  VkDevice                    device,
+  VkSwapchainKHR              swapchain,
+  const VkLatencySleepInfoNV* pSleepInfo )
+{
+  SK_LOG_FIRST_CALL
+
+  SK_VK_NATIVE_REFLEX_CALL
+
+  if (config.nvidia.reflex.override)
+  {
+    VkLatencySleepModeInfoNV                            dummy = {};
+    vkSetLatencySleepModeNV_Detour (device, swapchain, &dummy);
+  }
+
+  auto ret =
+    vkLatencySleepNV_Original (device, swapchain, pSleepInfo);
+
+  if (ret == VK_SUCCESS)
+  {
+    SK_GetCurrentRenderBackend ().vulkan_reflex.sleep ();
+  }
+
+  return ret;
+}
+
+void
+VKAPI_CALL
+vkSetLatencyMarkerNV_Detour (
+  VkDevice                        device,
+  VkSwapchainKHR                  swapchain,
+  const VkSetLatencyMarkerInfoNV* pLatencyMarkerInfo )
+{
+  SK_LOG_FIRST_CALL
+
+  SK_VK_NATIVE_REFLEX_CALL
+
+  return
+    vkSetLatencyMarkerNV_Original (device, swapchain, pLatencyMarkerInfo);
+}
+
+void
+SK_VK_HookFirstDevice (VkDevice/*device*/)
+{
+  if (SK_VK_HasLowLatency2 && vkGetLatencyTimingsNV_Original == nullptr
+                           && vkGetInstanceProcAddr_SK (SK_Reflex_VkInstance, "vkSetLatencySleepModeNV") != nullptr)
+  {
+    void* vkSetLatencySleepModeNV  = (PFN_vkSetLatencySleepModeNV)vkGetInstanceProcAddr_SK (SK_Reflex_VkInstance, "vkSetLatencySleepModeNV");
+    void* vkLatencySleepNV         = (PFN_vkLatencySleepNV)       vkGetInstanceProcAddr_SK (SK_Reflex_VkInstance, "vkLatencySleepNV");
+    void* vkSetLatencyMarkerNV     = (PFN_vkSetLatencyMarkerNV)   vkGetInstanceProcAddr_SK (SK_Reflex_VkInstance, "vkSetLatencyMarkerNV");
+    vkGetLatencyTimingsNV_Original = (PFN_vkGetLatencyTimingsNV)  vkGetInstanceProcAddr_SK (SK_Reflex_VkInstance, "vkGetLatencyTimingsNV");
+
+    if (vkGetLatencyTimingsNV_Original != nullptr)
+    {
+      if (                       vkSetLatencySleepModeNV != nullptr &&
+                  MH_CreateHook (vkSetLatencySleepModeNV,
+                                 vkSetLatencySleepModeNV_Detour,
+        static_cast_p2p <void> (&vkSetLatencySleepModeNV_Original) ) == MH_OK )
+             MH_QueueEnableHook (vkSetLatencySleepModeNV);
+
+      if (                       vkLatencySleepNV != nullptr &&
+                  MH_CreateHook (vkLatencySleepNV,
+                                 vkLatencySleepNV_Detour,
+        static_cast_p2p <void> (&vkLatencySleepNV_Original) ) == MH_OK )
+             MH_QueueEnableHook (vkLatencySleepNV);
+
+      if (                       vkSetLatencyMarkerNV != nullptr &&
+                  MH_CreateHook (vkSetLatencyMarkerNV,
+                                 vkSetLatencyMarkerNV_Detour,
+        static_cast_p2p <void> (&vkSetLatencyMarkerNV_Original) ) == MH_OK )
+             MH_QueueEnableHook (vkSetLatencyMarkerNV);
 
       SK_ApplyQueuedHooks ();
+    }
+  }
+}
+
+void
+_SK_HookVulkan (void)
+{
+  if (! config.apis.Vulkan.hook)
+    return;
+
+  static volatile LONG hooked = FALSE;
+
+  if (SK_LoadLibraryW (L"vulkan-1.dll") != nullptr)
+  {
+    if (! InterlockedCompareExchangeAcquire (&hooked, TRUE, FALSE))
+    {
+      SK_PROFILE_FIRST_CALL
+
+      config.render.gl.disable_fullscreen = true;
+
+      //
+      // DXGI / VK Interop Setup
+      //
+      vkGetInstanceProcAddr_SK = (PFN_vkGetInstanceProcAddr)SK_GetProcAddress (L"vulkan-1.dll",
+     "vkGetInstanceProcAddr");
+      vkGetDeviceProcAddr_SK   = (PFN_vkGetDeviceProcAddr  )SK_GetProcAddress (L"vulkan-1.dll",
+     "vkGetDeviceProcAddr");
+
+      SK_CreateDLLHook (      L"vulkan-1.dll",
+                               "vkCreateInstance",
+                            SK_VK_CreateInstance,
+       static_cast_p2p <void> (&vkCreateInstance_Original));
     }
   }
 }
@@ -1035,6 +1667,12 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
 
   auto _EvaluateAutoLowLatency = [&]()
   {
+    if (! sk::NVAPI::nv_hardware)
+    {
+      capable = display.vrr.min_refresh != 0;
+      active  = display.vrr.min_refresh != 0;
+    }
+
     // Opt-in to Auto-Low Latency the first time this is seen
     if (capable && active && config.render.framerate.present_interval != 0)
     {
@@ -1060,7 +1698,8 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
       }
 
       const bool bAutoVRRIsStale =
-        (rb.gsync_state.active && display.nvapi.vrr_enabled == 1) && (bRefreshRateChanged || bDisplayChanged);
+        (active && (display.nvapi.vrr_enabled == 1 || (! sk::NVAPI::nv_hardware))) &&
+                              (bRefreshRateChanged || bDisplayChanged);
 
       if (bAutoVRRIsStale && config.render.framerate.auto_low_latency.policy.auto_reapply &&
                            ( config.render.framerate.auto_low_latency.triggered ||
@@ -1095,24 +1734,32 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
 
       if (config.render.framerate.auto_low_latency.waiting)
       {
-        config.nvidia.reflex.enable                 = true;
-        config.nvidia.reflex.low_latency            = true;
+        if (sk::NVAPI::nv_hardware)
+        {
+          config.nvidia.reflex.enable               = true;
+          config.nvidia.reflex.low_latency          = true;
+        }
+
         config.render.framerate.sync_interval_clamp = 1; // Prevent games from F'ing VRR up.
         config.render.framerate.auto_low_latency.
                                           triggered = true;
         // ^^^ Now turn auto-low latency off, so the user can select their own setting if they want
 
-        // Use the Low-Latency Limiter mode, even though it might cause stutter.
-        if (config.render.framerate.auto_low_latency.policy.ultra_low_latency)
+        if (sk::NVAPI::nv_hardware)
         {
-          config.nvidia.reflex.low_latency_boost     = true;
-          config.nvidia.reflex.marker_optimization   = true;
-        }
-        else
-        {
-          // No need to turn this off, just turn off latency marker optimization
-        //config.nvidia.reflex.low_latency_boost     = false;
-          config.nvidia.reflex.marker_optimization   = false;
+          // Use the Low-Latency Limiter mode, even though it might cause stutter.
+          if (config.render.framerate.auto_low_latency.policy.ultra_low_latency)
+          {
+            config.nvidia.reflex.low_latency_boost     = true;
+            config.nvidia.reflex.marker_optimization   = true;
+          }
+          // If user has a forced override configured, then ignore this and respect their overrides.
+          else if (! config.nvidia.reflex.override)
+          {
+            // No need to turn this off, just turn off latency marker optimization
+          //config.nvidia.reflex.low_latency_boost     = false;
+            config.nvidia.reflex.marker_optimization = false;
+          }
         }
 
         // For VRR, always use VRR Optimized.
@@ -1171,7 +1818,7 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
     }
   };
 
-  SK_RunOnce (disabled.for_app = (! SK_NvAPI_GetVRREnablement ()));
+  SK_RunOnce (disabled.for_app = sk::NVAPI::nv_hardware && (! SK_NvAPI_GetVRREnablement ()));
 
   //
   // All non-D3D9 or D3D11 APIs
@@ -1236,18 +1883,26 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
           display.nvapi.monitor_caps.version  = NV_MONITOR_CAPABILITIES_VER;
           display.nvapi.monitor_caps.infoType = NV_MONITOR_CAPS_TYPE_GENERIC;
 
-          if (dwLastCacheTime < dwTimeNow - 55000UL)
-          {   dwLastCacheTime = dwTimeNow +  5000UL;                         vrr_info = {NV_GET_VRR_INFO_VER};
-            SK_NvAPI_Disp_GetVRRInfo             (display.nvapi.display_id, &vrr_info);
-            SK_NvAPI_DISP_GetMonitorCapabilities (display.nvapi.display_id,
-                                                 &display.nvapi.monitor_caps);
+          if (sk::NVAPI::nv_hardware)
+          {
+            if (dwLastCacheTime < dwTimeNow - 55000UL)
+            {   dwLastCacheTime = dwTimeNow +  5000UL;                         vrr_info = {NV_GET_VRR_INFO_VER};
+              SK_NvAPI_Disp_GetVRRInfo             (display.nvapi.display_id, &vrr_info);
+              SK_NvAPI_DISP_GetMonitorCapabilities (display.nvapi.display_id,
+                                                   &display.nvapi.monitor_caps);
+            }
+
+            display.nvapi.vrr_enabled =
+              vrr_info.bIsVRREnabled;
+
+            rb.gsync_state.capable = display.nvapi.vrr_enabled;
+            rb.gsync_state.active  = false;
           }
 
-          display.nvapi.vrr_enabled =
-            vrr_info.bIsVRREnabled;
-
-          rb.gsync_state.capable = display.nvapi.vrr_enabled;
-          rb.gsync_state.active  = false;
+          else
+          {
+            rb.gsync_state.capable = display.vrr.min_refresh != 0;
+          }
 
           if (rb.gsync_state.capable)
           {
@@ -1273,7 +1928,7 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
             }
           }
 
-          else
+          else if (sk::NVAPI::nv_hardware)
           {
             auto &monitor_caps =
               display.nvapi.monitor_caps;
@@ -1323,7 +1978,8 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
   if (! ((force || config.apis.NvAPI.gsync_status) &&
                            sk::NVAPI::nv_hardware) )
   {
-    capable = false;
+    if (sk::NVAPI::nv_hardware)
+      capable = false;
 
     return
       _ClearTemporarySurfaces ();
@@ -3000,21 +3656,34 @@ DXGIColorSpaceToStr (DXGI_COLOR_SPACE_TYPE space) noexcept;
 #define DISPLAY_DESCRIPTOR_HEADER_SIZE        5
 #define DISPLAY_DESCRIPTOR_DATA_SIZE         18
 
+#define CTA_EXTENDED_TAG                    0x7
+#define CTA_VSDB_TAG                        0x3
+
 #define DETAILED_TIMING_DESCRIPTIONS_START 0x36
 #define DETAILED_TIMING_DESCRIPTION_SIZE     18
 #define NUM_DETAILED_TIMING_DESCRIPTIONS      4
 
+#define DISPLAY_DESCRIPTOR_RANGE_LIMITS       0xFD
 #define DISPLAY_DESCRIPTOR_PRODUCT_NAME       0xFC
 #define DISPLAY_DESCRIPTOR_PRODUCT_NAME_TRUNC 0xA
 
-inline uint8_t blockType (uint8_t* block) noexcept
+// HDMI Forum Sink Capabilities
+#define HFSC_HEADER_SIZE                      4
+#define HFSC_DATA_BLOCK           (uint8_t)0x79
+#define HFSC_IEEE_OUI                  0xc45dd8
+#define FSR_IEEE_OUI                       0x1a
+
+//\x1A\x00\x00\x01\x01
+//0x1A00000101
+
+inline uint8_t blockType_MonitorDescriptor (uint8_t* block) noexcept
 {
   if (block     != 0 &&
       block [0] == 0 &&
       block [1] == 0 &&
       block [2] == 0 &&
       block [3] != 0 &&
-      block [4] == 0)
+     (block [4] == 0 || block [3] == DISPLAY_DESCRIPTOR_RANGE_LIMITS))
   {
     return
       block [3];
@@ -3023,6 +3692,21 @@ inline uint8_t blockType (uint8_t* block) noexcept
   return
     UNKNOWN_DESCRIPTOR;
 }
+
+inline uint8_t blockType_CTAv3 (uint8_t* block) noexcept
+{
+  if (block     != 0 &&
+      block [0] == 2 &&
+      block [1] == 3)
+  {
+    return
+      block [0];
+  }
+
+  return
+    UNKNOWN_DESCRIPTOR;
+}
+
 
 std::string
 SK_EDID_GetMonitorNameFromBlock ( uint8_t const* block )
@@ -3041,6 +3725,252 @@ SK_EDID_GetMonitorNameFromBlock ( uint8_t const* block )
   return name;
 }
 
+std::pair <uint16_t, uint16_t>
+SK_EDID_GetMonitorVRRRange ( uint8_t const* block, uint32_t ieee_oui = HFSC_IEEE_OUI )
+{
+  auto min = 0ui8,
+       max = 0ui8;
+  auto ptr = (block);
+
+  switch (ieee_oui)
+  {
+    case HFSC_IEEE_OUI:
+    {
+      min =  ptr [5] & 0x3f;
+      max = (ptr [5] & 0xc0) << 2 | ptr [6];
+    } break;
+
+    case FSR_IEEE_OUI:
+    {
+      min = ptr [2];
+      max = ptr [3];
+    } break;
+
+    default:
+      break;
+  }
+
+  return { min, max };
+}
+
+SK_RenderBackend_V2::output_s::vrr_caps_s
+SK_RenderBackend_V2::decodeEDIDForVRRCaps (uint8_t* edid, size_t length) const
+{
+  SK_RenderBackend_V2::output_s::vrr_caps_s vrr_caps = { 0, 0, "N/A" };
+
+  if (edid == nullptr)
+    return vrr_caps;
+
+  unsigned int i        = 0;
+  uint8_t*     block    = 0;
+  uint8_t      checksum = 0;
+
+  for (i = 0; i < length; ++i)
+    checksum += edid [i];
+
+  // Bad checksum, fail EDID
+  if (checksum != 0)
+  {
+    SK_RunOnce (dll_log->Log (L"SK_EDID_Parse (...): Checksum fail"));
+    //return vrr_caps;
+  }
+
+  if ( 0 != memcmp ( (const char*)edid          + EDID_HEADER,
+                     (const char*)edid_v1_header, EDID_HEADER_END + 1 ) )
+
+  {
+    dll_log->Log (L"SK_EDID_Parse (...): Not V1 Header");
+
+    // Not a V1 header
+    return vrr_caps;
+  }
+
+  // Monitor name and timings
+  block =
+    &edid [DETAILED_TIMING_DESCRIPTIONS_START];
+
+  uint8_t *end =
+    &edid [length - 1];
+
+  while (block < end - 2)
+  {
+    uint8_t type =
+      blockType_CTAv3 (block);
+
+    switch (type)
+    {
+      case DETAILED_TIMING_BLOCK:
+      {
+        const unsigned int ver = block [1];
+        const unsigned int off = block [2];
+
+        if (block + off >= end) {
+          block = end;
+          continue;
+        }
+
+        // Data Block Collection
+        if (ver == 3)
+        {
+          for ( i = 4   ;
+                i < off ;
+                i += (block [i] & 0x1f) + 1 )
+          {
+            const uint8_t size = 
+              (block [i] & 0x1f);
+            const uint8_t tag  =
+              (block [i] & 0xe0) >> 5;
+
+            switch (tag)
+            {
+              // Extended Tag
+              case CTA_EXTENDED_TAG:
+              {
+                // HDMI Forum Sink Capabilities (the normal one)
+                if (block [i + 1] == HFSC_DATA_BLOCK)
+                {
+                  auto vrr_range =
+                    SK_EDID_GetMonitorVRRRange (&block [i]);
+
+                  if (vrr_range.first != vrr_range.second)
+                  {
+                    return
+                      { vrr_range.first, vrr_range.second, "HDMI 2.1 VRR" };
+                  }
+                }
+              } break;
+
+              // VDSB
+              case CTA_VSDB_TAG:
+              {
+                const unsigned int oui =
+                  (block [i + 3] << 16) +
+                  (block [i + 2] <<  8) +
+                   block [i + 1];
+
+                switch (oui)
+                {
+                  // HDMI Forum Sink Capabilities (as part of VSDB)
+                  case HFSC_IEEE_OUI:
+                  {
+                    auto vrr_range =
+                      SK_EDID_GetMonitorVRRRange (&block [i + HFSC_HEADER_SIZE], oui);
+
+                    if (vrr_range.first != vrr_range.second)
+                    {
+                      return
+                        { vrr_range.first, vrr_range.second, "HDMI 2.1 VRR" };
+                    }
+                  } break;
+                  case FSR_IEEE_OUI:
+                  {
+                    if (size >= 8)
+                    {
+                      auto vrr_range =
+                        SK_EDID_GetMonitorVRRRange (&block [i + HFSC_HEADER_SIZE], oui);
+
+                      if (vrr_range.first != vrr_range.second)
+                      {
+                        if (SK_ADL_CountActiveGPUs ())
+                          return { vrr_range.first, vrr_range.second, "AMD FreeSync"      };
+                        else
+                          return { vrr_range.first, vrr_range.second, "VESA AdaptiveSync" };
+                      }
+                    }
+
+                    else
+                    {
+                      SK_LOGi0 (L"Unexpected AdaptiveSync Range Size: %d-bytes", size);
+                    }
+                  }
+                  default:
+                  {
+                    if (config.system.log_level > 0)
+                    {
+                      SK_ImGui_Warning (
+                        SK_FormatStringW (L"OUI: %x", oui).c_str ()
+                      );
+                    }
+                  } break;
+                }
+              } break;
+
+              default:
+              {
+                if (config.system.log_level > 0)
+                {
+                  SK_ImGui_Warning (
+                    SK_FormatStringW (L"Other CTAv3 Tag: %d", tag).c_str ()
+                  );
+                }
+              } break;
+            }
+          }
+        }
+
+        block += std::max (1u, off);
+      } break;
+
+      default:
+      case UNKNOWN_DESCRIPTOR:
+      {
+        ++block;
+      } break;
+    }
+  }
+
+  block = &edid [DETAILED_TIMING_DESCRIPTIONS_START];
+  end   = &edid [length - 1];
+
+  while (block < end - 5)
+  {
+    uint8_t type =
+      blockType_MonitorDescriptor (block);
+
+    switch (type)
+    {
+      case DETAILED_TIMING_BLOCK:
+        block += DETAILED_TIMING_DESCRIPTION_SIZE;
+        break;
+
+      case DISPLAY_DESCRIPTOR_PRODUCT_NAME:
+      {
+        block += DISPLAY_DESCRIPTOR_DATA_SIZE;
+      } break;
+
+      case DISPLAY_DESCRIPTOR_RANGE_LIMITS:
+      {
+        uint16_t range_min = 0,
+                 range_max = 0;
+
+        range_min = block [5];
+        range_max = block [6];
+
+        if (block [4] & 0x1) range_min += 255;
+        if (block [4] & 0x2) range_max += 255;
+
+        if (range_min != range_max)
+        {
+          // No idea what VRR tech is in use, just report Variable Refresh.
+          return
+            { range_min, range_max, "Variable Refresh" };
+        }
+
+        block += DISPLAY_DESCRIPTOR_DATA_SIZE;
+      } break;
+
+      default:
+      case UNKNOWN_DESCRIPTOR:
+      {
+        ++block;
+      } break;
+    }
+  }
+
+  return
+    vrr_caps;
+}
+
 std::string
 SK_RenderBackend_V2::decodeEDIDForName (uint8_t *edid, size_t length) const
 {
@@ -3051,19 +3981,16 @@ SK_RenderBackend_V2::decodeEDIDForName (uint8_t *edid, size_t length) const
 
   unsigned int i        = 0;
   uint8_t*     block    = 0;
-  uint32_t     checksum = 0;
+  uint8_t      checksum = 0;
 
   for (i = 0; i < length; ++i)
     checksum += edid [i];
 
   // Bad checksum, fail EDID
-  if ((checksum % 256) != 0)
+  if (checksum != 0)
   {
-    if (config.system.log_level > 0)
-    {
-      SK_RunOnce (dll_log->Log (L"SK_EDID_Parse (...): Checksum fail"));
-      //return "";
-    }
+    SK_RunOnce (dll_log->Log (L"SK_EDID_Parse (...): Checksum fail"));
+    //return "";
   }
 
   if ( 0 != memcmp ( (const char*)edid          + EDID_HEADER,
@@ -3096,7 +4023,7 @@ SK_RenderBackend_V2::decodeEDIDForName (uint8_t *edid, size_t length) const
   while (block < end)
   {
     uint8_t type =
-      blockType (block);
+      blockType_MonitorDescriptor (block);
 
     switch (type)
     {
@@ -3158,11 +4085,8 @@ SK_RenderBackend_V2::decodeEDIDForNativeRes (uint8_t* edid, size_t length) const
   // Bad checksum, fail EDID
   if (checksum != 0)
   {
-    if (config.system.log_level > 0)
-    {
-      SK_RunOnce (dll_log->Log (L"SK_EDID_Parse (...): Checksum fail"));
-      //return { };
-    }
+    SK_RunOnce (dll_log->Log (L"SK_EDID_Parse (...): Checksum fail"));
+    //return { };
   }
 
   if (0 != memcmp ((const char*)edid + EDID_HEADER,
@@ -3271,9 +4195,13 @@ SK_RBkEnd_UpdateMonitorName ( SK_RenderBackend_V2::output_s& display,
 
     bool nvSuppliedEDID = false;
 
-    // This is known to return EDIDs with checksums that don't match expected,
-    //   there's not much benefit to getting EDID this way, so use the registry instead.
-#if 1
+    DWORD sizeofEDID = 0;
+    auto  EDID_Data  =
+      std::make_unique <uint8_t []> (NV_EDID_DATA_SIZE_MAX);
+
+    // Use the EDID from system registry, this code is provided only to bypass
+    //   corrupted EDIDs written by older versions of CRU if necessary.
+#if 0
     if (sk::NVAPI::nv_hardware != false)
     {
       NvPhysicalGpuHandle nvGpuHandles [NVAPI_MAX_PHYSICAL_GPUS] = {     };
@@ -3302,18 +4230,79 @@ SK_RBkEnd_UpdateMonitorName ( SK_RenderBackend_V2::output_s& display,
         NV_EDID edid = {         };
         edid.version = NV_EDID_VER;
 
-        if ( NVAPI_OK ==
-               NvAPI_GPU_GetEDID (
-                 nvGpuHandles [0],
-                 nvDisplayId, &edid
-               )
-           )
+        NvU32 last_edid_id = 0;
+
+        while ( NVAPI_OK ==
+                  NvAPI_GPU_GetEDID (
+                    nvGpuHandles [0],
+                    nvDisplayId, &edid
+                  ) )
         {
+          static_assert (NV_EDID_DATA_SIZE == 256);
+
+          if (edid.offset     > NV_EDID_DATA_SIZE_MAX - NV_EDID_DATA_SIZE ||
+              edid.sizeofEDID > NV_EDID_DATA_SIZE_MAX)
+          {
+            SK_LOGi0 (L"NvAPI_GPU_GetEDID (...) buffer overrun!");
+            sizeofEDID = 0;
+
+            break;
+          }
+
+          if (last_edid_id == 0)
+              last_edid_id = edid.edidId;
+
+          // EDID was updated in the middle of reading... start over!
+          else if (last_edid_id != edid.edidId)
+          {        last_edid_id  = edid.edidId;
+                                   edid.offset = 0;
+                                   continue;
+          }
+
+          memcpy (&EDID_Data [edid.offset],
+                              edid.EDID_Data, NV_EDID_DATA_SIZE);
+
+          sizeofEDID = edid.sizeofEDID;
+
+          if (edid.sizeofEDID > NV_EDID_DATA_SIZE &&
+              edid.offset     < edid.sizeofEDID)
+          {
+            edid.offset += NV_EDID_DATA_SIZE;
+
+            continue;
+          }
+
+          if (edid.sizeofEDID > NV_EDID_DATA_SIZE)
+          {
+            SK_LOGi0 (
+              L"NvAPI_GPU_GetEDID (...) multi-page read returned %d-bytes of data.",
+                  edid.sizeofEDID
+            );
+          }
+
+          break;
+        }
+
+        if (sizeofEDID != 0)
+        {
+          auto vrr_caps =
+            rb.decodeEDIDForVRRCaps (EDID_Data.get (), sizeofEDID);
+
+          if (vrr_caps.min_refresh != vrr_caps.max_refresh)
+          {
+            display.vrr.min_refresh = vrr_caps.min_refresh;
+            display.vrr.max_refresh = vrr_caps.max_refresh;
+
+            strncpy_s ( display.vrr.type, 31,
+                        display.nvapi.true_gsync ?
+                                 "NVIDIA G-SYNC" : vrr_caps.type, _TRUNCATE );
+          }
+
           edid_name =
-            rb.decodeEDIDForName ( edid.EDID_Data, edid.sizeofEDID );
+            rb.decodeEDIDForName (EDID_Data.get (), sizeofEDID);
 
           auto nativeRes =
-            rb.decodeEDIDForNativeRes ( edid.EDID_Data, edid.sizeofEDID );
+            rb.decodeEDIDForNativeRes (EDID_Data.get (), sizeofEDID);
 
           if (                      nativeRes.x != 0 &&
                                     nativeRes.y != 0 )
@@ -3324,6 +4313,12 @@ SK_RBkEnd_UpdateMonitorName ( SK_RenderBackend_V2::output_s& display,
           if (! edid_name.empty ())
           {
             nvSuppliedEDID = true;
+
+            FILE* fEDID = _wfopen (L"edid_nvapi.dat", L"wb");
+            if (  fEDID != nullptr)
+            {
+              fwrite (EDID_Data.get (), sizeofEDID, 1, fEDID);
+            }
           }
         }
       }
@@ -3371,10 +4366,7 @@ SK_RBkEnd_UpdateMonitorName ( SK_RenderBackend_V2::output_s& display,
             if (pwszTok != nullptr)
                *pwszTok  = L'\0';
 
-
-            uint8_t EDID_Data [256] = { };
-            DWORD   edid_size       =  sizeof (EDID_Data);
-
+            sizeofEDID = NV_EDID_DATA_SIZE_MAX;
 
             DWORD   dwType = REG_NONE;
             LRESULT lStat  =
@@ -3384,15 +4376,44 @@ SK_RBkEnd_UpdateMonitorName ( SK_RenderBackend_V2::output_s& display,
                                      wszDevName, wszDevInst ).c_str (),
                               L"EDID",
                                 RRF_RT_REG_BINARY, &dwType,
-                                  EDID_Data, &edid_size );
+                                  EDID_Data.get (), &sizeofEDID);
 
             if (ERROR_SUCCESS == lStat)
             {
+              if (sizeofEDID < 256)
+              {
+                // There's no VRR information here...
+                SK_LOGi0 (L"EDID cached in system registry is shorter than expected: %d-bytes!", sizeofEDID);
+              }
+
+              auto vrr_caps =
+                rb.decodeEDIDForVRRCaps (EDID_Data.get (), sizeofEDID);
+
+              if (vrr_caps.min_refresh != vrr_caps.max_refresh)
+              {
+                display.vrr.min_refresh = vrr_caps.min_refresh;
+                display.vrr.max_refresh = vrr_caps.max_refresh;
+
+                strncpy_s ( display.vrr.type, 31,
+                            display.nvapi.true_gsync ?
+                                     "NVIDIA G-SYNC" : vrr_caps.type, _TRUNCATE );
+
+                // These caps will be updated in real-time on NVIDIA hardware if NVAPI is enabled.
+                if (sk::NVAPI::nv_hardware == false)
+                {
+                  auto &monitor_caps =
+                    display.nvapi.monitor_caps;
+
+                  monitor_caps.data.caps.supportVRR            = true;
+                  monitor_caps.data.caps.currentlyCapableOfVRR = true; // A wild guess w/o NVAPI
+                }
+              }
+
               edid_name =
-                rb.decodeEDIDForName ( EDID_Data, edid_size );
+                rb.decodeEDIDForName (EDID_Data.get (), sizeofEDID);
 
               auto nativeRes =
-                rb.decodeEDIDForNativeRes ( EDID_Data, edid_size );
+                rb.decodeEDIDForNativeRes (EDID_Data.get (), sizeofEDID);
 
               if (                      nativeRes.x != 0 &&
                                         nativeRes.y != 0 )
@@ -3503,7 +4524,7 @@ SK_RenderBackend_V2::updateWDDMCaps (SK_RenderBackend_V2::output_s *pDisplay)
     D3DKMT_OPENADAPTERFROMGDIDISPLAYNAME
       openAdapter = { };
 
-    wcsncpy_s ( openAdapter.DeviceName, 32,
+    wcsncpy_s ( openAdapter.DeviceName, 31,
                     pDisplay->gdi_name, _TRUNCATE );
 
     if ( STATUS_SUCCESS ==
@@ -3636,7 +4657,7 @@ SK_RenderBackend_V2::assignOutputFromHWND (HWND hWndContainer)
 
         if (GetMonitorInfoW (display.monitor, &minfoex))
         {
-          wcsncpy_s ( display.gdi_name, 32,
+          wcsncpy_s ( display.gdi_name, 31,
                       minfoex.szDevice, _TRUNCATE );
         }
 
@@ -3662,6 +4683,14 @@ SK_RenderBackend_V2::assignOutputFromHWND (HWND hWndContainer)
       ((intptr_t)&display -
        (intptr_t)&displays [0]) /
 sizeof (output_s));
+
+    // TODO: Refactor to eliminate "gsync_state"
+    if (! sk::NVAPI::nv_hardware)
+    {
+      gsync_state.capable =
+        display.nvapi.monitor_caps.data.caps.supportVRR &&
+        display.nvapi.monitor_caps.data.caps.currentlyCapableOfVRR;
+    }
 
     routeAudioForDisplay (pOutput);
 
@@ -4130,10 +5159,11 @@ SK_RenderBackend_V2::updateOutputTopology (void)
 
             display.nvapi.monitor_caps = monitor_caps;
             display.nvapi.vrr_enabled  = vrr_info.bIsVRREnabled;
+            display.nvapi.true_gsync   = monitor_caps.data.caps.isTrueGsync ? 1 : 0;
           }
         }
 
-        wcsncpy_s ( display.gdi_name,  32,
+        wcsncpy_s ( display.gdi_name,  31,
                     outDesc.DeviceName, _TRUNCATE );
 
         SK_RBkEnd_UpdateMonitorName (display, outDesc);
@@ -4602,6 +5632,7 @@ SK_RenderBackend_V2::updateOutputTopology (void)
         L"  +------------------+---------------------------------------------------------------------\n"
         L"  | EDID Device Name |  %hs\n"
         L"  | GDI  Device Name |  %ws (HMONITOR: %06p)\n"
+        L"  | VRR Capabilities |  %d-%d Hz (%hs)\n"
         L"  | Desktop Display. |  %ws%ws\n"
         L"  | Bits Per Color.. |  %d\n"
         L"  | Color Space..... |  %hs\n"
@@ -4616,6 +5647,8 @@ SK_RenderBackend_V2::updateOutputTopology (void)
         L"  +------------------+---------------------------------------------------------------------\n",
           display.full_name,
           display.gdi_name, display.monitor,
+          display.vrr.min_refresh, display.vrr.max_refresh,
+          display.vrr.type,
           display.attached ? L"Yes"                : L"No",
           display.primary  ? L" (Primary Display)" : L"",
                       display.bpc,
@@ -5341,39 +6374,65 @@ SK_Render_CountVBlanks ()
   static HANDLE hVBlankThread =
     SK_Thread_CreateEx ([](LPVOID) -> DWORD
     {
-      DXGI_FRAME_STATISTICS
-           frameStats = {};
-
       auto& rb =
         SK_GetCurrentRenderBackend ();
 
       HANDLE                            vrr_events [] = { __SK_DLL_TeardownEvent, hVRREvent };
       while (WaitForMultipleObjects (2, vrr_events, FALSE, 500UL) != WAIT_OBJECT_0)
       {
-        SK_ComQIPtr <IDXGISwapChain> pSwapChain (rb.swapchain.p);
-        SK_ComPtr   <IDXGIOutput>    pOutput;
+        DXGI_FRAME_STATISTICS
+             frameStats = {};
 
-        if (           pSwapChain.p != nullptr &&
-            SUCCEEDED (pSwapChain->GetContainingOutput (&pOutput.p)))
+        // Keep a cache for the DXGI Containing Output, because it is
+        //   expensive to query and we want to avoid lock contention.
+        static SK_ComPtr <IDXGIOutput> pOutput;
+        static IDXGISwapChain         *pLastChain     = nullptr;
+        static RECT                    lastWindowRect = {};
         {
-          pSwapChain.Release ();
+          std::scoped_lock <SK_Thread_HybridSpinlock>
+          backend_res_lock              (rb.res_lock);
 
-          DwmFlush ();
+          if (SK_ComQIPtr <IDXGISwapChain> pSwapChain = rb.swapchain.p;
+                                           pSwapChain.p != nullptr)
+          {
+            if (     pOutput.p == nullptr    ||
+                  pSwapChain.p != pLastChain || !EqualRect (&game_window.actual.window, &lastWindowRect))
+            { if((pSwapChain.p != pLastChain || !EqualRect (&game_window.actual.window, &lastWindowRect))
+                  && pOutput.p != nullptr)
+                     pOutput.Release ();
 
-          pOutput->WaitForVBlank ();
-                       
-          if (pSwapChain = rb.swapchain.p;
-              pSwapChain.p != nullptr)
-              pSwapChain->GetFrameStatistics (&frameStats);
-        }              
+              SK_LOGi1 (L"Cached DXGI Containing Output Is Invalid");
+
+              rb.gsync_state.update (true);
+
+              pSwapChain->GetContainingOutput (&pOutput.p);
+            }
+
+            lastWindowRect = game_window.actual.window;
+            pLastChain     = pSwapChain.p;
+          }
+        }
+
+        DwmFlush ();
+
+        if (pOutput.p != nullptr)
+        {   pOutput->WaitForVBlank ();
+
+          std::scoped_lock <SK_Thread_HybridSpinlock>
+          backend_res_lock              (rb.res_lock);
+
+          if (SK_ComQIPtr <IDXGISwapChain> pSwapChain = rb.swapchain.p;
+                                           pSwapChain.p != nullptr)
+          {
+            pSwapChain->GetFrameStatistics (&frameStats);
+          }
+        }
 
         rb.active_display =
           std::clamp (rb.active_display, 0, SK_RenderBackend_V2::_MAX_DISPLAYS-1);
 
-        if (pSwapChain.p != nullptr)
+        if (frameStats.PresentCount != 0)
         {
-          pSwapChain.Release ();
-
           auto& nvapi_display =
             rb.displays [rb.active_display].nvapi;
           auto& stats =
@@ -5384,10 +6443,9 @@ SK_Render_CountVBlanks ()
 
           if (stats.vblank_counter.last_qpc_refreshed < kSyncQPC &&
               stats.vblank_counter.addRecord (
-              nvapi_display.display_handle, &frameStats,        kSyncQPC))
+              nvapi_display.display_handle, &frameStats,kSyncQPC))
           {
-            stats.vblank_counter.last_qpc_refreshed =
-              kSyncQPC;
+            stats.vblank_counter.last_qpc_refreshed =   kSyncQPC;
           }
         }
 

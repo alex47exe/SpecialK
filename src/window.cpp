@@ -281,7 +281,21 @@ public:
   static constexpr bool StyleExHasBorder (DWORD_PTR style_ex)
   {
     return ( ( style_ex & WS_EX_CLIENTEDGE ) ||
-             ( style_ex & WS_EX_WINDOWEDGE ) );
+             ( style_ex & WS_EX_WINDOWEDGE ) ||
+             ( style_ex & WS_EX_DLGMODALFRAME ) );
+  }
+
+  static constexpr DWORD_PTR RemoveBorderFromStyleEx (DWORD_PTR style_ex)
+  {
+    DWORD_PTR
+      style_ex_borderless = style_ex;
+
+      style_ex_borderless &= ~WS_EX_CLIENTEDGE;
+      style_ex_borderless &= ~WS_EX_WINDOWEDGE;
+      style_ex_borderless &= ~WS_EX_DLGMODALFRAME;
+
+    return
+      style_ex_borderless;
   }
 
   bool OnVarChange (SK_IVariable* var, void* val) override
@@ -1361,8 +1375,8 @@ ActivateWindow ( HWND hWnd,
     {
       if (config.window.always_on_top != NoPreferenceOnTop)
       {
-        SK_Window_SetTopMost (game_window.active,
-                              game_window.active, game_window.hWnd);
+        SK_Window_SetTopMost ((game_window.active && config.window.always_on_top != PreventAlwaysOnTop) || config.window.always_on_top == AlwaysOnTop,
+                              (game_window.active && config.window.always_on_top != PreventAlwaysOnTop) || config.window.always_on_top == AlwaysOnTop, game_window.hWnd);
       }
 
       SK_ImGui_Cursor.activateWindow (game_window.active);
@@ -2615,6 +2629,11 @@ SetWindowLong_Marshall (
 
       case GWL_EXSTYLE:
       {
+        if (config.window.always_on_top != SK_NoPreference)
+        {
+          dwNewLong &= ~WS_EX_TOPMOST;
+        }
+
         game_window.game.style_ex =
           static_cast <ULONG_PTR> (dwNewLong);
 
@@ -2879,6 +2898,11 @@ SetWindowLongPtr_Marshall (
 
       case GWL_EXSTYLE:
       {
+        if (config.window.always_on_top != SK_NoPreference)
+        {
+          dwNewLong &= ~WS_EX_TOPMOST;
+        }
+
         game_window.game.style_ex =
           dwNewLong;
 
@@ -3408,6 +3432,8 @@ SK_SetWindowStyle (DWORD_PTR dwStyle_ptr, SetWindowLongPtr_pfn pDispatchFunc)
   if (pDispatchFunc == nullptr)
       pDispatchFunc = game_window.SetWindowLongPtr;
 
+  if (pDispatchFunc == nullptr)
+    return;
 
   pDispatchFunc ( game_window.hWnd,
                     GWL_STYLE,
@@ -3424,17 +3450,22 @@ SK_SetWindowStyleEx ( DWORD_PTR            dwStyleEx_ptr,
 
   // Minimal sane set of extended window styles for sane rendering
   dwStyleEx |=    WS_EX_APPWINDOW;
-  dwStyleEx &= ~( WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_LAYOUTRTL |
-                  WS_EX_RIGHT      | WS_EX_RTLREADING  | WS_EX_TOOLWINDOW );
+  //dwStyleEx &= ~( WS_EX_NOACTIVATE | WS_EX_TRANSPARENT | WS_EX_LAYOUTRTL |
+  //                WS_EX_RIGHT      | WS_EX_RTLREADING  | WS_EX_TOOLWINDOW );
 
   if (config.window.borderless)
     dwStyleEx &= ~( WS_EX_CLIENTEDGE | WS_EX_WINDOWEDGE );
+
+  if (config.window.allow_drag_n_drop)
+    dwStyleEx |= WS_EX_ACCEPTFILES;
 
   game_window.actual.style_ex = DWORD_PTR (dwStyleEx);
 
   if (pDispatchFunc == nullptr)
       pDispatchFunc = game_window.SetWindowLongPtr;
 
+  if (pDispatchFunc == nullptr)
+    return;
 
   pDispatchFunc ( game_window.hWnd,
                     GWL_EXSTYLE,
@@ -3588,6 +3619,8 @@ SK_AdjustBorder (void)
   const bool has_border =
     SK_WindowManager::StyleHasBorder (
       game_window.actual.style
+    ) || SK_WindowManager::StyleExHasBorder (
+      game_window.actual.style_ex
     );
 
   // If these are opposite, we can skip a whole bunch of
@@ -3600,7 +3633,8 @@ SK_AdjustBorder (void)
     game_window.actual.style    =
        ULONG_PTR (SK_BORDERLESS);
     game_window.actual.style_ex =
-       ULONG_PTR (SK_BORDERLESS_EX);
+       ULONG_PTR (SK_BORDERLESS_EX | (config.window.allow_drag_n_drop ?
+                             WS_EX_ACCEPTFILES                       : 0x0));
 
     //// Must remove this or God of War: Ragnarok will fail SwapChain creation in FSR3
     //game_window.actual.style_ex &= ~WS_EX_TOPMOST;
@@ -5663,8 +5697,11 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
                       _In_  WPARAM wParam,
                       _In_  LPARAM lParam )
 {
-  void SK_ImGui_InitDragAndDrop (void);
-       SK_ImGui_InitDragAndDrop ();
+  if (SK_GetFramesDrawn () > 5 && game_window.hWnd == hWnd)
+  {
+    void SK_ImGui_InitDragAndDrop (void);
+         SK_ImGui_InitDragAndDrop ();
+  }
 
   // @TODO: Allow PlugIns to install callbacks for window proc
   static bool bIgnoreKeyboardAndMouse =
@@ -6045,6 +6082,27 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
         }
       }
     } break;
+
+    case WM_STYLECHANGING:
+      if (wParam == GWL_EXSTYLE)
+      {
+        if (config.window.always_on_top == 0 && !SK_IsGameWindowActive ())
+        {
+          STYLESTRUCT* pStyle = (STYLESTRUCT *)lParam;
+          if (pStyle != nullptr)
+          {
+            if (pStyle->styleNew & WS_EX_TOPMOST)
+            {
+              SK_LOGi0 (L"Removing Topmost Style from game window...");
+              pStyle->styleNew &= ~WS_EX_TOPMOST;
+
+              // We changed the style and must return 0.
+              return 0;
+            }
+          }
+        }
+      }
+      break;
 
     case WM_WINDOWPOSCHANGED:
     {
@@ -6722,11 +6780,7 @@ SK_Window_SetTopMost (bool bTop, bool bBringToTop, HWND hWnd)
 
   else
   {
-    // Vulkan sucks, this is a total hack and I don't care anymore
-    if (game_window.wantBackgroundRender () && SK_Render_GetVulkanInteropSwapChainType (SK_GetCurrentRenderBackend ().swapchain) != SK_DXGI_VK_INTEROP_TYPE_NONE)
-      hWndOrder = HWND_BOTTOM;
-    else
-      hWndOrder = HWND_NOTOPMOST;
+    hWndOrder = HWND_NOTOPMOST;
   }
 
   if (bBringToTop && (! bTop))
@@ -6745,42 +6799,6 @@ SK_Window_SetTopMost (bool bTop, bool bBringToTop, HWND hWnd)
                       0, 0, 0, 0,
                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
                       SWP_NOSENDCHANGING | SWP_ASYNCWINDOWPOS );
-
-    if (hWndOrder == HWND_BOTTOM && hWnd == game_window.hWnd)
-    {
-      static HANDLE hRepositionBelowForeground =
-        SK_CreateEvent (nullptr, TRUE, FALSE, nullptr);
-
-      SK_RunOnce (
-      SK_Thread_CreateEx ([](LPVOID)->DWORD
-      {
-        HANDLE hWaitHandles [] = { hRepositionBelowForeground, __SK_DLL_TeardownEvent };
-
-        while (WaitForMultipleObjects (2, hWaitHandles, FALSE, INFINITE) == WAIT_OBJECT_0)
-        {
-          // Because this is all async, just spin a loop until the window is no longer
-          //   in the foreground, then place it behind whatever is.
-          while (SK_GetForegroundWindow () == game_window.hWnd)
-          {
-            SK_SleepEx (4UL, FALSE);
-          }
-
-          SK_SetWindowPos ( game_window.hWnd,
-                            SK_GetForegroundWindow (),
-                            0, 0, 0, 0,
-                            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE |
-                            SWP_NOSENDCHANGING | SWP_ASYNCWINDOWPOS );
-
-          ResetEvent (hRepositionBelowForeground);
-        }
-
-        SK_Thread_CloseSelf ();
-
-        return 0;
-      }, L"[SK] Vulkan Interop Z-Order Fixup"));
-
-      SetEvent (hRepositionBelowForeground);
-    }
   }
 }
 
@@ -7819,6 +7837,11 @@ SK_MakeWindowHook (WNDPROC class_proc, WNDPROC wnd_proc, HWND hWnd)
       if (! SK_IsAdmin ())
         SK_RestartGame ();
     }
+  }
+
+  else if (! _wcsicmp (wszClassName, L"xgs::Framework"))
+  {
+    SK_GetCurrentRenderBackend ().windows.xgs_Framework = true;
   }
 
   else if (! _wcsicmp (wszClassName, L"UnrealWindow"))
@@ -9510,4 +9533,764 @@ SK_GetWindowThreadProcessId ( _In_      HWND       hWnd,
 
   SK_ReleaseAssert (!L"Invalid Code Control Flow");
   return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include <SpecialK/update/network.h>
+#include <ShlGuid.h>
+#include <ShlObj_core.h>
+
+class SK_DropTarget : public IDropTarget {
+public:
+  SK_DropTarget (HWND hWnd)
+  {
+    m_hWnd       = hWnd;
+    m_ulRefCount = 1;
+    
+    // CLSCTX_INPROC_SERVER
+    if (FAILED (CoCreateInstance (CLSID_DragDropHelper, NULL, CLSCTX_INPROC_SERVER,
+                                 IID_IDropTargetHelper, reinterpret_cast <LPVOID *>(&m_pDropTargetHelper))))
+    {
+      m_pDropTargetHelper = nullptr;
+    }
+
+    else
+    {
+      // Initialize our supported clipboard formats
+      if (config.window.allow_file_drops) m_fmtSupported =
+      {
+        { CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, // Unicode text (URLs)
+        { CF_HDROP,       nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, // Files
+        { CF_TEXT,        nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }  // ANSI text (URLs)
+      };
+      else m_fmtSupported =
+      {
+        { CF_UNICODETEXT, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }, // Unicode text (URLs)
+        { CF_TEXT,        nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL }  // ANSI text (URLs)
+      };
+    }
+  }
+
+  ~SK_DropTarget (void) = default;
+
+  // IUnknown methods
+  STDMETHODIMP QueryInterface (REFIID riid, void** ppvObject) override
+  {
+    if ( IsEqualIID (riid, IID_IUnknown) ||
+         IsEqualIID (riid, IID_IDropTarget) )
+    {
+      *ppvObject = this;
+
+      AddRef ();
+
+      return S_OK;
+    }
+
+    *ppvObject = nullptr;
+
+    return
+      E_NOINTERFACE;
+  }
+
+  STDMETHODIMP_(ULONG) AddRef (void) override
+  {
+    return
+      InterlockedIncrement (&m_ulRefCount);
+  }
+
+  STDMETHODIMP_(ULONG) Release (void) override
+  {
+    ULONG newRefCount =
+      InterlockedDecrement (&m_ulRefCount);
+
+    if (newRefCount == 0)
+    {
+      delete this;
+    }
+
+    return
+      newRefCount;
+  }
+
+  // IDropTarget methods
+  STDMETHODIMP DragEnter (IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
+  {
+    UNREFERENCED_PARAMETER (grfKeyState);
+
+    // Reset stuff
+    m_bAllowDrop  = false;
+    m_fmtDropping = nullptr;
+
+    if (pdwEffect == nullptr)
+      return E_INVALIDARG;
+
+    if (pDataObj == nullptr)
+      return E_UNEXPECTED;
+
+    // We are only interested in copy operations (for now)
+    if ((*pdwEffect & DROPEFFECT_COPY) == DROPEFFECT_COPY)
+    {
+      SK_ComPtr <IEnumFORMATETC>                            pEnumFormatEtc;
+      if (SUCCEEDED (pDataObj->EnumFormatEtc (DATADIR_GET, &pEnumFormatEtc.p)))
+      {
+        FORMATETC s_fmtSupported = { }; // FormatEtc supported by the source
+        ULONG     fetched        =   0;
+
+        // We need to find a matching format that both we and the source supports
+        while (pEnumFormatEtc->Next (1, &s_fmtSupported, &fetched) == S_OK)
+        {
+          for ( auto& fmt : m_fmtSupported )
+          {
+            if (fmt.cfFormat == s_fmtSupported.cfFormat && // Are we dealing with the same format type?
+                SUCCEEDED (pDataObj->QueryGetData (&fmt))) // Does it accept our format specification?
+            {
+              m_bAllowDrop  = true;
+              m_fmtDropping = &fmt;
+              *pdwEffect    = DROPEFFECT_COPY;
+
+              if (m_pDropTargetHelper != nullptr)
+                  m_pDropTargetHelper->DragEnter (m_hWnd, pDataObj, reinterpret_cast <LPPOINT> (&pt), *pdwEffect);
+
+              return S_OK;
+            }
+          }
+        }
+      }
+    }
+
+    *pdwEffect = DROPEFFECT_NONE;
+
+    return S_FALSE;
+  }
+
+  STDMETHODIMP DragOver (DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
+  {
+    UNREFERENCED_PARAMETER (grfKeyState);
+
+    if (pdwEffect == nullptr)
+      return E_INVALIDARG;
+
+    // Here we could theoretically check if an ImGui component that supports the text is being hovered
+    if (m_bAllowDrop && (*pdwEffect & DROPEFFECT_COPY) == DROPEFFECT_COPY)
+    {
+      *pdwEffect = DROPEFFECT_COPY;
+
+      if (m_pDropTargetHelper != nullptr)
+          m_pDropTargetHelper->DragOver (reinterpret_cast <LPPOINT> (&pt), *pdwEffect);
+
+      return S_OK;
+    }
+
+    *pdwEffect = DROPEFFECT_NONE;
+
+    return S_FALSE;
+  }
+
+  STDMETHODIMP DragLeave (void) override
+  {
+    if (m_pDropTargetHelper != nullptr)
+        m_pDropTargetHelper->DragLeave ();
+
+    m_bAllowDrop  = false;
+    m_fmtDropping = nullptr;
+
+    return S_OK;
+  }
+
+  STDMETHODIMP Drop (IDataObject* pDataObj, DWORD grfKeyState, POINTL pt, DWORD* pdwEffect) override
+  {
+    UNREFERENCED_PARAMETER (grfKeyState);
+
+    if (pdwEffect == nullptr)
+      return E_INVALIDARG;
+
+    if (pDataObj == nullptr || m_fmtDropping == nullptr)
+      return E_UNEXPECTED;
+
+    if ((*pdwEffect & DROPEFFECT_COPY) == DROPEFFECT_COPY)
+    {
+      *pdwEffect = DROPEFFECT_COPY;
+
+      if (m_pDropTargetHelper != nullptr)
+          m_pDropTargetHelper->Drop (pDataObj, reinterpret_cast <LPPOINT> (&pt), *pdwEffect);
+
+      STGMEDIUM medium;
+
+      auto ReturnAndCleanUp = [&](void)
+      {
+        ReleaseStgMedium (&medium);
+
+        m_bAllowDrop  = false;
+        m_fmtDropping = nullptr;
+
+        return S_OK;
+      };
+
+      auto& rb =
+        SK_GetCurrentRenderBackend ();
+
+      // Unicode URLs
+      if (m_fmtDropping->cfFormat == CF_UNICODETEXT && SUCCEEDED (pDataObj->GetData (m_fmtDropping, &medium)))
+      {
+        const wchar_t* wszSource =
+          static_cast <const wchar_t *> (GlobalLock (medium.hGlobal));
+
+        if (wszSource != nullptr)
+        {
+          if (StrStrIW (wszSource, L".ini"))
+          {
+            wchar_t               wszHostApp [MAX_PATH + 2] = { };
+            wcsncpy_s            (wszHostApp, MAX_PATH, SK_GetHostApp (),
+                                   _TRUNCATE);
+            PathRemoveExtensionW (wszHostApp);
+
+            if (StrStrIW (wszSource, L"SpecialK_import") ||
+                StrStrIW (wszSource, wszHostApp))
+            {
+              std::filesystem::path dest =
+                SK_GetConfigPath ();
+
+              sk_download_request_s fetch_this (
+                  L"", wszSource,
+                    []( const std::vector <uint8_t>&& concat_buffer,
+                        const std::wstring_view       path)
+                     -> bool
+                        {
+                          const auto fs_path   = std::filesystem::path (path);
+                          auto       directory = fs_path.parent_path   (    );
+                          auto       filename  = fs_path.filename      (    );
+
+                          std::error_code                                       ec = { };
+                          if (! std::filesystem::exists             (directory, ec))
+                                std::filesystem::create_directories (directory, ec);
+
+                          if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
+                                     fOut != nullptr )
+                          {
+                            fwrite ( concat_buffer.data (),
+                                     concat_buffer.size (), 1, fOut );
+                            fclose (                           fOut );
+
+                            if (SK_GetDLLConfig ()->import_file (fs_path.wstring ().c_str ()))
+                            {   SK_GetDLLConfig ()->write ();
+                                  SK_LoadConfig ();
+
+                              SK_ImGui_CreateNotification (
+                                "INI.Import.Download", SK_ImGui_Toast::Success,
+                                  SK_FormatString ( "\n\t%ws successfully applied\n\n"
+                                                    "Some setting changes may require a game restart...",
+                                                    filename.wstring ().c_str () ).c_str(),
+                                  "INI Settings Imported", 30000,
+                                                                   SK_ImGui_Toast::UseDuration |
+                                                                   SK_ImGui_Toast::ShowTitle   |
+                                                                   SK_ImGui_Toast::ShowCaption |
+                                                                   SK_ImGui_Toast::ShowNewest );
+                            }
+
+                            DeleteFileW (fs_path.wstring ().c_str ());
+                          }
+
+                          return true;
+                        }
+                );
+
+              wchar_t        wszFileName [2050] = {};
+              wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
+              PathStripPath (wszFileName);
+
+              // Get rid of stuff that's not part of the actual filename.
+              wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
+              if (     wszHTTPArgs != nullptr)
+                      *wszHTTPArgs  = L'\0';
+
+              fetch_this.path =
+                (dest / wszFileName).wstring ();
+
+              SK_Network_EnqueueDownload (
+                std::move (fetch_this), true
+              );
+            }
+          }
+
+          if (SK_API_IsLayeredOnD3D11 (rb.api) && StrStrIW (wszSource, L".dds"))
+          {
+            std::filesystem::path dest =
+              *SK_D3D11_res_root;
+
+            dest /= LR"(inject\textures)";
+
+            sk_download_request_s fetch_this (
+                L"", wszSource,
+                  []( const std::vector <uint8_t>&& concat_buffer,
+                      const std::wstring_view       path)
+                   -> bool
+                      {
+                        const auto fs_path   = std::filesystem::path (path);
+                        auto       directory = fs_path.parent_path   (    );
+                        auto       filename  = fs_path.filename      (    );
+
+                        std::error_code                                       ec = { };
+                        if (! std::filesystem::exists             (directory, ec))
+                              std::filesystem::create_directories (directory, ec);
+
+                        if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
+                                   fOut != nullptr )
+                        {
+                          fwrite ( concat_buffer.data (),
+                                   concat_buffer.size (), 1, fOut );
+                          fclose (                           fOut );
+
+                          SK_ImGui_CreateNotification (
+                            "D3D11.TexMod.Download", SK_ImGui_Toast::Success,
+                              SK_FormatString ( "\t%ws successfully downloaded\t(%5.3f MiB)\n",
+                                                filename.wstring ().c_str (), (double)concat_buffer.size () / (1024.0 * 1024.0)).c_str(),
+                              "Injectable D3D11 Textures Downloaded", 30000,
+                                                               SK_ImGui_Toast::UseDuration |
+                                                               SK_ImGui_Toast::ShowTitle   |
+                                                               SK_ImGui_Toast::ShowCaption |
+                                                               SK_ImGui_Toast::ShowNewest );
+
+                          SK_D3D11_ReloadAllTextures ();
+                        }
+
+                        return true;
+                      }
+            );
+
+            wchar_t        wszFileName [2050] = {};
+            wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
+            PathStripPath (wszFileName);
+
+        // Get rid of stuff that's not part of the actual filename.
+            wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
+            if (     wszHTTPArgs != nullptr)
+                    *wszHTTPArgs  = L'\0';
+
+            fetch_this.path =
+              (dest / wszFileName).wstring ();
+
+            SK_Network_EnqueueDownload (
+              std::move (fetch_this), true
+            );
+          }
+
+          GlobalUnlock (medium.hGlobal);
+        }
+
+        ReturnAndCleanUp ();
+      }
+
+      // Files
+      else if (m_fmtDropping->cfFormat == CF_HDROP && SUCCEEDED (pDataObj->GetData (m_fmtDropping, &medium)))
+      {
+        HDROP hDrop =
+          static_cast<HDROP> (GlobalLock (medium.hGlobal));
+
+        if (hDrop != nullptr)
+        {
+          UINT numFiles =
+            DragQueryFile (hDrop, 0xFFFFFFFF, nullptr, 0);
+
+          if (numFiles > 0)
+          {
+            wchar_t                  wszFilePath [MAX_PATH + 2];
+            wchar_t                  wszFileName [MAX_PATH + 2];
+            DragQueryFile (hDrop, 0, wszFilePath, MAX_PATH);
+
+            wcsncpy_s      (wszFileName, MAX_PATH, wszFilePath, _TRUNCATE);
+            PathStripPathW (wszFileName);
+
+            // DDS Textures (D3D11)
+            if (SK_API_IsLayeredOnD3D11 (rb.api) && StrStrIW (wszFileName, L".dds"))
+            {
+              std::filesystem::path dest =
+                *SK_D3D11_res_root;
+
+              dest /= LR"(inject\textures)";
+              dest /= wszFileName;
+
+              SK_CreateDirectories (dest.c_str ());
+
+              if (CopyFileW (wszFilePath, dest.c_str (), FALSE))
+              {
+                SK_ImGui_CreateNotification (
+                  "D3D11.TexMod.Copied", SK_ImGui_Toast::Success,
+                    SK_FormatString ( "\t%ws successfully loaded\n",
+                                             wszFileName ).c_str (),
+                    "Injectable D3D11 Textures Loaded", 30000,
+                                                     SK_ImGui_Toast::UseDuration |
+                                                     SK_ImGui_Toast::ShowTitle   |
+                                                     SK_ImGui_Toast::ShowCaption |
+                                                     SK_ImGui_Toast::ShowNewest );
+                
+                SK_D3D11_ReloadAllTextures ();
+
+                return true;
+              }
+            }
+          }
+
+          GlobalUnlock (medium.hGlobal);
+        }
+
+        ReturnAndCleanUp ();
+      }
+
+      // URLs
+      else if (m_fmtDropping->cfFormat == CF_TEXT && SUCCEEDED (pDataObj->GetData (m_fmtDropping, &medium)))
+      {
+        const char* szSource =
+          static_cast <const char *> (GlobalLock (medium.hGlobal));
+
+        if (szSource != nullptr)
+        {
+          if (StrStrIA (szSource, ".ini"))
+          {
+            wchar_t               wszHostApp [MAX_PATH + 2] = { };
+            wcsncpy_s            (wszHostApp, MAX_PATH, SK_GetHostApp (),
+                                   _TRUNCATE);
+            PathRemoveExtensionW (wszHostApp);
+
+            if (StrStrIA (szSource, "SpecialK_import") ||
+                StrStrIA (szSource, SK_WideCharToUTF8 (wszHostApp).c_str ()))
+            {
+              std::filesystem::path dest =
+                SK_GetConfigPath ();
+
+              sk_download_request_s fetch_this (
+                  L"", szSource,
+                    []( const std::vector <uint8_t>&& concat_buffer,
+                        const std::wstring_view       path)
+                     -> bool
+                        {
+                          const auto fs_path   = std::filesystem::path (path);
+                          auto       directory = fs_path.parent_path   (    );
+                          auto       filename  = fs_path.filename      (    );
+
+                          std::error_code                                       ec = { };
+                          if (! std::filesystem::exists             (directory, ec))
+                                std::filesystem::create_directories (directory, ec);
+
+                          if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
+                                     fOut != nullptr )
+                          {
+                            fwrite ( concat_buffer.data (),
+                                     concat_buffer.size (), 1, fOut );
+                            fclose (                           fOut );
+
+                            if (SK_GetDLLConfig ()->import_file (fs_path.wstring ().c_str ()))
+                            {   SK_GetDLLConfig ()->write ();
+                                  SK_LoadConfig ();
+
+                              SK_ImGui_CreateNotification (
+                                "INI.Import.Download", SK_ImGui_Toast::Success,
+                                  SK_FormatString ( "\n\t%ws successfully applied\n\n"
+                                                    "Some setting changes may require a game restart...",
+                                                    filename.wstring ().c_str () ).c_str(),
+                                  "INI Settings Imported", 30000,
+                                                                   SK_ImGui_Toast::UseDuration |
+                                                                   SK_ImGui_Toast::ShowTitle   |
+                                                                   SK_ImGui_Toast::ShowCaption |
+                                                                   SK_ImGui_Toast::ShowNewest );
+                            }
+
+                            DeleteFileW (fs_path.wstring ().c_str ());
+                          }
+
+                          return true;
+                        }
+                );
+
+              wchar_t        wszFileName [2050] = {};
+              wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
+              PathStripPath (wszFileName);
+
+              // Get rid of stuff that's not part of the actual filename.
+              wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
+              if (     wszHTTPArgs != nullptr)
+                      *wszHTTPArgs  = L'\0';
+
+              fetch_this.path =
+                (dest / wszFileName).wstring ();
+
+              SK_Network_EnqueueDownload (
+                std::move (fetch_this), true
+              );
+            }
+          }
+
+          if (SK_API_IsLayeredOnD3D11 (rb.api) && StrStrIA (szSource, ".dds"))
+          {
+            std::filesystem::path dest =
+              *SK_D3D11_res_root;
+
+            dest /= LR"(inject\textures)";
+
+            sk_download_request_s fetch_this (
+                L"", szSource,
+                  []( const std::vector <uint8_t>&& concat_buffer,
+                      const std::wstring_view       path)
+                   -> bool
+                      {
+                        const auto fs_path   = std::filesystem::path (path);
+                        auto       directory = fs_path.parent_path   (    );
+                        auto       filename  = fs_path.filename      (    );
+
+                        std::error_code                                       ec = { };
+                        if (! std::filesystem::exists             (directory, ec))
+                              std::filesystem::create_directories (directory, ec);
+
+                        if ( FILE *fOut = _wfopen ( fs_path.wstring ().c_str (), L"wb+" ) ;
+                                   fOut != nullptr )
+                        {
+                          fwrite ( concat_buffer.data (),
+                                   concat_buffer.size (), 1, fOut );
+                          fclose (                           fOut );
+
+                          SK_ImGui_CreateNotification (
+                            "D3D11.TexMod.Download", SK_ImGui_Toast::Success,
+                              SK_FormatString ( "\t%ws successfully downloaded\t(%5.3f MiB)\n",
+                                                filename.wstring ().c_str (), (double)concat_buffer.size () / (1024.0 * 1024.0)).c_str(),
+                              "Injectable D3D11 Textures Downloaded", 30000,
+                                                               SK_ImGui_Toast::UseDuration |
+                                                               SK_ImGui_Toast::ShowTitle   |
+                                                               SK_ImGui_Toast::ShowCaption |
+                                                               SK_ImGui_Toast::ShowNewest );
+
+                          SK_D3D11_ReloadAllTextures ();
+                        }
+
+                        return true;
+                      }
+            );
+
+            wchar_t        wszFileName [2050] = {};
+            wcsncpy_s     (wszFileName, 2048, fetch_this.wszHostPath, _TRUNCATE);
+            PathStripPath (wszFileName);
+
+            // Get rid of stuff that's not part of the actual filename.
+            wchar_t* wszHTTPArgs = StrStrIW (wszFileName, L"?");
+            if (     wszHTTPArgs != nullptr)
+                    *wszHTTPArgs  = L'\0';
+
+            fetch_this.path =
+              (dest / wszFileName).wstring ();
+
+            SK_Network_EnqueueDownload (
+              std::move (fetch_this), true
+            );
+          }
+
+          GlobalUnlock (medium.hGlobal);
+        }
+
+        ReturnAndCleanUp ();
+      }
+
+      else
+      {
+        SK_ImGui_Warning (
+          SK_FormatStringW (L"Unexpected Drop Format: %d", m_fmtDropping->cfFormat).c_str ()
+        );
+      }
+    }
+
+    *pdwEffect = DROPEFFECT_NONE;
+
+    return S_FALSE;
+  }
+
+private:
+  HWND                          m_hWnd              = nullptr; // Required by m_pDropTargetHelper->DragEnter
+  ULONG                         m_ulRefCount        =       0;
+  bool                          m_bAllowDrop        =   false;
+  SK_ComPtr <IDropTargetHelper> m_pDropTargetHelper = nullptr; // Drag image/thumbnail helper
+  FORMATETC*                    m_fmtDropping       = nullptr;
+  std::vector <FORMATETC>       m_fmtSupported;
+};
+
+
+bool SK_OLE_DragDropChanged    = true;
+bool SK_OLE_GameHasDropHandler = false;
+
+using  RegisterDragDrop_pfn = HRESULT (STDAPICALLTYPE *)(IN HWND hwnd, IN LPDROPTARGET pDropTarget);
+static RegisterDragDrop_pfn
+       RegisterDragDrop_Original = nullptr;
+
+using  RevokeDragDrop_pfn = HRESULT (STDAPICALLTYPE *)(IN HWND hwnd);
+static RevokeDragDrop_pfn
+       RevokeDragDrop_Original = nullptr;
+
+HRESULT
+STDAPICALLTYPE
+RegisterDragDrop_Detour (IN HWND hwnd, IN LPDROPTARGET pDropTarget)
+{
+  SK_LOG_FIRST_CALL
+
+  SK_LOGi0 (
+    L"RegisterDragDrop (hwnd=%x, pDropTarget=%p)", hwnd, pDropTarget
+  );
+
+  auto ret =
+    RegisterDragDrop_Original (hwnd, pDropTarget);
+
+  if (hwnd == game_window.hWnd)
+  {
+    if (SUCCEEDED (ret))
+    {    
+      SK_OLE_GameHasDropHandler = true;
+      SK_OLE_DragDropChanged    = true;
+    }
+
+    else if (ret == DRAGDROP_E_ALREADYREGISTERED && hwnd == game_window.hWnd)
+    {
+      RevokeDragDrop_Original (hwnd);
+
+      ret = 
+        RegisterDragDrop_Original (hwnd, pDropTarget);
+
+      if (SUCCEEDED (ret))
+      {
+        SK_OLE_GameHasDropHandler = true;
+        SK_OLE_DragDropChanged    = true;
+      }
+    }
+  }
+
+  return ret;
+}
+
+HRESULT
+STDAPICALLTYPE
+RevokeDragDrop_Detour (IN HWND hwnd)
+{
+  SK_LOG_FIRST_CALL
+
+  SK_LOGi0 (
+    L"RevokeDragDrop (hwnd=%x)", hwnd
+  );
+
+  auto ret =
+    RevokeDragDrop_Original (hwnd);
+
+  if (SUCCEEDED (ret))
+  {
+    if (hwnd == game_window.hWnd)
+    {
+      SK_OLE_GameHasDropHandler = false;
+      SK_OLE_DragDropChanged    = true;
+    }
+  }
+
+  return ret;
+}
+
+void
+SK_ImGui_InitDragAndDrop (void)
+{
+  static bool incompatible = false;
+  if (        incompatible)
+    return;
+
+  if (! config.window.allow_drag_n_drop)
+    return;
+
+  if (SK_GetCurrentRenderBackend ().windows.xgs_Framework)
+  {
+    incompatible = true;
+    return;
+  }
+
+  static bool init = false;
+
+  SK_RunOnce (
+    SK_CreateDLLHook2 ( L"ole32", "RegisterDragDrop", RegisterDragDrop_Detour, static_cast_p2p <void> (&RegisterDragDrop_Original) );
+    SK_CreateDLLHook2 ( L"ole32", "RevokeDragDrop",   RevokeDragDrop_Detour,   static_cast_p2p <void> (&RevokeDragDrop_Original)   );
+
+    SK_ApplyQueuedHooks ();
+
+    init = true;
+  );
+
+  if (init && !SK_OLE_GameHasDropHandler && std::exchange (SK_OLE_DragDropChanged, false))
+  {
+    SK_AutoCOMInit _;
+
+    if (SUCCEEDED (OleInitialize (nullptr)))
+    {
+      static concurrency::concurrent_unordered_map <HWND, SK_DropTarget*> drop_targets;
+
+      if (drop_targets [game_window.hWnd] == nullptr)
+          drop_targets [game_window.hWnd] = new SK_DropTarget (game_window.hWnd);
+
+      auto target = drop_targets [game_window.hWnd];
+      auto status =
+        RegisterDragDrop_Original (game_window.hWnd, target);
+
+      if (status == DRAGDROP_E_ALREADYREGISTERED)
+      {
+        if (! SK_GetCurrentRenderBackend ().windows.unreal)
+        {
+          SK_LOGi0 (L"OLE Drop Target for HWND: %x already registered!", game_window.hWnd);
+        }
+
+        else
+        {
+          SK_LOGi0 (
+            L"OLE Drop Target for HWND: %x already registered,"
+            L" overwriting because this is an Unreal Engine game!",
+              game_window.hWnd
+          );
+
+          SK_OLE_GameHasDropHandler = false;
+
+                   RevokeDragDrop_Original   (game_window.hWnd);
+          status = RegisterDragDrop_Original (game_window.hWnd, target);
+        }
+      }
+
+      if (! SUCCEEDED (status))
+      {
+        static DWORD dwLastTry     = 0;
+        static auto  fails_retried = 0;
+
+        if (fails_retried < 10)
+        {
+          if (dwLastTry < SK_timeGetTime () - 200)
+          {   dwLastTry = SK_timeGetTime ();
+            fails_retried++;
+            SK_LOGi0 (L"RegisterDragDrop failed: %x", status);
+          }
+
+          SK_OLE_DragDropChanged = true;
+        }
+      }
+
+      else
+      {
+        if (config.window.allow_file_drops)
+        {
+          SK_LOGi0 (L"Adding File Drop Capabilities to Game Window Extended Style...");
+          SK_SetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE,
+          SK_GetWindowLongPtrW (game_window.hWnd, GWL_EXSTYLE) | WS_EX_ACCEPTFILES);
+        }
+      }
+    }
+
+    else
+    {
+      SK_OLE_DragDropChanged = true;
+    }
+  }
 }

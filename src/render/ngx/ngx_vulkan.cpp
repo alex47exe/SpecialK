@@ -265,7 +265,8 @@ NVSDK_NGX_VULKAN_CreateFeature_Detour ( VkCommandBuffer            InCmdBuffer,
     SK_NGX_HookParameters (InParameters)
   );
 
-  if (InFeatureID == NVSDK_NGX_Feature_SuperSampling)
+  if (InFeatureID == NVSDK_NGX_Feature_SuperSampling ||
+      InFeatureID == NVSDK_NGX_Feature_RayReconstruction)
   {
     SK_NGX_DLSS_CreateFeatureOverrideParams (InParameters);
   }
@@ -300,12 +301,15 @@ NVSDK_NGX_VULKAN_CreateFeature_Detour ( VkCommandBuffer            InCmdBuffer,
       __SK_IsDLSSGActive =
         ( uiEnableDLSSGInterp );
 
-      __SK_ForceDLSSGPacing = false;//__SK_IsDLSSGActive;
+      __SK_ForceDLSSGPacing = __SK_IsDLSSGActive;
 
       SK_LOGi0 (L"DLSS-G Feature Created!");
     }
 
-    else if (InFeatureID == NVSDK_NGX_Feature_SuperSampling)
+    // These won't be used at the same time, so treat them as if they're
+    //   the same feature, just with extra stuff.
+    else if (InFeatureID == NVSDK_NGX_Feature_SuperSampling ||
+             InFeatureID == NVSDK_NGX_Feature_RayReconstruction)
     {
       //SK_ReleaseAssert ( SK_NGX_VULKAN.super_sampling.Handle == *OutHandle ||
       //                   SK_NGX_VULKAN.super_sampling.Handle == nullptr );
@@ -396,7 +400,7 @@ NVSDK_NGX_VULKAN_CreateFeature1_Detour ( VkDevice                   InDevice,
       __SK_IsDLSSGActive =
         ( uiEnableDLSSGInterp );
 
-      __SK_ForceDLSSGPacing = false;//__SK_IsDLSSGActive;
+      __SK_ForceDLSSGPacing = __SK_IsDLSSGActive;
 
       SK_LOGi0 (L"DLSS-G Feature Created1!");
     }
@@ -492,9 +496,7 @@ NVSDK_NGX_VULKAN_EvaluateFeature_Detour (VkCommandBuffer InCmdList, const NVSDK_
     if (dlss_g != nullptr)
     {
       // These things are unsupported in Vulkan for the time being
-      config.nvidia.reflex.use_limiter                       = false;
       config.render.framerate.streamline.enable_native_limit = false;
-      __SK_ForceDLSSGPacing                                  = false;
     }
 
     SK_NGX_VULKAN.frame_gen.     evaluateFeature (dlss_g);
@@ -596,8 +598,6 @@ SK_NGXVK_UpdateDLSSGStatus (void)
     ReadULong64Acquire (&SK_NGX_VULKAN.frame_gen.LastFrame) >= SK_GetFramesDrawn () - 8 &&
                        uiEnableDLSSGInterp;
 
-  __SK_DLSSGMultiFrameCount = uiMultiFrameCount;
-
   if (lastFrameGen         != nullptr &&
       lastFrameGen->Handle != nullptr)
   {
@@ -610,7 +610,7 @@ SK_NGXVK_UpdateDLSSGStatus (void)
     }
   }
 
-  __SK_ForceDLSSGPacing     = false;//__SK_IsDLSSGActive;
+  __SK_ForceDLSSGPacing     = __SK_IsDLSSGActive;
   __SK_DLSSGMultiFrameCount = uiMultiFrameCount;
 }
 

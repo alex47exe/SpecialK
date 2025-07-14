@@ -35,6 +35,7 @@
 
 extern float __target_fps;
 
+volatile ULONG64 SK_Reflex_LastFrameSleptVk  = 0;
 volatile ULONG64 SK_Reflex_LastFrameMarked   = 0;
 volatile LONG    SK_RenderBackend::flip_skip = 0;
 
@@ -466,6 +467,15 @@ NvAPI_D3D_SetSleepMode_Detour ( __in IUnknown                 *pDev,
     );
 
     SK_Reflex_NativeSleepModeParams = *pSetSleepModeParams;
+
+    if (pSetSleepModeParams->bUseMarkersToOptimize)
+    {
+      SK_RunOnce (
+        SK_LOGi0 (L"NvAPI_D3D_SetSleepMode bUseMarkersToOptimize=true");
+
+        config.nvidia.reflex.marker_optimization = true;
+      );
+    }
   }
 
   else {
@@ -484,8 +494,8 @@ NvAPI_D3D_SetSleepMode_Detour ( __in IUnknown                 *pDev,
     if ((__SK_ForceDLSSGPacing && __target_fps > 10.0f) || config.nvidia.reflex.use_limiter)
     {
       config.nvidia.reflex.frame_interval_us =
-            (UINT)(1000000.0 / __target_fps) + ( __SK_ForceDLSSGPacing ? 6
-                                                                       : 0 );
+            (UINT)(round (1000000.0 / __target_fps)) + ( __SK_ForceDLSSGPacing ? 6
+                                                                               : 0 );
     }
     else
       config.nvidia.reflex.frame_interval_us = 0;
@@ -585,7 +595,15 @@ SK_PCL_Heartbeat (const NV_LATENCY_MARKER_PARAMS& marker)
       const SK_RenderBackend &rb =
         SK_GetCurrentRenderBackend ();
 
-      rb.setLatencyMarkerNV (PC_LATENCY_PING);
+      if (! config.nvidia.reflex.vulkan)
+        rb.setLatencyMarkerNV (PC_LATENCY_PING);
+      else
+      {
+        auto marker_copy = marker;
+             marker_copy.markerType = PC_LATENCY_PING;
+
+        SK_PCL_Heartbeat (marker_copy);
+      }
     }
   }
 
@@ -618,6 +636,8 @@ SK_RenderBackend_V2::isReflexSupported (void) const
 
   return supported;
 }
+
+#include <vulkan/vulkan_core.h>
 
 bool
 SK_RenderBackend_V2::setLatencyMarkerNV (NV_LATENCY_MARKER_TYPE marker) const
@@ -690,6 +710,19 @@ SK_RenderBackend_V2::setLatencyMarkerNV (NV_LATENCY_MARKER_TYPE marker) const
     // Vulkan Early-Out
     if (config.nvidia.reflex.vulkan)
     {
+      if (marker == INPUT_SAMPLE &&  config.nvidia.reflex.vulkan
+                                 && !config.nvidia.reflex.native)
+      {
+        VkSetLatencyMarkerInfoNV
+          vk_marker           = {                                          };
+          vk_marker.sType     = VK_STRUCTURE_TYPE_SET_LATENCY_MARKER_INFO_NV;
+          vk_marker.presentID = SK_GetFramesDrawn ();
+
+        void
+        SK_VK_SetLatencyMarker (VkSetLatencyMarkerInfoNV& marker, VkLatencyMarkerNV type);
+        SK_VK_SetLatencyMarker (vk_marker,             VK_LATENCY_MARKER_INPUT_SAMPLE_NV);
+      }
+
       if (swapchain.p != nullptr &&
           config.render.framerate.pre_render_limit != -1)
       {
@@ -876,8 +909,13 @@ SK_RenderBackend_V2::driverSleepNV (int site) const
 
     if (! valid)
     {
-      config.nvidia.reflex.use_limiter = false;
-      return;
+      // NvAPI Reflex failures shouldn't affect Vulkan
+      if (! config.nvidia.reflex.vulkan)
+      {
+        config.nvidia.reflex.use_limiter = false;
+
+        return;
+      }
     }
 
     if (config.nvidia.reflex.use_limiter || __SK_ForceDLSSGPacing)
@@ -885,9 +923,14 @@ SK_RenderBackend_V2::driverSleepNV (int site) const
       if (__target_fps > 10.0f)
       {
         config.nvidia.reflex.frame_interval_us =
-          (UINT)(1000000.0 / __target_fps) + ( __SK_ForceDLSSGPacing ? 24
-                                                                     : 0 );
+          (UINT)(round (1000000.0 / __target_fps)) + ( __SK_ForceDLSSGPacing ? 24
+                                                                             : 0 );
       }
+    }
+
+    if (! valid)
+    {
+      return;
     }
 
     NV_SET_SLEEP_MODE_PARAMS
@@ -1044,9 +1087,9 @@ SK_NV_AdaptiveSyncControl (void)
         }
 
         float fEffectiveRefresh =
-          rb.displays [rb.active_display].statistics.vblank_counter.getVBlankHz (SK_QueryPerf ().QuadPart);
+          display.statistics.vblank_counter.getVBlankHz (SK_QueryPerf ().QuadPart);
 
-        ImGui::Text       ("Adaptive Sync Status for %hs", SK_WideCharToUTF8 (rb.display_name).c_str ());
+        ImGui::Text       ("%hs Status for %hs", display.vrr.type, SK_WideCharToUTF8 (rb.display_name).c_str ());
         ImGui::Separator  ();
         ImGui::BeginGroup ();
         ImGui::Text       ("Current State:");
@@ -1063,9 +1106,16 @@ SK_NV_AdaptiveSyncControl (void)
         ImGui::SameLine   ();
         ImGui::BeginGroup ();
 
-        ImGui::Text       ( getAdaptiveSync.bDisableAdaptiveSync   ? "Disabled" :
-                                             rb.gsync_state.active ? "Active"   :
-                                                                     "Inactive" );
+        const ImVec4 vStatusColor =
+          getAdaptiveSync.bDisableAdaptiveSync   ? ImVec4 (1.f, 0.f, 0.f, 1.f) :
+                           rb.gsync_state.active ? ImVec4 (0.f, 1.f, 0.f, 1.f) :
+                                                   ImVec4 (.8f, .8f, .8f, 1.f);
+
+        ImGui::TextColored ( vStatusColor,
+              getAdaptiveSync.bDisableAdaptiveSync   ? "Disabled" :
+                               rb.gsync_state.active ? "Active"   :
+                                                       "Inactive" );
+
         if (! getAdaptiveSync.bDisableAdaptiveSync)
         {
           auto *pLimiter =
@@ -1076,6 +1126,25 @@ SK_NV_AdaptiveSyncControl (void)
               pLimiter->frame_history_snapshots->frame_history.calcMean ();
 
           ImGui::Text     ( "%#5.01f Hz", fEffectiveRefresh );
+
+          if (pLimiter != nullptr)
+          {
+            const auto snapshots =
+              pLimiter->frame_history_snapshots.getPtr ();
+
+            const float fFPS =
+              static_cast <float> (1000.0 / snapshots->cached_mean.val);
+            //const float fLFC = 1000000.0f /
+            //  static_cast <float> (getAdaptiveSync.maxFrameInterval);
+
+            if (fEffectiveRefresh > 1.08 * fFPS)
+            {
+              ImGui::SameLine ();
+
+              ImGui::TextColored (ImVec4 (.8f, .8f, 0.f, 1.f), " (LFC x%d)",
+                static_cast <int> (std::floorf (0.5f + (fEffectiveRefresh / fFPS))) );
+            }
+          }
 
           if (! config.apis.NvAPI.gsync_status)
           {
@@ -1095,7 +1164,7 @@ SK_NV_AdaptiveSyncControl (void)
         ImGui::SameLine   ();
         ImGui::BeginGroup ();
 
-        static bool secret_menu = true;
+        static bool secret_menu = false;
 
         if (ImGui::IsItemClicked (1))
           secret_menu = true;
@@ -1192,17 +1261,44 @@ struct NVLL_VK_LATENCY_RESULT_PARAMS {
   } frameReport [64];
 };
 
+enum NVLL_VK_LATENCY_MARKER_TYPE
+{
+  VK_SIMULATION_START               = 0,
+  VK_SIMULATION_END                 = 1,
+  VK_RENDERSUBMIT_START             = 2,
+  VK_RENDERSUBMIT_END               = 3,
+  VK_PRESENT_START                  = 4,
+  VK_PRESENT_END                    = 5,
+  VK_INPUT_SAMPLE                   = 6,
+  VK_TRIGGER_FLASH                  = 7,
+  VK_PC_LATENCY_PING                = 8,
+  VK_OUT_OF_BAND_RENDERSUBMIT_START = 9,
+  VK_OUT_OF_BAND_RENDERSUBMIT_END   = 10,
+  VK_OUT_OF_BAND_PRESENT_START      = 11,
+  VK_OUT_OF_BAND_PRESENT_END        = 12,
+};
+
+struct NVLL_VK_LATENCY_MARKER_PARAMS
+{
+  uint64_t                    frameID;
+  NVLL_VK_LATENCY_MARKER_TYPE markerType;
+};
+
 using  NvLL_VK_SetSleepMode_pfn = NvLL_VK_Status (*)(VkDevice, NVLL_VK_SET_SLEEP_MODE_PARAMS*);
 static NvLL_VK_SetSleepMode_pfn
        NvLL_VK_SetSleepMode_Original = nullptr;
        
-using  NvLL_VK_InitLowLatencyDevice_pfn = NvLL_VK_Status (*)(VkDevice, VkSemaphore);
+using  NvLL_VK_InitLowLatencyDevice_pfn = NvLL_VK_Status (*)(VkDevice, VkSemaphore*);
 static NvLL_VK_InitLowLatencyDevice_pfn
        NvLL_VK_InitLowLatencyDevice_Original = nullptr;
 
 using  NvLL_VK_Sleep_pfn = NvLL_VK_Status (*)(VkDevice, uint64_t);
 static NvLL_VK_Sleep_pfn
        NvLL_VK_Sleep_Original = nullptr;
+
+using  NvLL_VK_SetLatencyMarker_pfn = NvLL_VK_Status (*)(VkDevice, NVLL_VK_LATENCY_MARKER_PARAMS*);
+static NvLL_VK_SetLatencyMarker_pfn
+       NvLL_VK_SetLatencyMarker_Original = nullptr;
 
 using  NvLL_VK_GetLatency_pfn = NvLL_VK_Status (*)(VkDevice, NVLL_VK_LATENCY_RESULT_PARAMS*);
 static NvLL_VK_GetLatency_pfn
@@ -1211,28 +1307,26 @@ static NvLL_VK_GetLatency_pfn
 extern void SK_VK_HookFirstDevice (VkDevice device);
 
 struct {
-  VkDevice       device    = 0;
-  VkSwapchainKHR swapchain = 0;
+  VkDevice       device         = 0;
+  VkSwapchainKHR swapchain      = 0;
+  uint64_t       last_frame     = 0;
+  VkSemaphore    NvLL_semaphore = 0;
 } SK_VK_Reflex;
 
-NvLL_VK_Status
-NvLL_VK_Sleep_Detour (VkDevice device, uint64_t signalValue)
+#undef VK_NV_low_latency2
+
+void
+SK_Reflex_SetVulkanSwapchain (VkDevice device, VkSwapchainKHR swapchain)
 {
-  SK_LOG_FIRST_CALL
+  SK_GetCurrentRenderBackend ().vulkan_reflex.api =
+    SK_RenderBackend_V2::vk_reflex_s::VK_NV_low_latency2;
 
-  SK_VK_HookFirstDevice (device);
-  SK_VK_Reflex.device  = device;
-
-  //
-  // nb: For DLSS-G "native pacing", run the framerate limiter here.
-  //
-
-  return
-    NvLL_VK_Sleep_Original (device, signalValue);
+  SK_VK_Reflex.device    = device;
+  SK_VK_Reflex.swapchain = swapchain;
 }
 
 NvLL_VK_Status
-NvLL_VK_InitLowLatencyDevice_Detour (VkDevice device, VkSemaphore signalSemaphoreHandle)
+NvLL_VK_InitLowLatencyDevice_Detour (VkDevice device, VkSemaphore* signalSemaphoreHandle)
 {
   SK_LOG_FIRST_CALL
 
@@ -1247,9 +1341,16 @@ NvLL_VK_InitLowLatencyDevice_Detour (VkDevice device, VkSemaphore signalSemaphor
   SK_VK_Reflex.swapchain      = 0;
   rb.vulkan_reflex.api        = SK_RenderBackend_V2::vk_reflex_s::NvLowLatencyVk;
 
-  return
-    NvLL_VK_InitLowLatencyDevice_Original (device, signalSemaphoreHandle);
+  auto ret =
+    NvLL_VK_InitLowLatencyDevice_Original (device, &SK_VK_Reflex.NvLL_semaphore);
+
+  if (signalSemaphoreHandle != nullptr)
+     *signalSemaphoreHandle = SK_VK_Reflex.NvLL_semaphore;
+
+  return ret;
 }
+
+NVLL_VK_SET_SLEEP_MODE_PARAMS SK_NVLL_LastSleepParams;
 
 NvLL_VK_Status
 NvLL_VK_SetSleepMode_Detour (VkDevice device, NVLL_VK_SET_SLEEP_MODE_PARAMS* sleepModeParams)
@@ -1261,12 +1362,6 @@ NvLL_VK_SetSleepMode_Detour (VkDevice device, NVLL_VK_SET_SLEEP_MODE_PARAMS* sle
 
   if (sleepModeParams != nullptr)
   {
-    const auto& rb =
-      SK_GetCurrentRenderBackend ();
-
-    const auto& display =
-      rb.displays [rb.active_display];
-
     if (config.nvidia.reflex.override)
     {
       if (config.nvidia.reflex.enable)
@@ -1282,40 +1377,117 @@ NvLL_VK_SetSleepMode_Detour (VkDevice device, NVLL_VK_SET_SLEEP_MODE_PARAMS* sle
       }
     }
 
-    // Apply correct VRR framerate limit, which Reflex should be doing on its own...
-    if ( sleepModeParams->bLowLatencyMode                           &&
-         display.nvapi.monitor_caps.data.caps.currentlyCapableOfVRR &&
-         display.signal.timing.vsync_freq.Denominator != 0 )
-    {
-      const double dRefresh =
-        static_cast <double> (display.signal.timing.vsync_freq.Numerator) /
-        static_cast <double> (display.signal.timing.vsync_freq.Denominator);
+    const auto reflex_interval_us =
+      SK_Reflex_CalculateSleepMinIntervalForVulkan (sleepModeParams->bLowLatencyMode);
 
-      const double dReflexFPS =
-        (dRefresh - (dRefresh * dRefresh) / 3600.0);
+    sleepModeParams->minimumIntervalUs =
+      std::max (sleepModeParams->minimumIntervalUs, reflex_interval_us);
 
-      // Vulkan Reflex is b0rked, we will just do it ourselves if Low Latency mode is enabled.
-      if ( __target_fps <= 0.0f ||
-           __target_fps > dReflexFPS )
-           __target_fps = static_cast <float> (dReflexFPS);
-
-#if 0
-      const auto vrr_interval_us =
-        static_cast <UINT> (1000000.0 / dReflexFPS);
-
-      if (sleepModeParams->minimumIntervalUs < vrr_interval_us)
-          sleepModeParams->minimumIntervalUs = vrr_interval_us;
-#endif
-    }
-
-    else
-    {
-      __target_fps = config.render.framerate.target_fps;
-    }
+    SK_NVLL_LastSleepParams = *sleepModeParams;
   }
 
   return
     NvLL_VK_SetSleepMode_Original (device, sleepModeParams);
+}
+
+NvLL_VK_Status
+NvLL_VK_SetLatencyMarker_Detour (VkDevice vkDevice, NVLL_VK_LATENCY_MARKER_PARAMS* pSetLatencyMarkerParams)
+{
+  SK_LOG_FIRST_CALL
+
+  SK_VK_HookFirstDevice (vkDevice);
+  SK_VK_Reflex.device  = vkDevice;
+
+  if (pSetLatencyMarkerParams != nullptr)
+  {
+    // The game's frameID, SK has a different running counter...
+    SK_VK_Reflex.last_frame = pSetLatencyMarkerParams->frameID;
+  }
+
+  return
+    NvLL_VK_SetLatencyMarker_Original (vkDevice, pSetLatencyMarkerParams);
+}
+
+NvLL_VK_Status
+NvLL_VK_Sleep_Detour (VkDevice device, uint64_t signalValue)
+{
+  SK_LOG_FIRST_CALL
+
+  SK_VK_HookFirstDevice (device);
+  SK_VK_Reflex.device  = device;
+
+  if (config.nvidia.reflex.override || __SK_ForceDLSSGPacing)
+  {
+    NvLL_VK_SetSleepMode_Detour (device, &SK_NVLL_LastSleepParams);
+  }
+
+  auto ret =
+    NvLL_VK_Sleep_Original (device, signalValue);
+
+  if (0 == ret)
+  {
+    auto& rb =
+      SK_GetCurrentRenderBackend ();
+
+    rb.vulkan_reflex.sleep ();
+
+    extern void SK_Reflex_WaitOnSemaphore (VkDevice device, VkSemaphore       semaphore, uint64_t value);
+                SK_Reflex_WaitOnSemaphore (         device, SK_VK_Reflex.NvLL_semaphore,    signalValue);
+
+    if (config.render.framerate.enforcement_policy == 2 && rb.vulkan_reflex.isPacingEligible ())
+    {
+      SK::Framerate::Tick ( true, 0.0,
+                      { 0,0 }, rb.swapchain.p);
+    }
+  }
+
+  return ret;
+}
+
+void
+SK_VK_SetLatencyMarker (VkSetLatencyMarkerInfoNV& marker, VkLatencyMarkerNV type)
+{
+  NV_LATENCY_MARKER_PARAMS
+    nvapi_marker            = {              };
+    nvapi_marker.markerType = (NV_LATENCY_MARKER_TYPE)type;
+
+  extern PFN_vkSetLatencyMarkerNV
+             vkSetLatencyMarkerNV_Original;
+
+  auto& rb =
+    SK_GetCurrentRenderBackend ();
+
+  if (rb.vulkan_reflex.api == SK_RenderBackend_V2::vk_reflex_s::VK_NV_low_latency2)
+  {
+    if (! vkSetLatencyMarkerNV_Original)
+      return;
+
+    extern VkDevice       SK_Reflex_VkDevice;
+    extern VkSwapchainKHR SK_Reflex_VkSwapchain;
+
+                                                                               marker.marker = type;
+    vkSetLatencyMarkerNV_Original (SK_Reflex_VkDevice, SK_Reflex_VkSwapchain, &marker);
+
+    nvapi_marker.frameID = marker.presentID;
+
+    // Up to marker type TRIGGER_FLASH, the Vulkan extension and NVAPI enums match for marker type.
+  }
+
+  else if (rb.vulkan_reflex.api == SK_RenderBackend_V2::vk_reflex_s::NvLowLatencyVk)
+  {
+    NVLL_VK_LATENCY_MARKER_PARAMS
+      marker_params            = {                     };
+      marker_params.frameID    = SK_VK_Reflex.last_frame;
+      marker_params.markerType = (NVLL_VK_LATENCY_MARKER_TYPE)type;//VK_INPUT_SAMPLE;
+
+    NvLL_VK_SetLatencyMarker_Original (SK_VK_Reflex.device, &marker_params);
+
+    nvapi_marker.frameID = marker.presentID;
+  }
+
+  extern void
+  SK_PCL_Heartbeat (const NV_LATENCY_MARKER_PARAMS& marker);
+  SK_PCL_Heartbeat (nvapi_marker);
 }
 
 void SK_VK_HookReflex (void)
@@ -1336,12 +1508,26 @@ void SK_VK_HookReflex (void)
                                NvLL_VK_Sleep_Detour,
       static_cast_p2p <void> (&NvLL_VK_Sleep_Original) );
 
+    SK_CreateDLLHook2 (      L"NvLowLatencyVk.dll",
+                              "NvLL_VK_SetLatencyMarker",
+                               NvLL_VK_SetLatencyMarker_Detour,
+      static_cast_p2p <void> (&NvLL_VK_SetLatencyMarker_Original) );
+
     NvLL_VK_GetLatency =
    (NvLL_VK_GetLatency_pfn)SK_GetProcAddress (L"NvLowLatencyVk.dll",
    "NvLL_VK_GetLatency");
 
     SK_ApplyQueuedHooks ();
   );
+}
+
+ULONG64
+SK_RenderBackend_V2::vk_reflex_s::sleep (void)
+{
+  config.nvidia.reflex.vulkan = true;
+
+  return
+    InterlockedExchange (&last_slept, SK_GetFramesDrawn ());
 }
 
 bool
@@ -1384,8 +1570,8 @@ SK_RenderBackend_V2::vk_reflex_s::getLatencyReport (NV_LATENCY_RESULT_PARAMS* la
           latencyReport->frameReport [i].osRenderQueueEndTime   = report.frameReport [i].osRenderQueueEndTime;
           latencyReport->frameReport [i].gpuRenderStartTime     = report.frameReport [i].gpuRenderStartTime;
           latencyReport->frameReport [i].gpuRenderEndTime       = report.frameReport [i].gpuRenderEndTime;
-          latencyReport->frameReport [i].gpuActiveRenderTimeUs  = static_cast <NvU32> (report.frameReport [i].gpuRenderEndTime - report.frameReport [i].gpuRenderStartTime);//report.frameReport [i].gpuActiveRenderTimeUs;
-          latencyReport->frameReport [i].gpuFrameTimeUs         = 0;//report.frameReport [i].gpuFrameTimeUs;
+          latencyReport->frameReport [i].gpuActiveRenderTimeUs  = static_cast <NvU32> (report.frameReport [i].gpuRenderEndTime - report.frameReport [i].gpuRenderStartTime);
+          latencyReport->frameReport [i].gpuFrameTimeUs         = 0;
         }
 
         return true;
@@ -1393,10 +1579,126 @@ SK_RenderBackend_V2::vk_reflex_s::getLatencyReport (NV_LATENCY_RESULT_PARAMS* la
     } break;
 
     case VK_NV_low_latency2:
-      SK_RunOnce (SK_LOGi0 (L"VK_NV_low_latency2 Not Implemented"));
+    {
+      extern VkDevice       SK_Reflex_VkDevice;
+      extern VkSwapchainKHR SK_Reflex_VkSwapchain;
+      extern VkSemaphore    SK_Reflex_VkSemaphore;
+      extern VkInstance     SK_Reflex_VkInstance;
+
+      VkLatencyTimingsFrameReportNV timings [64];
+
+      VkGetLatencyMarkerInfoNV
+        markerInfo             = {                                          };
+        markerInfo.sType       = VK_STRUCTURE_TYPE_GET_LATENCY_MARKER_INFO_NV;
+        markerInfo.timingCount = 64;
+        markerInfo.pTimings    = &timings [0];
+
+      extern PFN_vkGetLatencyTimingsNV vkGetLatencyTimingsNV_Original;
+
+      vkGetLatencyTimingsNV_Original (SK_Reflex_VkDevice, SK_Reflex_VkSwapchain, &markerInfo);
+
+      for ( auto i = 0u ; i < 64 ; ++i )
+      {
+        if (i >= markerInfo.timingCount)
+          break;
+
+        latencyReport->frameReport [i].frameID                = markerInfo.pTimings [i].presentID;
+        latencyReport->frameReport [i].inputSampleTime        = markerInfo.pTimings [i].inputSampleTimeUs;
+        latencyReport->frameReport [i].simStartTime           = markerInfo.pTimings [i].simStartTimeUs;
+        latencyReport->frameReport [i].simEndTime             = markerInfo.pTimings [i].simEndTimeUs;
+        latencyReport->frameReport [i].renderSubmitStartTime  = markerInfo.pTimings [i].renderSubmitStartTimeUs;
+        latencyReport->frameReport [i].renderSubmitEndTime    = markerInfo.pTimings [i].renderSubmitEndTimeUs;
+        latencyReport->frameReport [i].presentStartTime       = markerInfo.pTimings [i].presentStartTimeUs;
+        latencyReport->frameReport [i].presentEndTime         = markerInfo.pTimings [i].presentEndTimeUs;
+        latencyReport->frameReport [i].driverStartTime        = markerInfo.pTimings [i].driverStartTimeUs;
+        latencyReport->frameReport [i].driverEndTime          = markerInfo.pTimings [i].driverEndTimeUs;
+        latencyReport->frameReport [i].osRenderQueueStartTime = markerInfo.pTimings [i].osRenderQueueStartTimeUs;
+        latencyReport->frameReport [i].osRenderQueueEndTime   = markerInfo.pTimings [i].osRenderQueueEndTimeUs;
+        latencyReport->frameReport [i].gpuRenderStartTime     = markerInfo.pTimings [i].gpuRenderStartTimeUs;
+        latencyReport->frameReport [i].gpuRenderEndTime       = markerInfo.pTimings [i].gpuRenderEndTimeUs;
+        latencyReport->frameReport [i].gpuActiveRenderTimeUs  = static_cast <NvU32> (markerInfo.pTimings [i].gpuRenderEndTimeUs - markerInfo.pTimings [i].gpuRenderStartTimeUs);
+        latencyReport->frameReport [i].gpuFrameTimeUs         = 0;
+      }
+
+      return true;
+    } break;
+
     default:
       break;
   }
 
   return false;
+}
+
+bool
+SK_RenderBackend_V2::vk_reflex_s::isPacingEligible (void) const
+{
+  return
+    config.nvidia.reflex.vulkan && ReadULong64Acquire (&last_slept) > SK_GetFramesDrawn () - 3 &&
+
+  // DLSS-G Pacing needs traditional frame history calculation
+  !__SK_IsDLSSGActive;
+}
+
+bool
+SK_RenderBackend_V2::vk_reflex_s::needsFallbackSleep (void) const
+{
+  return
+    false;
+    //config.nvidia.reflex.vulkan && config.nvidia.reflex.use_limiter && !isPacingEligible () && !__SK_IsDLSSGActive;
+}
+
+UINT
+SK_Reflex_CalculateSleepMinIntervalForVulkan (bool bLowLatency)
+{
+  UINT reflex_interval = 0UL;
+
+  const auto& rb =
+    SK_GetCurrentRenderBackend ();
+
+  const auto& display =
+    rb.displays [rb.active_display];
+
+  // Enforce upper-bound framerate limit on VRR displays when VSYNC is on,
+  //   the same as D3D Reflex would.
+  if ( rb.present_interval > 0 && bLowLatency &&
+       display.nvapi.monitor_caps.data.caps.currentlyCapableOfVRR &&
+       display.signal.timing.vsync_freq.Denominator != 0 )
+  {
+    const double dRefresh =
+      static_cast <double> (display.signal.timing.vsync_freq.Numerator) /
+      static_cast <double> (display.signal.timing.vsync_freq.Denominator);
+
+    const double dReflexFPS =
+      (dRefresh - (dRefresh * dRefresh) / 3600.0);
+
+    // Set VRR framerate limit accordingly
+    reflex_interval =
+      static_cast <UINT> (round (1000000.0 / dReflexFPS));
+  }
+
+  const bool applyUserOverride =
+    (__target_fps > 10.0f && (__SK_ForceDLSSGPacing || config.nvidia.reflex.use_limiter));
+
+  if (applyUserOverride)
+  {
+    UINT interval =
+      (UINT)(round (1000000.0 / __target_fps)) + ( __SK_ForceDLSSGPacing ? 6 : 0 );
+
+    // Vulkan Reflex is too primitive to perform this on its own, so we need to
+    //   pre-adjust the limit.
+    if (__SK_IsDLSSGActive)
+      interval *= (__SK_DLSSGMultiFrameCount + 1);
+
+    reflex_interval =
+      reflex_interval == 0 ?           interval
+                           : std::max (interval, reflex_interval);
+  }
+
+  // Throw away any intervals > 100 ms, parameters are suspect.
+  if (reflex_interval > 100000)
+      reflex_interval = 0;
+
+  return
+    reflex_interval;
 }

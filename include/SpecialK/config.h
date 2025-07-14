@@ -145,8 +145,7 @@ struct sk_config_t
         (1000LL * 1000LL * static_cast <int64_t> (pwi [0].MaxMhz));
 
       SK_QpcFreqInTsc = (DWORD)(SK_TscFreq / SK_QpcFreq);
-      SK_TscInvariant =
-        false;
+      SK_TscInvariant = false;
       //(cpuid [3] & (1 << 8)) != 0;
 
       SK_PerfFreqInTsc = 1;
@@ -872,6 +871,7 @@ struct sk_config_t
       int     submit_threads       = -1;
       int     cpu_decomp_threads   = -1;
       bool    enable_hooks         = true;
+      bool    use_dummy_d3d12_dev  = true;
     } dstorage;
 
     struct {
@@ -1184,6 +1184,8 @@ struct sk_config_t
         int   hide_ds_edge_pid     = SK_NoPreference;
         bool  enable_full_bluetooth=  false;
         bool  alias_trackpad_share =  false;
+        bool  unlimit_polling_rate =  false;
+        DWORD pollig_thread_tid    =      0;
         std::wstring
               touch_click          = L"<Not Bound>";
         std::wstring
@@ -1317,6 +1319,8 @@ struct sk_config_t
     bool    dont_hook_wndproc   = false;
     bool    activate_at_start   = false;
     bool    fix_stuck_keys      = false; // Fixes keys that might be stuck after alt-tab
+    bool    allow_drag_n_drop   =  true;
+    bool    allow_file_drops    =  true;
     struct resolution_s {
       struct dim_override_s {
         unsigned int x          = 0;
@@ -1809,7 +1813,9 @@ enum class SK_GAME_ID
   CrashReport,                  // CrashReport.exe (ironically, causes crashes)
   StreetFighter6,               // StreetFighter6.exe
   StardewValley,                // Stardew Valley.exe
+  DOOM,                         // DOOMx64vk.exe
   DOOMEternal,                  // DOOMEternalx64vk.exe
+  Wolfenstein_TheNewColossus,   // NewColossus_x64vk.exe
   Blood,                        // anuket_x64.exe
   BatmanArkhamKnight,           // BatmanAK.exe
   Noita,                        // Noita.exe
@@ -1843,6 +1849,11 @@ enum class SK_GAME_ID
   ClairObscur_Expedition33,     // SandFallEos-Win64-Shipping.exe
   Metro2033,                    // metro.exe
   DOOMTheDarkAges,              // DOOMTheDarkAges.exe
+  NedForSpeedTheRun,            // Need For Speed The Run.exe
+  LittleKittyBigCity,           // Little Kitty, Big City.exe
+  Rimworld,                     // RimWorldWin64.exe
+  Valheim,                      // valheim.exe
+  StellarBlade,                 // SB-Win64-Shipping.exe
 
   UNKNOWN_GAME               = 0xffff
 };

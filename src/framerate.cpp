@@ -2352,10 +2352,40 @@ SK_LazyGlobal <
            std::unique_ptr <SK::Framerate::Limiter> >
               > SK::Framerate::limiters_;
 
+// Is this really a COM object?
+//  - Can QueryInterface be called?
+BOOL
+SK_Framerate_ValidateSwapChain (IUnknown *pSwapChain_)
+{
+  IUnknown* pUnk = nullptr;
+  
+  __try {
+    pSwapChain_->QueryInterface (IID_IDXGISwapChain, (void **)&pUnk);
+
+    if (pUnk != nullptr)
+        pUnk->Release ();
+  }
+
+  __except (EXCEPTION_EXECUTE_HANDLER)
+  {
+    return FALSE;
+  }
+
+  return TRUE;
+}
+
 SK::Framerate::Limiter*
 SK_FramerateLimit_Factory ( IUnknown *pSwapChain_,
                             bool      bCreate = true )
 {
+  // This happens sometimes, just ignore it.
+  if (pSwapChain_ == nullptr)
+    return nullptr;
+
+#if 0
+  if (! SK_Framerate_ValidateSwapChain (pSwapChain_))
+    return nullptr;
+
   // Prefer to reference SwapChains we wrap by their wrapped pointer
   SK_ComQIPtr <IDXGISwapChain> pSwapChain (pSwapChain_);
   SK_ComPtr   <IDXGISwapChain> pUnwrap;
@@ -2368,6 +2398,7 @@ SK_FramerateLimit_Factory ( IUnknown *pSwapChain_,
   if ( pUnwrap != nullptr &&
        pUnwrap != pSwapChain_ )
      pSwapChain_ = pUnwrap;
+#endif
 
   SK_RunOnce (
     SK_GetCommandProcessor ()->AddCommand (
@@ -2450,7 +2481,9 @@ SK::Framerate::TickEx ( bool     /*wait*/,
   auto *pLimiter =
     SK::Framerate::GetLimiter (swapchain);
 
-  SK_ReleaseAssert (pLimiter != nullptr);
+  // This will happen in Vulkan interop cases, only announce it at higher log levels
+  if (config.system.log_level > 0)
+    SK_ReleaseAssert (pLimiter != nullptr);
 
   // Should never happen, but better safe.
   if (pLimiter == nullptr)
@@ -2607,7 +2640,9 @@ SK::Framerate::Tick ( bool          wait,
   auto *pLimiter =
     SK::Framerate::GetLimiter (swapchain);
 
-  SK_ReleaseAssert (pLimiter != nullptr);
+  // This will happen in Vulkan interop cases, only announce it at higher log levels
+  if (config.system.log_level > 0)
+    SK_ReleaseAssert (pLimiter != nullptr);
 
   // Should never happen, but better safe.
   if (pLimiter == nullptr)
@@ -2741,6 +2776,7 @@ SK::Framerate::Stats::sortAndCacheFrametimeHistory (void) //noexcept
     worker.hSignalShutdown.m_h =
       SK_CreateEvent (nullptr, TRUE, FALSE, nullptr);
 
+    worker.hThread.m_h =
     SK_Thread_CreateEx ([](LPVOID lpUser)->DWORD
     {
       SK_Thread_SetCurrentPriority (THREAD_PRIORITY_BELOW_NORMAL);

@@ -249,7 +249,9 @@ SK_GetCurrentGameID (void)
           { L"CrashReport.exe",                        SK_GAME_ID::CrashReport                  },
           { L"StreetFighter6.exe",                     SK_GAME_ID::StreetFighter6               },
           { L"Stardew Valley.exe",                     SK_GAME_ID::StardewValley                },
+          { L"DOOMx64vk.exe",                          SK_GAME_ID::DOOM                         },
           { L"DOOMEternalx64vk.exe",                   SK_GAME_ID::DOOMEternal                  },
+          { L"NewColossus_x64vk.exe",                  SK_GAME_ID::Wolfenstein_TheNewColossus   },
           { L"anuket_x64.exe",                         SK_GAME_ID::Blood                        },
           { L"BatmanAK.exe",                           SK_GAME_ID::BatmanArkhamKnight           },
           { L"Noita.exe",                              SK_GAME_ID::Noita                        },
@@ -290,7 +292,12 @@ SK_GetCurrentGameID (void)
           { L"SandFall-Win64-Shipping.exe",            SK_GAME_ID::ClairObscur_Expedition33     }, // Steam Version
           { L"SandFall-WinGDK-Shipping.exe",           SK_GAME_ID::ClairObscur_Expedition33     }, // Microsoft Store Version
           { L"metro.exe",                              SK_GAME_ID::Metro2033                    },
-          { L"DOOMTheDarkAges.exe",                    SK_GAME_ID::DOOMTheDarkAges              }
+          { L"DOOMTheDarkAges.exe",                    SK_GAME_ID::DOOMTheDarkAges              },
+          { L"Need For Speed The Run.exe",             SK_GAME_ID::NedForSpeedTheRun            },
+          { L"Little Kitty, Big City.exe",             SK_GAME_ID::LittleKittyBigCity           },
+          { L"RimWorldWin64.exe",                      SK_GAME_ID::Rimworld                     },
+          { L"valheim.exe",                            SK_GAME_ID::Valheim                      },
+          { L"SB-Win64-Shipping.exe",                  SK_GAME_ID::StellarBlade                 }
         };
 
     first_check  = false;
@@ -455,6 +462,11 @@ SK_GetCurrentGameID (void)
           if (std::filesystem::exists (L"eldenring.exe",         ec))
           {
             SK_SEH_LaunchEldenRing ();
+          }
+
+          else if (std::filesystem::exists (L"nightreign.exe", ec))
+          {
+            SK_SEH_LaunchEldenRing (L"nightreign.exe");
           }
 
           else if (std::filesystem::exists (L"armoredcore6.exe", ec))
@@ -968,6 +980,7 @@ struct {
     sk::ParameterInt*     submit_threads          = nullptr;
     sk::ParameterInt*     cpu_decomp_threads      = nullptr;
     sk::ParameterBool*    hook_dstorage           = nullptr;
+    sk::ParameterBool*    use_dummy_device        = nullptr;
   } dstorage;
 
   struct {
@@ -1206,6 +1219,8 @@ struct {
   sk::ParameterBool*      activate_at_start       = nullptr;
   sk::ParameterBool*      treat_fg_as_active      = nullptr;
   sk::ParameterBool*      fix_stuck_alt_tab_keys  = nullptr;
+  sk::ParameterBool*      allow_drag_n_drop       = nullptr;
+  sk::ParameterBool*      allow_file_drops        = nullptr;
 } window;
 
 struct {
@@ -1907,6 +1922,9 @@ auto DeclKeybind =
                                                          L" as the active application [for background render feature]",dll_ini,         L"Window.System",         L"TreatForegroundAsActive"),
     ConfigEntry (window.fix_stuck_alt_tab_keys,          L"Automatically re-send key release notifications for keys"
                                                          L" that were released while the game was alt-tab'd",          dll_ini,         L"Window.System",         L"FixStuckAltTabKeys"),
+    ConfigEntry (window.allow_drag_n_drop,               L"Allow Special K to install a drag-n-drop handler for D3D11"
+                                                         L" texture mods and INI-related functionality.",              dll_ini,         L"Window.System",         L"AllowDragNDrop"),
+    ConfigEntry (window.allow_file_drops,                L"Allow Special K to handle file drops for the game window.", dll_ini,         L"Window.System",         L"AllowFileDrops"),
 
     // Compatibility
     //////////////////////////////////////////////////////////////////////////
@@ -2158,7 +2176,8 @@ auto DeclKeybind =
     ConfigEntry (render.dstorage.submit_threads,         L"Override default number of DirectStorage Submit threads",   dll_ini,         L"Render.DStorage",       L"NumberOfSubmitThreads"),
     ConfigEntry (render.dstorage.cpu_decomp_threads,     L"Override default number of CPU Decompression threads",      dll_ini,         L"Render.DStorage",       L"NumberOfCPUDecompThreads"),
     ConfigEntry (render.dstorage.hook_dstorage,          L"Hook DirectStorage for additional features",                dll_ini,         L"Render.DStorage",       L"EnableHooks"),
-
+    ConfigEntry (render.dstorage.use_dummy_device,       L"Create a standalone D3D12 device if a DStorage game tries "
+                                                         L"to allocate a DStorage queue with no D3D12 device supplied",dll_ini,         L"Render.DStorage",       L"UseDummyD3D12DeviceIfNeeded"),
     ConfigEntry (texture.d3d9.clamp_lod_bias,            L"Clamp Negative LOD Bias",                                   dll_ini,         L"Textures.D3D9",         L"ClampNegativeLODBias"),
     ConfigEntry (texture.d3d11.cache,                    L"Cache Textures",                                            dll_ini,         L"Textures.D3D11",        L"Cache"),
     ConfigEntry (texture.d3d11.use_l3_hash,              L"Adds L3 to Hierarchical Cache;  L3=Fmt,  L2=Mips,  L1=Res", dll_ini,         L"Textures.D3D11",        L"CacheUsingL3Hash"),
@@ -3101,7 +3120,7 @@ auto DeclKeybind =
 
         if (bVulkan)
         {
-          config.apis.NvAPI.vulkan_bridge = 1;
+
         }
 
         else
@@ -3785,25 +3804,45 @@ auto DeclKeybind =
       {
         config.input.gamepad.dualsense.trigger_effect_l = playstation_trigger_effect::Vibration;
         config.input.gamepad.dualsense.trigger_effect_r = playstation_trigger_effect::Vibration;
-        if (SK_IsInjected () && ((! PathFileExists (L"dxgi.dll")) &&
-                                 (! PathFileExists (L"d3d12.dll"))))
-        {
-          wchar_t      wszProfileSKinny [MAX_PATH] = {};
-          PathAppendW (wszProfileSKinny, SK_GetConfigPath ());
-          PathAppendW (wszProfileSKinny,    L"SKinny.ignore");
 
-          if (! (PathFileExists (L"SKinny.ignore") ||
-                 PathFileExists (wszProfileSKinny)))
+        if (SK_IsCurrentGame (SK_GAME_ID::ForzaHorizon5))
+        {
+          if (SK_IsInjected () && ((! PathFileExists (L"dxgi.dll")) &&
+                                   (! PathFileExists (L"d3d12.dll"))))
           {
-            if (IDYES ==
+#if 0
+            wchar_t      wszProfileSKinny [MAX_PATH] = {};
+            PathAppendW (wszProfileSKinny, SK_GetConfigPath ());
+            PathAppendW (wszProfileSKinny,    L"SKinny.ignore");
+          
+            if (! (PathFileExists (L"SKinny.ignore") ||
+                   PathFileExists (wszProfileSKinny)))
+            {
+              if (IDYES ==
+                  SK_MessageBox (
+                    L"Special K has Compatibility Issues with this Game\r\n\r\n"
+                    L" * Please use Local Injection or SKinny\r\n\r\n"
+                    L"Click Yes for more info on SKinny.", L"Special K Incompatibility",
+                      MB_YESNO|MB_ICONWARNING))
+              {
+                SK_Util_OpenURI (L"https://github.com/SpecialKO/SKinny/releases", SW_RESTORE);
+              }
+            }
+#else
+            if (IDOK ==
                 SK_MessageBox (
                   L"Special K has Compatibility Issues with this Game\r\n\r\n"
-                  L" * Please use Local Injection or SKinny\r\n\r\n"
-                  L"Click Yes for more info on SKinny.", L"Special K Incompatibility",
-                    MB_YESNO|MB_ICONWARNING))
+                  L"   * Please use Local Injection or SKinny\r\n\r\n"
+                    L"Click OK to switch to Local Injection.", L"Special K Incompatibility",
+                    MB_OKCANCEL|MB_ICONWARNING))
             {
-              SK_Util_OpenURI (L"https://github.com/SpecialKO/SKinny/releases", SW_RESTORE);
+              SK_File_FullCopy (
+                SK_GetModuleFullName (SK_GetDLL ()).c_str (),
+                L"dxgi.dll"
+              );
+              SK_RestartGame ();
             }
+#endif
           }
         }
 
@@ -3964,7 +4003,8 @@ auto DeclKeybind =
         break;
 
       case SK_GAME_ID::NoMansSky:
-        config.apis.NvAPI.vulkan_bridge = 1;
+        config.apis.last_known = SK_RenderAPI::D3D11;
+        apis.last_known->store  ((int)config.apis.last_known);
         break;
 
       case SK_GAME_ID::SonicGenerations:
@@ -4117,8 +4157,13 @@ auto DeclKeybind =
         config.input.gamepad.xinput.emulate = false;
         break;
 
+      case SK_GAME_ID::DOOM:
+        config.apis.last_known            = SK_RenderAPI::D3D11;
+        apis.last_known->store             ((int)config.apis.last_known);
+        break;
+
+      case SK_GAME_ID::Wolfenstein_TheNewColossus:
       case SK_GAME_ID::DOOMEternal:
-        config.apis.NvAPI.vulkan_bridge   = 1;
         config.system.global_inject_delay = 0.0f;
         config.apis.last_known            = SK_RenderAPI::D3D11;
         apis.last_known->store             ((int)config.apis.last_known);
@@ -4131,6 +4176,26 @@ auto DeclKeybind =
         config.nvidia.dlss.streamline_dbg_out = false;
         config.nvidia.reflex.native           =  true;
         config.nvidia.reflex.vulkan           =  true;
+        break;
+
+      case SK_GAME_ID::NedForSpeedTheRun:
+        config.compatibility.disable_debug_features = true;
+        break;
+
+      // These Unity games require a full texture cache disable, not simply
+      //   ignoring non-mipmapped textures.
+      case SK_GAME_ID::Valheim:
+      case SK_GAME_ID::Rimworld:
+        config.textures.d3d11.cache = false;
+        break;
+
+      // Game has issues calling the correct NVAPI function to set Reflex mode,
+      //   so default to Low Latency + Boost; user can turn-off manually...
+      case SK_GAME_ID::StellarBlade:
+        config.nvidia.reflex.override            = true;
+        config.nvidia.reflex.low_latency         = true;
+        config.nvidia.reflex.low_latency_boost   = true;
+        config.nvidia.reflex.marker_optimization = true;
         break;
 
       case SK_GAME_ID::GranblueFantasyRelink:
@@ -4945,6 +5010,7 @@ auto DeclKeybind =
   render.dstorage.cpu_decomp_threads->
                                     load (config.render.dstorage.cpu_decomp_threads);
   render.dstorage.hook_dstorage->   load (config.render.dstorage.enable_hooks);
+  render.dstorage.use_dummy_device->load (config.render.dstorage.use_dummy_d3d12_dev);
 
   texture.d3d11.cache->load              (config.textures.d3d11.cache);
   texture.d3d11.use_l3_hash->load        (config.textures.d3d11.use_l3_hash);
@@ -5233,6 +5299,8 @@ auto DeclKeybind =
   window.manage_screensaver->load     (config.window.manage_screensaver);
   window.dont_hook_wndproc->load      (config.window.dont_hook_wndproc);
   window.activate_at_start->load      (config.window.activate_at_start);
+  window.allow_drag_n_drop->load      (config.window.allow_drag_n_drop);
+  window.allow_file_drops->load       (config.window.allow_file_drops);
   window.treat_fg_as_active->load     (config.window.treat_fg_as_active);
   window.fix_stuck_alt_tab_keys->load (config.window.fix_stuck_keys);
 
@@ -6747,6 +6815,8 @@ SK_SaveConfig ( std::wstring name,
   window.manage_screensaver->store            (config.window.manage_screensaver);
   window.dont_hook_wndproc->store             (config.window.dont_hook_wndproc);
   window.activate_at_start->store             (config.window.activate_at_start);
+  window.allow_drag_n_drop->store             (config.window.allow_drag_n_drop);
+  window.allow_file_drops->store              (config.window.allow_file_drops);
   window.treat_fg_as_active->store            (config.window.treat_fg_as_active);
   window.fix_stuck_alt_tab_keys->store        (config.window.fix_stuck_keys);
 
@@ -7101,6 +7171,7 @@ SK_SaveConfig ( std::wstring name,
       render.dstorage.cpu_decomp_threads->
                                         store (config.render.dstorage.cpu_decomp_threads);
       render.dstorage.hook_dstorage->   store (config.render.dstorage.enable_hooks);
+      render.dstorage.use_dummy_device->store (config.render.dstorage.use_dummy_d3d12_dev);
     }
 
     if ( SK_IsInjected () || ( SK_GetDLLRole () & DLL_ROLE::D3D9    ) ||
@@ -7388,6 +7459,12 @@ SK_SaveConfig ( std::wstring name,
     {
       delete macro_ini;
              macro_ini = nullptr;
+    }
+
+    if (notify_ini != nullptr)
+    {
+      delete notify_ini;
+             notify_ini = nullptr;
     }
   }
 }

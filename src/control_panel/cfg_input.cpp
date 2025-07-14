@@ -44,6 +44,47 @@ extern int SK_ImGui_ProcessGamepadStatusBar (bool bDraw);
 SK_LazyGlobal <SK::Framerate::Stats> gamepad_stats;
 SK_LazyGlobal <SK::Framerate::Stats> gamepad_stats_filtered;
 
+static auto constexpr _SampleCount = 1024;
+struct FrameHistory {
+  double   ms        [_SampleCount] = { };
+  uint64_t timestamp [_SampleCount] = { };
+  int      tail     = 0;
+  double   last_avg = 0.0;
+  double   avg      = 0.0;
+
+  void insertSample (uint64_t qpcNow, double latency) noexcept
+  {
+    int        idx  = (tail++ % _SampleCount);
+    ms        [idx] = latency;
+    timestamp [idx] =  qpcNow;
+  }
+
+  double getAvg (uint64_t qpcNow) noexcept
+  {
+    double dAccum  = 0.0;
+    double samples = 0.0;
+
+    for (int idx = 0; idx < _SampleCount; ++idx)
+    {
+      if ( timestamp [idx] != 0                        &&
+                  ms [idx] >  0.01f                    &&
+           timestamp [idx] >= qpcNow - SK_QpcFreq * 30 &&
+           timestamp [idx] != qpcNow )
+      {
+        dAccum += ms [idx];
+        samples++;
+      }
+    }
+
+    avg =
+      samples > 0 ?
+          (dAccum / samples)
+                  : 0.0;
+
+    return avg;
+  }
+};
+
 void SK_ImGui_UpdateCursor (void)
 {
   extern
@@ -865,7 +906,7 @@ SK::ControlPanel::Input::Draw (void)
 
           if (ImGui::SliderFloat ("###AltTabPace", &fSeconds, 5.0f, 30.0f, "Once Every %3.1f Seconds"))
           {
-            config.input.keyboard.alt_tab_adhd_pace = (int)(1000.0 * fSeconds);
+            config.input.keyboard.alt_tab_adhd_pace = (int)(round (1000.0 * fSeconds));
             changed = true;
           }
 
@@ -1514,7 +1555,7 @@ SK::ControlPanel::Input::Draw (void)
         }
 
         ImGui::SetItemTooltip (
-          "Applies to Xbox input; PlayStation remapping requires \"Xbox Mode\""
+          "Applies to Xbox controllers, and PlayStation controllers (USB) in games with native support or using \"Xbox Mode\""
         );
 
         if (axial_remap)
@@ -1565,7 +1606,7 @@ SK::ControlPanel::Input::Draw (void)
         }
 
         ImGui::SetItemTooltip (
-          "Applies to Xbox input; PlayStation remapping requires \"Xbox Mode\""
+          "Applies to Xbox controllers, and PlayStation controllers (USB) in games with native support or using \"Xbox Mode\""
         );
 
         ImGui::SameLine      (              );
@@ -1577,7 +1618,7 @@ SK::ControlPanel::Input::Draw (void)
         }
 
         ImGui::SetItemTooltip (
-          "Applies to Xbox input; PlayStation remapping requires \"Xbox Mode\""
+          "Applies to Xbox controllers, and PlayStation controllers (USB) in games with native support or using \"Xbox Mode\""
         );
         ImGui::Columns    (1);
 
@@ -1695,18 +1736,65 @@ SK::ControlPanel::Input::Draw (void)
           ImGui::EndGroup   ();
           ImGui::SameLine   ();
           ImGui::BeginGroup ();
+
+          static concurrency::concurrent_unordered_map <SK_HID_PlayStationDevice*, FrameHistory*> frame_histories;
+
           for ( auto& ps_controller : SK_HID_PlayStationControllers )
           {
-            if (! ps_controller.bConnected)
-              continue;
+            if (! frame_histories.count (&ps_controller))
+                  frame_histories       [&ps_controller] = new FrameHistory {};
 
-            if (ps_controller.latency.ping > 0 && ps_controller.latency.ping < 500 * SK_QpcTicksPerMs)
-              ImGui::Text   (" Latency: %3.0f ms ", static_cast <double> (ps_controller.latency.ping) /
-                                                    static_cast <double> (SK_QpcTicksPerMs));
+            auto& history =
+              frame_histories [&ps_controller];
+
+            if (! ps_controller.bConnected)
+            {
+              if ( history->tail     != 0   &&
+                   history->avg      != 0.0 &&
+                   history->last_avg != 0.0 )
+              {
+                memset (history, sizeof (FrameHistory), 0);
+
+                ps_controller.latency.last_ack = 0;
+              }
+
+              continue;
+            }
+
+            const auto ping =
+              ps_controller.latency.ping;
+
+            if ( ping > 0 &&
+                 ping < 500 * SK_QpcTicksPerMs )
+            {
+              const auto qpcNow =
+                SK_QueryPerf ().QuadPart;
+
+              history->insertSample (
+                qpcNow, static_cast <double> (ping) /
+                        static_cast <double> (SK_QpcTicksPerMs) );
+
+              history->last_avg =
+                std::max ( 0.000001, history->getAvg (qpcNow)  +
+                                     history->last_avg * 3.0 ) / 4.0;
+
+              ImGui::Text (" Latency: %5.2f ms ", history->last_avg);
+            }
+
             else
             {
-              ImGui::TextUnformatted
-                            (" ");
+              if (ps_controller.bBluetooth && ps_controller.bSimpleMode)
+              {
+                ImGui::Text (" Latency:  ??  (" ICON_FA_BLUETOOTH ") ");
+                ImGui::SetItemTooltip (
+                  "Latency measurement unsupported because controller is in read-only mode."
+                );
+              }
+
+              else
+              {
+                ImGui::TextUnformatted (" ");
+              }
 
               // Restart latency tests if timing is suspiciously wrong.
               ps_controller.latency.last_ack = 0;
@@ -2081,9 +2169,9 @@ SK::ControlPanel::Input::Draw (void)
 
               if (ImGui::ColorEdit3 ("###PlayStation_RGB", color))
               {
-                config.input.gamepad.scepad.led_color_r = (int)(color [0] * 255.0f);
-                config.input.gamepad.scepad.led_color_g = (int)(color [1] * 255.0f);
-                config.input.gamepad.scepad.led_color_b = (int)(color [2] * 255.0f);
+                config.input.gamepad.scepad.led_color_r = (int)(roundf (color [0] * 255.0f));
+                config.input.gamepad.scepad.led_color_g = (int)(roundf (color [1] * 255.0f));
+                config.input.gamepad.scepad.led_color_b = (int)(roundf (color [2] * 255.0f));
                 config.utility.save_async ();
               }
 
