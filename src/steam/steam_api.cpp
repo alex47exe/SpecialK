@@ -5489,7 +5489,7 @@ SK_Steam_PiratesAhoy (void)
 
   //   Older versions of SteamAPI may not support the necessary interface version
   if ( pUtils != nullptr && pApps != nullptr &&
-       validation_pass   != SK_Steam_FileSigPass_e::Done && !SK_IsCurrentGame (SK_GAME_ID::Fallout4) )
+       validation_pass   != SK_Steam_FileSigPass_e::Done && false )//!SK_IsCurrentGame (SK_GAME_ID::Fallout4) )
   {
     static DepotId_t
         depots [16] = { };
@@ -5844,43 +5844,6 @@ SK_Steam_SignalEmulatedXInputActivity (DWORD dwSlot, bool blocked)
   // Figure out the real type one time by parsing the INI file
   if (device_types [dwSlot] == sk_input_dev_type::Gamepad)
   {
-#if 0
-    SK_RunOnce (pInput->Init (false));
-
-    auto type =
-      pInput->GetInputTypeForHandle (
-        pInput->GetControllerForGamepadIndex (dwSlot)
-      );
-
-    switch (type)
-    {
-      case k_ESteamInputType_XBox360Controller:
-      case k_ESteamInputType_XBoxOneController:
-        device_types [dwSlot] = sk_input_dev_type::Gamepad_Xbox;
-        break;
-      case k_ESteamInputType_GenericGamepad:
-      case k_ESteamInputType_SteamController:
-      case k_ESteamInputType_SteamDeckController:
-      case k_ESteamInputType_AppleMFiController:
-      case k_ESteamInputType_AndroidController:
-      case k_ESteamInputType_MobileTouch:
-        device_types [dwSlot] = sk_input_dev_type::Gamepad_Generic;
-        break;
-      case k_ESteamInputType_SwitchJoyConPair:
-      case k_ESteamInputType_SwitchJoyConSingle:
-      case k_ESteamInputType_SwitchProController:
-        device_types [dwSlot] = sk_input_dev_type::Gamepad_Nintendo;
-        break;
-      case k_ESteamInputType_PS3Controller:
-      case k_ESteamInputType_PS4Controller:
-      case k_ESteamInputType_PS5Controller:
-        device_types [dwSlot] = sk_input_dev_type::Gamepad_PlayStation;
-        break;
-      default:
-        device_types [dwSlot] = sk_input_dev_type::Other;
-        break;
-    }
-#else
     if (controller_ini->contains_section (slot_names [dwSlot]))
     {
       auto& type =
@@ -5906,7 +5869,6 @@ SK_Steam_SignalEmulatedXInputActivity (DWORD dwSlot, bool blocked)
     {
       device_types [dwSlot] = sk_input_dev_type::Other;
     }
-#endif
   }
 
   if (device_types [dwSlot] != sk_input_dev_type::Other)
@@ -5916,32 +5878,6 @@ SK_Steam_SignalEmulatedXInputActivity (DWORD dwSlot, bool blocked)
     else
       SK_STEAM_HIDE (device_types [dwSlot])
   }
-
-#if 0
-  const auto input_dev_type_mask =
-    pInput->GetSessionInputConfigurationSettings ();
-
-  if (input_dev_type_mask != k_ESteamInputConfigurationEnableType_None)
-  {
-    const bool known_type = 0 !=
-     ( input_dev_type_mask & ( k_ESteamInputConfigurationEnableType_Playstation |
-                               k_ESteamInputConfigurationEnableType_Xbox        |
-                               k_ESteamInputConfigurationEnableType_Generic     |
-                               k_ESteamInputConfigurationEnableType_Switch ) );
-  
-    if (known_type) [[likely]]
-    {
-      if (input_dev_type_mask & k_ESteamInputConfigurationEnableType_Playstation)
-        SK_STEAM_VIEW (                   sk_input_dev_type::Gamepad_PlayStation);
-      if (input_dev_type_mask & k_ESteamInputConfigurationEnableType_Xbox)
-        SK_STEAM_VIEW (                   sk_input_dev_type::Gamepad_Xbox);
-      if (input_dev_type_mask & k_ESteamInputConfigurationEnableType_Generic)
-        SK_STEAM_VIEW (                   sk_input_dev_type::Gamepad_Generic);
-      if (input_dev_type_mask & k_ESteamInputConfigurationEnableType_Switch)
-        SK_STEAM_VIEW (                   sk_input_dev_type::Gamepad_Nintendo);
-    }
-  }
-#endif
 }
 
 bool

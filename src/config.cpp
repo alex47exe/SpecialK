@@ -297,7 +297,10 @@ SK_GetCurrentGameID (void)
           { L"Little Kitty, Big City.exe",             SK_GAME_ID::LittleKittyBigCity           },
           { L"RimWorldWin64.exe",                      SK_GAME_ID::Rimworld                     },
           { L"valheim.exe",                            SK_GAME_ID::Valheim                      },
-          { L"SB-Win64-Shipping.exe",                  SK_GAME_ID::StellarBlade                 }
+          { L"SB-Win64-Shipping.exe",                  SK_GAME_ID::StellarBlade                 },
+          { L"Dishonored2.exe",                        SK_GAME_ID::Dishonored2                  },
+          { L"Dishonored_DO.exe",                      SK_GAME_ID::Dishonored2                  }, // Standalone expansion to Dishonored2
+          { L"tq.exe",                                 SK_GAME_ID::TitanQuest                   }
         };
 
     first_check  = false;
@@ -3832,7 +3835,7 @@ auto DeclKeybind =
             if (IDOK ==
                 SK_MessageBox (
                   L"Special K has Compatibility Issues with this Game\r\n\r\n"
-                  L"   * Please use Local Injection or SKinny\r\n\r\n"
+                  L"   * Please use Local Injection or SKinny\r\n\r\n" 
                     L"Click OK to switch to Local Injection.", L"Special K Incompatibility",
                     MB_OKCANCEL|MB_ICONWARNING))
             {
@@ -4196,6 +4199,19 @@ auto DeclKeybind =
         config.nvidia.reflex.low_latency         = true;
         config.nvidia.reflex.low_latency_boost   = true;
         config.nvidia.reflex.marker_optimization = true;
+        break;
+
+      case SK_GAME_ID::TitanQuest:
+        config.textures.cache.ignore_nonmipped = true; // Avoid UI corruption
+        config.render.dxgi.deferred_isolation  = true;
+        break;
+
+      case SK_GAME_ID::Dishonored2:
+        // Logs suggest there is a non-continuable exception that occurs inside of
+        //   SteamAPI's TryCatch handler at startup, better to not get tangled up in that.
+        config.platform.silent                = true;
+        config.render.dxgi.deferred_isolation = true;  // For thread-safety
+        config.textures.d3d11.cache           = false; // UI gamma issues if this is not disabled
         break;
 
       case SK_GAME_ID::GranblueFantasyRelink:
