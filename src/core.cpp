@@ -4017,7 +4017,8 @@ SK_BackgroundRender_EndFrame (void)
       }
 
       if (SK_GetModuleHandleW (L"SDL2.dll") ||
-          SK_GetModuleHandleW (L"SDL3.dll"))
+          SK_GetModuleHandleW (L"SDL3.dll") ||
+          SK_GetModuleHandleW (L"librenpython.dll"))
       {
         // A few games change the window class name from the default...
         //   assume that the game uses SDL if one of its DLLs are loaded.
