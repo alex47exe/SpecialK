@@ -7153,16 +7153,18 @@ SK_Win32_IsDummyWindowClass (WNDCLASSEXW* pWindowClass)
     return false;
 
   const bool dummy_window =
-  //(*pWindowClass->lpszClassName == L'K' && !_wcsicmp (pWindowClass->lpszClassName, L"Kiero DirectX Window"))                  || // CyberEngine
-    (*pWindowClass->lpszClassName == L'K' && StrStrW   (pWindowClass->lpszClassName, L"Kiero"))                                 || // Lovely, they shortened this in later iterations...
-    (*pWindowClass->lpszClassName == L'R' && !_wcsicmp (pWindowClass->lpszClassName, L"RTSSWndClass"))                          || // RTSS
-    (*pWindowClass->lpszClassName == L'S' && !_wcsicmp (pWindowClass->lpszClassName, L"Special K Dummy Window Class"))          || // ... that's us!
-    (*pWindowClass->lpszClassName == L'E' && !_wcsicmp (pWindowClass->lpszClassName, L"EOSOVHDummyWindowClass"))                || // Epic Online Store Overlay
-    (*pWindowClass->lpszClassName == L'C' && !_wcsicmp (pWindowClass->lpszClassName, L"CurseOverlayTemporaryDirect3D11Window")) || // Twitch
-    (*pWindowClass->lpszClassName == L'T' && !_wcsicmp (pWindowClass->lpszClassName, L"TestDX11WindowClass"))                   || // X-Ray Oxygen
-    (*pWindowClass->lpszClassName == L's' && !_wcsicmp (pWindowClass->lpszClassName, L"static"))                                || // AMD's stupid OpenGL interop
-    (*pWindowClass->lpszClassName == L'S' && !_wcsicmp (pWindowClass->lpszClassName, L"SKIV_NotificationIcon"))                 || // SKIV's thingy...
-    (*pWindowClass->lpszClassName == L'T' && !_wcsicmp (pWindowClass->lpszClassName, L"TempDirect3D11OverlayWindow"))           || // Steam version of Titan Quest
+  //(!_wcsicmp (pWindowClass->lpszClassName, L"Kiero DirectX Window"))                  || // CyberEngine
+    (          *pWindowClass->lpszClassName == L'K' &&
+     StrStrW   (pWindowClass->lpszClassName, L"Kiero"))                                 || // Lovely, they shortened this in later iterations...
+    (!_wcsicmp (pWindowClass->lpszClassName, L"RTSSWndClass"))                          || // RTSS
+    (!_wcsicmp (pWindowClass->lpszClassName, L"Special K Dummy Window Class"))          || // ... that's us!
+    (!_wcsicmp (pWindowClass->lpszClassName, L"EOSOVHDummyWindowClass"))                || // Epic Online Store Overlay
+    (!_wcsicmp (pWindowClass->lpszClassName, L"CurseOverlayTemporaryDirect3D11Window")) || // Twitch
+    (!_wcsicmp (pWindowClass->lpszClassName, L"TestDX11WindowClass"))                   || // X-Ray Oxygen
+    (!_wcsicmp (pWindowClass->lpszClassName, L"static"))                                || // AMD's stupid OpenGL interop
+    (!_wcsicmp (pWindowClass->lpszClassName, L"SKIV_NotificationIcon"))                 || // SKIV's thingy...
+    (!_wcsicmp (pWindowClass->lpszClassName, L"InvisibleWindowClassNvPresent"))         || // NVIDIA SmoothMotion
+    (!_wcsicmp (pWindowClass->lpszClassName, L"TempDirect3D11OverlayWindow"))           || // Steam version of Titan Quest
 
     // F' it, there's a pattern here, just ignore all dummies.
     ((*pWindowClass->lpszClassName == L'D'||
@@ -7554,6 +7556,36 @@ SK_InstallWindowHook (HWND hWnd)
       }
     } static background_behavior;
 
+    class ControlPanelActivationListener : public SK_IVariableListener
+    {
+    public:
+      bool  active     = false;
+      bool* visible    = &SK_ImGui_Visible;
+      bool* nav_active = &nav_usable;
+
+      virtual bool OnVarChange (SK_IVariable* var, void* val = nullptr)
+      {
+        if (val != nullptr && var != nullptr )
+        {
+          if (var->getValuePointer () == &active)
+          {
+            auto state = *(bool *)val;
+
+            if (*visible    != state ||
+                *nav_active != state ||
+                     active != state)
+            {
+              *visible    = state;
+              *nav_active = state;
+                   active = state;
+            }
+          }
+        }
+
+        return true;
+      }
+    } static activation_listener;
+
     cmd->AddVariable ("Cursor.Visible",          SK_CreateVar (SK_IVariable::Boolean, (bool *)&cursor_control.cursor_visible, &cursor_control));
     cmd->AddVariable ("Cursor.Manage",           SK_CreateVar (SK_IVariable::Boolean, (bool *)&config.input.cursor.manage));
     cmd->AddVariable ("Cursor.Timeout",          SK_CreateVar (SK_IVariable::Int,     (int  *)&config.input.cursor.timeout));
@@ -7561,7 +7593,13 @@ SK_InstallWindowHook (HWND hWnd)
 
     cmd->AddVariable ("Window.BackgroundRender", SK_CreateVar (SK_IVariable::Boolean, (bool *)&config.window.background_render, &background_behavior));
 
+    // Superset of Visible and NavActive, they will be set in conjunction and emulate
+    //   traditional Ctrl+Shift+Backspace activation behavior.
+    cmd->AddVariable ("ImGui.Active",            SK_CreateVar (SK_IVariable::Boolean, (bool *)&activation_listener.active, &activation_listener));
+
     cmd->AddVariable ("ImGui.Visible",           SK_CreateVar (SK_IVariable::Boolean, (bool *)&SK_ImGui_Visible));
+    cmd->AddVariable ("ImGui.NavActive",         SK_CreateVar (SK_IVariable::Boolean, (bool *)&nav_usable));
+    cmd->AddVariable ("ImGui.AllowToggleKeybind",SK_CreateVar (SK_IVariable::Boolean, (bool *)&config.input.keyboard.allow_imgui_toggle));
   }
 
   return true;
@@ -7789,7 +7827,12 @@ SK_MakeWindowHook (WNDPROC class_proc, WNDPROC wnd_proc, HWND hWnd)
   // Kiss of death for sane window management
   if (! _wcsicmp (wszClassName, L"UnityWndClass"))
   {
-    SK_GetCurrentRenderBackend ().windows.unity =  true;
+    SK_GetCurrentRenderBackend ().windows.unity = true;
+
+    if (config.render.framerate.engine_overrides.allow_latency_wait == -1) {
+        config.render.framerate.engine_overrides.allow_latency_wait  =  0;
+        config.utility.save_async ();
+    }
 
     bool changed = false;
 

@@ -53,6 +53,7 @@
 #include <SpecialK/render/dxgi/dxgi_util.h>
 #include <SpecialK/render/dxgi/dxgi_hdr.h>
 #include <SpecialK/render/d3d9/d3d9_backend.h>
+#include <SpecialK/render/ngx/ngx_dlss.h>
 
 #include <imgui/font_awesome.h>
 
@@ -2231,6 +2232,158 @@ SK_Display_ResolutionSelectUI (bool bMarkDirty)
 }
 
 void
+SK_ImGui_ListImmediateFlipConflicts (void)
+{
+  auto GetWindowsAbove = [&](HWND targetHwnd) -> std::vector <HWND>
+  {
+    std::vector <HWND> windowsAbove;
+
+    HWND hwnd =
+      GetTopWindow (nullptr);
+
+    while (hwnd && hwnd != targetHwnd)
+    {
+      if (IsWindowVisible (hwnd))
+        windowsAbove.push_back (hwnd);
+
+      hwnd = GetNextWindow
+        (hwnd, GW_HWNDNEXT);
+    }
+
+    return windowsAbove;
+  };
+
+  auto windows =
+    GetWindowsAbove (game_window.hWnd);
+
+  using tooltip_entry =
+    std::tuple <std::wstring, DWORD, std::string>;
+
+  std::vector <tooltip_entry> tooltip_entries; 
+
+  for ( auto window : windows )
+  {
+    RECT                    rcWindow = {};
+    GetWindowRect (window, &rcWindow);
+    InflateRect           (&rcWindow, 1, 1);
+
+    RECT                rcIntersect;
+    if (IntersectRect (&rcIntersect, &rcWindow, &game_window.actual.window))
+    {
+      wchar_t                        wszTitle [128] = {};
+      InternalGetWindowText (window, wszTitle, 127);
+
+      if (*wszTitle != L'\0')
+      {
+        for (auto i = 0 ; i < 128 ; i++)
+        {
+          if (wszTitle [i] == L'#')
+              wszTitle [i] =  L' ';
+          if (wszTitle [i] == L'\0')
+            break;
+        }
+
+        DWORD                                 dwPid = 0;
+        SK_GetWindowThreadProcessId (window, &dwPid);
+
+        auto GetExecutablePath = [&](DWORD processId) -> std::wstring
+        {
+          SK_AutoHandle hProcess (
+            OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId)
+          );
+
+          if (hProcess.isValid ())
+          {
+            wchar_t wszPath [MAX_PATH + 2] = { };
+            DWORD   size  =  MAX_PATH;
+
+            if (QueryFullProcessImageNameW (hProcess, 0, wszPath, &size))
+            {
+              return wszPath;
+            }
+          }
+
+          return L"";
+        };
+
+        tooltip_entries.push_back ({
+          GetExecutablePath (dwPid), dwPid, SK_WideCharToUTF8 (wszTitle)
+        });
+      }
+    }
+  }
+
+  if (! tooltip_entries.empty ())
+  {
+    ImGui::TextColored
+      (ImVec4 (1.f, 1.f, 0.0f, 1.f),
+                          ICON_FA_EXCLAMATION_TRIANGLE
+                          "");
+    ImGui::SameLine      (  );
+    ImGui::TextColored
+        (ImVec4 (1.f, 1.f, 1.f, 1.f),
+                          "Applications May Be Preventing Variable Refresh / Independent Flip");
+    ImGui::BeginGroup    (  );
+    ImGui::Separator     (  );
+    ImGui::TextColored
+      (ImVec4 (1.f, 1.f, 1.0f, 1.f), "%hs",
+                          "Executable Path");
+    ImGui::Separator     (  );
+    for (auto& row : tooltip_entries)
+    {
+      ImGui::TextColored
+        (ImVec4 (0.75f, 0.75f, 0.75f, 1.f),
+                          "%ws", std::get <std::wstring> (row).c_str ());
+    }
+    ImGui::EndGroup      (  );
+    ImGui::SameLine      (  );
+    ImGui::BeginGroup    (  );
+    ImGui::Separator     (  );
+    ImGui::SeparatorEx   (ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine      (  );
+    ImGui::TextColored
+      (ImVec4 (1.f, 1.f, 1.0f, 1.f), "%hs",
+                          "PID");
+    ImGui::Separator     (  );
+    for (auto& row : tooltip_entries)
+    {
+      ImGui::SeparatorEx (ImGuiSeparatorFlags_Vertical);
+      ImGui::SameLine    (  );
+      ImGui::TextColored
+        (ImVec4 (0.75f, 0.75f, 0.75f, 1.f),
+                          "%d", std::get <DWORD> (row));
+    }
+    ImGui::EndGroup      (  );
+    ImGui::SameLine      (  );
+    ImGui::BeginGroup    (  );
+    ImGui::Separator     (  );
+    ImGui::SeparatorEx   (ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine      (  );
+    ImGui::TextColored
+      (ImVec4 (1.f, 1.f, 1.0f, 1.f), "%hs",
+                          "Window Title");
+    ImGui::Separator     (  );
+    for (auto& row : tooltip_entries)
+    {
+      ImGui::SeparatorEx (ImGuiSeparatorFlags_Vertical);
+      ImGui::SameLine    (  );
+      ImGui::TextColored
+        (ImVec4 (0.75f, 0.75f, 0.75f, 1.f),
+                          "%hs", std::get <std::string> (row).c_str ());
+    }
+    ImGui::EndGroup      (  );
+
+    if (config.window.always_on_top < AlwaysOnTop)
+    {
+      ImGui::Separator   (  );
+      ImGui::BulletText  ("Consider \"Multitasking-On-Top\" in "
+        "Window Management | Window Layering if problem applications "
+        "are not overlays." );
+    }
+  }
+}
+
+void
 DisplayModeMenu (bool windowed)
 {
   SK_RenderBackend& rb =
@@ -3570,6 +3723,14 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
           );
         }
 
+        if (config.galaxy.present)
+        {
+          HDRLuminanceSlider (
+            "GOG Galaxy Overlay Luminance###GALAXY_LUMINANCE", config.galaxy.overlay_luminance,
+                                                                  rb.display_gamut.maxAverageY
+          );
+        }
+
         static bool uplay_overlay = false;
 
         if ((! uplay_overlay) && ((SK_GetFramesDrawn () - first_try) < 240))
@@ -4345,245 +4506,6 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
         }
       }
 
-#pragma region Legacy AutoUpdate: Scheduled For Removal (!!)
-#ifdef _HAS_AUTO_UPDATE_SUPPORT
-      auto PopulateBranches = [](auto branches) ->
-        std::map <std::string, SK_BranchInfo>
-        {
-          std::map <std::string, SK_BranchInfo> details;
-
-          for ( auto& it : branches )
-          {
-            details.emplace ( it,
-              SK_Version_GetLatestBranchInfo (nullptr, it.c_str ())
-            );
-          }
-
-          return details;
-        };
-
-      static std::vector <std::string>                branches       =
-        SK_Version_GetAvailableBranches (nullptr);
-      static std::map    <std::string, SK_BranchInfo> branch_details =
-                       PopulateBranches (branches);
-
-      static SK_VersionInfo vinfo =
-        SK_Version_GetLocalInfo (nullptr);
-
-      static char current_ver        [128] = { };
-      static char current_branch_str [ 64] = { };
-
-      snprintf ( current_ver,        127, "%ws (%li)",
-                   vinfo.package.c_str (), vinfo.build );
-      snprintf ( current_branch_str,  63, "%ws",
-                   vinfo.branch.c_str  () );
-
-      static SK_VersionInfo vinfo_latest =
-        SK_Version_GetLatestInfo (nullptr);
-
-      static SK_BranchInfo_V1 current_branch =
-        SK_Version_GetLatestBranchInfo (
-          nullptr, SK_WideCharToUTF8 (vinfo.branch).c_str ()
-        );
-
-      bool updatable =
-        ( SK_GetPluginName ().find (L"Special K") == std::wstring::npos ||
-          SK_IsInjected    () );
-
-      if (ImGui::BeginMenu ("Update"))
-      {
-        bool selected = false;
-
-        ImGui::MenuItem  ( "Current Version###Menu_CurrentVersion",
-                             current_ver, &selected, false );
-
-        if (updatable && branches.size () > 1)
-        {
-          static
-            char    szCurrentBranchMenu [128] = { };
-          sprintf ( szCurrentBranchMenu, "Current Branch:  (%s)"
-                                         "###SelectBranchMenu",
-                      current_branch_str );
-
-          if (ImGui::BeginMenu (szCurrentBranchMenu))
-          {
-            for ( auto& it : branches )
-            {
-              selected = ( SK_UTF8ToWideChar (it)._Equal (
-                             current_branch.release.vinfo.branch )
-                         );
-
-              static std::string branch_desc;
-                                 branch_desc =
-                SK_WideCharToUTF8 (branch_details [it].general.description);
-
-              if ( ImGui::MenuItem ( it.c_str (), branch_desc.c_str (),
-                                                              &selected ) )
-              {
-                SK_Version_SwitchBranches (nullptr, it.c_str ());
-
-                // Re-fetch the version info and then go to town updating stuff ;)
-                SK_FetchVersionInfo1 (nullptr, true);
-
-                branches       = SK_Version_GetAvailableBranches (nullptr);
-                vinfo          = SK_Version_GetLocalInfo         (nullptr);
-                vinfo_latest   = SK_Version_GetLatestInfo        (nullptr);
-                current_branch = SK_Version_GetLatestBranchInfo  (nullptr,
-                         SK_WideCharToUTF8 (vinfo_latest.branch).c_str ());
-                branch_details = PopulateBranches (branches);
-
-                // !!! Handle the case where the number of branches changes after we fetch the repo
-                break;
-              }
-
-              else if (ImGui::BeginItemTooltip ())
-              {
-                static std::wstring title;
-                                    title =
-                branch_details [it].release.title;
-
-                ImGui::Text         ("%ws", title.c_str ());
-                //ImGui::Separator    ();
-                //ImGui::BulletText   ("Build: %li", branch_details [it].release.vinfo.build);
-                ImGui::EndTooltip   ();
-              }
-            }
-
-            ImGui::Separator ();
-
-            ImGui::TreePush       ("");
-            ImGui::PushStyleColor (ImGuiCol_Text, (ImVec4&&)ImColor::HSV (0.125f, 0.9f, 0.75f));
-            ImGui::Text           ("Most of my projects have branches that pre-date this menu...");
-            ImGui::BulletText     ("Changing branches here may be a one-way trip :)");
-            ImGui::PopStyleColor  ();
-            ImGui::TreePop        ();
-
-            ImGui::EndMenu ();
-          }
-        }
-
-        else
-        {
-
-        }
-
-        ImGui::MenuItem  ( "Current Branch###Menu_CurrentBranch",
-                             current_branch_str, &selected, false );
-
-        ImGui::Separator ();
-
-        if (vinfo.build < vinfo_latest.build)
-        {
-          if (ImGui::MenuItem  ("Update Now"))
-            SK_UpdateSoftware (nullptr);
-
-          ImGui::Separator ();
-        }
-
-        static std::string utf8_time_checked;
-                           utf8_time_checked =
-          SK_WideCharToUTF8 (SK_Version_GetLastCheckTime_WStr ());
-
-        snprintf        ( current_ver, 127, "%ws (%li)",
-                            vinfo_latest.package.c_str (),
-                            vinfo_latest.build );
-        ImGui::MenuItem ( "Latest Version###Menu_LatestVersion",
-                            current_ver, &selected, false );
-        ImGui::MenuItem ( "Last Checked###Menu_LastUpdateCheck",
-                          utf8_time_checked.c_str (), &selected, false );
-
-        enum {
-          SixHours    = 0,
-          TwelveHours = 1,
-          OneDay      = 2,
-          OneWeek     = 3,
-          Never       = 4
-        };
-
-        const ULONGLONG _Hour = 36000000000ULL;
-
-        auto GetFrequencyPreset = [&] (void) -> int {
-          uint64_t freq = SK_Version_GetUpdateFrequency (nullptr);
-
-          if (freq == 0 || freq == MAXULONGLONG)
-            return Never;
-
-          if (freq <= (6 * _Hour))
-            return SixHours;
-
-          if (freq <= (12 * _Hour))
-            return TwelveHours;
-
-          if (freq <= (24 * _Hour))
-            return OneDay;
-
-          if (freq <= (24 * 7 * _Hour))
-            return OneWeek;
-
-          return Never;
-        };
-
-        static int sel = GetFrequencyPreset ();
-
-        if (updatable)
-        {
-          ImGui::Text     ("Check for Updates");
-          ImGui::TreePush ("");
-
-          if ( ImGui::Combo ( "###UpdateCheckFreq", &sel,
-                                "Once every 6 hours\0"
-                                "Once every 12 hours\0"
-                                "Once per-day\0"
-                                "Once per-week\0"
-                                "Never (disable)\0\0" ) )
-          {
-            switch (sel)
-            {
-              default:
-              case SixHours:
-                SK_Version_SetUpdateFrequency (nullptr,      6 * _Hour);
-                break;
-              case TwelveHours:
-                SK_Version_SetUpdateFrequency (nullptr,     12 * _Hour);
-                break;
-              case OneDay:
-                SK_Version_SetUpdateFrequency (nullptr,     24 * _Hour);
-                break;
-              case OneWeek:
-                SK_Version_SetUpdateFrequency (nullptr, 7 * 24 * _Hour);
-                break;
-              case Never:
-                SK_Version_SetUpdateFrequency (nullptr,              0);
-                break;
-            }
-          }
-
-          ImGui::TreePop ( );
-
-          if (vinfo.build >= vinfo_latest.build)
-          {
-            if (ImGui::MenuItem  (" >> Check Now"))
-            {
-              SK_FetchVersionInfo1 (nullptr, true);
-              branches       = SK_Version_GetAvailableBranches (nullptr);
-              vinfo          = SK_Version_GetLocalInfo         (nullptr);
-              vinfo_latest   = SK_Version_GetLatestInfo        (nullptr);
-              branch_details = PopulateBranches                (branches);
-
-              if (vinfo.build < vinfo_latest.build)
-                SK_Version_ForceUpdateNextLaunch (nullptr);
-            }
-          }
-        }
-
-        ImGui::EndMenu ();
-      }
-
-      SK::ControlPanel::Steam::DrawMenu ();
-#endif
-#pragma endregion Legacy AutoUpdate: Scheduled For Removal (!!)
-
-
       if (ImGui::BeginMenu (ICON_FA_QUESTION "  Help"))
       {
         bool selected = false;
@@ -4785,9 +4707,16 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
             ImGui::EndGroup   ();
             ImGui::SameLine   ();
             ImGui::BeginGroup ();
+            size_t max_name_len = 0;
             for ( const auto& it : records )
             {
-              ImGui::Text ( " [%32ws] ",
+              max_name_len =
+                std::max ( max_name_len,
+                                 wcslen (it->process.name) );
+            }
+            for ( const auto& it : records )
+            {
+              ImGui::Text ( " [%*ws] ",  (int)max_name_len,
                                       it->process.name );
             }
             ImGui::EndGroup   ();
@@ -5392,13 +5321,20 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
              SK_VRR_UpdateCachedTimings (pLimiter);
       }
 
+      // If we are counting native frames, then multiply those by the current
+      //   multi-framegen rate before trying to calculate LFC rate.
+      const float fFrameGenRate =      SK_NGX_IsUsingDLSS_G () &&
+        config.render.framerate.streamline.enable_native_limit && __target_fps > 0.0f ?
+          static_cast <float> (SK_NGX_DLSSG_GetMultiFrameCount ()) + 1.0f
+                                                               :     1.0f;
+
       const float fFPS =
         static_cast <float> (1000.0 / snapshots->cached_mean.val);
 
-      if (fVBlankHz > 1.08 * fFPS)
+      if (fVBlankHz > 1.08 * fFPS * fFrameGenRate)
       {
         lfc_rate =
-          static_cast <int> (std::floorf (0.5f + (fVBlankHz / fFPS)));
+          static_cast <int> (std::floorf (0.5f + (fVBlankHz / (fFPS * fFrameGenRate))));
       }
     }
 
@@ -5512,6 +5448,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
                    std::min ( display.vrr.max_refresh,
                       sk::narrow_cast <uint16_t> (ceilf (fFixedRefreshHz)) )
           );
+
           ImGui::Separator ();
         }
 
@@ -5549,6 +5486,11 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
               "or lower for minimum latency.", display.vrr.type, fMaxHzForVRR
             );
           }
+
+          ImGui::Separator     (  );
+          ImGui::TreePush      ("");
+          SK_ImGui_ListImmediateFlipConflicts ();
+          ImGui::TreePop       (  );
         }
         ImGui::EndTooltip ();
       }
@@ -7668,7 +7610,8 @@ SK_Input_LowLevelKeyboardProc (int code, WPARAM wParam, LPARAM lParam)
     (KBDLLHOOKSTRUCT *)lParam;
 
   const bool bIsAltTab =
-    ( wParam                            == WM_SYSKEYDOWN &&
+    ((wParam                            == WM_KEYDOWN ||
+      wParam                            == WM_SYSKEYDOWN)&&
       pHookData                         != nullptr       &&
      (pHookData->flags & LLKHF_ALTDOWN) != 0x0           &&
       pHookData->vkCode                 == VK_TAB );
@@ -8172,18 +8115,57 @@ SK_ImGui_StageNextFrame (void)
 
     ImGui::TextUnformatted ("Press ");                    ImGui::SameLine ();
 
-    ImGui::TextColored     ( ImColor::HSV (.16f, 1.f, 1.f),
+    int modifiers = 0;
+
+    if (config.control_panel.keys.toggle.ctrl)
+    {
+      ImGui::TextColored   ( ImColor::HSV (.16f, 1.f, 1.f),
                                R"('%hs)", SK_WideCharToUTF8 (virtualToHuman [VK_CONTROL]).c_str () );
-    ImGui::SameLine        (   );
-    ImGui::TextUnformatted ("+");
-    ImGui::SameLine        (   );
-    ImGui::TextColored     ( ImColor::HSV (.16f, 1.f, 1.f),
+
+      ++modifiers;
+    }
+
+    if (config.control_panel.keys.toggle.alt)
+    {
+      if (modifiers)
+      {
+        ImGui::SameLine        (   );
+        ImGui::TextUnformatted ("+");
+        ImGui::SameLine        (   );
+        modifiers--;
+      }
+
+      ImGui::TextColored   ( ImColor::HSV (.16f, 1.f, 1.f),
+                               R"(%hs)", SK_WideCharToUTF8 (virtualToHuman [VK_MENU]).c_str () );
+
+      modifiers++;
+    }
+
+    if (config.control_panel.keys.toggle.shift)
+    {
+      if (modifiers)
+      {
+        ImGui::SameLine        (   );
+        ImGui::TextUnformatted ("+");
+        ImGui::SameLine        (   );
+        modifiers--;
+      }
+
+      ImGui::TextColored   ( ImColor::HSV (.16f, 1.f, 1.f),
                                R"(%hs)", SK_WideCharToUTF8 (virtualToHuman [VK_SHIFT]).c_str () );
-    ImGui::SameLine        (   );
-    ImGui::TextUnformatted ("+");
-    ImGui::SameLine        (   );
+
+      modifiers++;
+    }
+
+    if (modifiers)
+    {
+      ImGui::SameLine        (   );
+      ImGui::TextUnformatted ("+");
+      ImGui::SameLine        (   );
+    }
+
     ImGui::TextColored     ( ImColor::HSV (.16f, 1.f, 1.f),
-                               R"(%hs')", SK_WideCharToUTF8 (virtualToHuman [VK_BACK]).c_str () );
+                               R"(%hs')", SK_WideCharToUTF8 (virtualToHuman [(BYTE)config.control_panel.keys.toggle.vKey]).c_str () );
 
     const bool bHasControllers = 
       (SK_ImGui_HasPlayStationController () || SK_ImGui_HasXboxController ());

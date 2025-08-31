@@ -42,6 +42,14 @@ static constexpr int SK_NoPreference = -1;
 static constexpr int SK_Disabled     =  0;
 static constexpr int SK_Enabled      =  1;
 
+static constexpr wchar_t* SK_Platform_Unknown = L"Unknown";
+static constexpr wchar_t* SK_Platform_Steam   = L"Steam";
+static constexpr wchar_t* SK_Platform_Epic    = L"Epic";
+static constexpr wchar_t* SK_Platform_GOG     = L"GOG";
+static constexpr wchar_t* SK_Platform_Xbox    = L"Xbox";
+static constexpr wchar_t* SK_Platform_Origin  = L"Origin";
+static constexpr wchar_t* SK_Platform_Ubisoft = L"Ubisoft";
+
 enum {
   SK_HDR_CLIPBOARD_FORMAT_NONE = 0,
   SK_HDR_CLIPBOARD_FORMAT_PNG  = 1,
@@ -218,6 +226,18 @@ struct sk_config_t
     float  duration       = 20.0F;
   } version_banner;
 
+  struct control_panel_s {
+    struct keybind_s {
+      SK_ConfigSerializedKeybind
+        toggle = {
+          SK_Keybind {
+            "Open / Close Control Panel", L"Ctrl+Shift+Backspace",
+             true, true, false, VK_BACK
+          }, L"ControlPanelToggle"
+        };
+    } keys;
+  } control_panel;
+
   struct time_osd_s {
     LONG   format         = LOCALE_USER_DEFAULT;
 
@@ -279,7 +299,7 @@ struct sk_config_t
       SK_ConfigSerializedKeybind
         console_toggle = {
           SK_Keybind {
-            "Toggle SK's Command Console", L"Ctrl+Shift+Tab",
+            "Toggle Command Console", L"Ctrl+Shift+Tab",
              true, true, false, VK_TAB
           }, L"ConsoleToggle"
         };
@@ -486,6 +506,9 @@ struct sk_config_t
                                                //   control panel
     bool        silent                = false;
     bool        steam_is_b0rked       = false; // Need to swallow some exceptions or Streamline may crash games
+    int         equivalent_steam_app  = -1;    // For non-Steam games, the AppID of the same game on Steam.
+    std::wstring
+                type                  =  SK_Platform_Unknown;
   } platform;
 
   struct epic_s {
@@ -500,9 +523,15 @@ struct sk_config_t
     bool        present               = false;  // Is the overlay detected?
   } uplay;
 
+  struct galaxy_s {
+    float       overlay_luminance     = 4.375F; // 350 nits
+    bool        present               = false;  // Is the overlay detected?
+  } galaxy;
+
   struct discord_s {
     float       overlay_luminance     = 4.375F; // 350 nits
     bool        present               = false;  // Is the overlay detected?
+    bool        allow_windowed_mode   = false;  // Allow Discord to draw a Win32 window on top of the game?
   } discord;
 
   struct rtss_s {
@@ -764,14 +793,13 @@ struct sk_config_t
             }, L"ToggleFCATBars"
           };
         int   scanline_offset      =    -1;
-        int   scanline_resync      =   750;
-        int   scanline_error       =     1;
+        int   scanline_resync      =  1000;
         float delay_bias           =  0.0f;
         bool  auto_bias            = false;
-        float max_auto_bias        = 0.75f;
+        float max_auto_bias        =  0.5f;
         struct auto_bias_target_s {
-          float ms                 = 0.85f;
-          float percent            = 0.00f;
+          float ms                 =  0.0f;
+          float percent            =  0.5f;
         } auto_bias_target;
         bool  show_fcat_bars       =  false; // Not INI-persistent
 
@@ -788,8 +816,8 @@ struct sk_config_t
         int   enforcement_policy   =      4;
       } streamline;
       struct {
-        bool allow_latency_wait    = true;
-        bool allow_wait_for_vblank = true;
+        int  allow_latency_wait    = -1;
+        int  allow_wait_for_vblank = -1;
       } engine_overrides;
     } framerate;
     struct d3d9_s {
@@ -1255,7 +1283,8 @@ struct sk_config_t
       bool    disable_ime         = false; //   ignore "disabled_to_game"
       bool    prevent_no_legacy   = false;
       bool    prevent_no_hotkeys  = false;
-    } keyboard;                            
+      bool    allow_imgui_toggle  =  true;
+    } keyboard;
 
     struct mouse_s {
       // Translate WM_MOUSEWHEEL messages into actual events that will trigger
@@ -1736,6 +1765,7 @@ enum class SK_GAME_ID
   FinalFantasyXVI,              // ffxvi_*.exe
   DragonBallFighterZ,           // DBFighterZ.exe
   NiNoKuni2,                    // Nino2.exe
+  FarCry3,                      // FarCry3.exe
   FarCry4,                      // FarCry4.exe
   FarCry5,                      // FarCry5.exe
   ChronoTrigger,                // Chrono Trigger.exe
@@ -1834,6 +1864,7 @@ enum class SK_GAME_ID
   TalosPrinciple2,              // Talos2-Win64-Shipping.exe
   CrashBandicootNSaneTrilogy,   // CrashBandicootNSaneTrilogy.exe
   StarWarsOutlaws,              // outlaws.exe
+  StarWarsJediSurvivor,         // JediSurvivor.exe
   ShadPS4,                      // shadPS4.exe
   GodOfWarRagnarok,             // GoWR.exe
   Metaphor,                     // METAPHOR.exe

@@ -801,6 +801,11 @@ SK_EOS_Platform_Tick (EOS_HPlatform Handle)
   if (ReadAcquire (&__SK_DLL_Ending))
     return;
 
+  if (config.steam.appid == 0 && !wcscmp (config.platform.type.c_str (), SK_Platform_Unknown))
+  {
+    config.platform.type = SK_Platform_Epic;
+  }
+
   // Temporarily incompatible
   SK_RunOnce (config.platform.reuse_overlay_pause = false);
   SK_RunOnce (epic_log->Log (L"EOS_Platform_Tick"));
@@ -1482,6 +1487,40 @@ SK::EOS::AppName (void)
 
         path =
           path.parent_path ().lexically_normal ();
+      }
+
+      if (config.platform.equivalent_steam_app == -1)
+      {
+        std::wstring url =
+          SK_FormatStringW (
+            LR"(https://www.pcgamingwiki.com/w/index.php?search=%ws)", SK_Network_MakeEscapeSequencedURL (SK_Platform_RemoveTrademarkSymbols (SK_UTF8ToWideChar (szDisplayName))).c_str ()
+          );
+
+        SK_Network_EnqueueDownload (
+          sk_download_request_s (L"pcgw_entry.html", url.data (),
+            []( const std::vector <uint8_t>&& data,
+                const std::wstring_view       file )
+            {
+              if (data.empty ())
+                return true;
+
+              std::ignore = file;
+
+              auto steamdb_appid =
+                StrStrIA ((const char *)data.data (), "https://steamdb.info/app/");
+
+              if (steamdb_appid != nullptr)
+              {
+                if (1 != sscanf (steamdb_appid, "https://steamdb.info/app/%d/", &config.platform.equivalent_steam_app))
+                {
+                  config.platform.equivalent_steam_app = 0;
+                }
+              }
+
+              return true;
+            } ),
+          true
+        );
       }
 
       app_cache_mgr->saveAppCache       ();

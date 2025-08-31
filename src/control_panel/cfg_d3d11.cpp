@@ -363,6 +363,9 @@ SK::ControlPanel::D3D11::Draw (void)
   const SK_RenderBackend &rb =
     SK_GetCurrentRenderBackend ();
 
+  static bool is_vulkan_loaded =
+    GetModuleHandleW (L"vulkan-1.dll") != 0;
+
   const bool d3d11 =
     static_cast <int> (render_api) & static_cast <int> (SK_RenderAPI::D3D11);
   const bool d3d12 =
@@ -380,7 +383,9 @@ SK::ControlPanel::D3D11::Draw (void)
   if (SK_GL_OnD3D11)
     uncollapsed = ImGui::CollapsingHeader ("OpenGL-IK Settings",   ImGuiTreeNodeFlags_DefaultOpen);
   else if (vulkan)
+  { if (is_vulkan_loaded)
     uncollapsed = ImGui::CollapsingHeader ("Vulkan Settings",      ImGuiTreeNodeFlags_DefaultOpen);
+  }
   else if (d3d11)
     uncollapsed = ImGui::CollapsingHeader ("Direct3D 11 Settings", ImGuiTreeNodeFlags_DefaultOpen);
   else if (d3d12)
@@ -917,6 +922,49 @@ SK::ControlPanel::D3D11::Draw (void)
           ImGui::PushStyleColor (ImGuiCol_Text, ImColor::HSV (.3f, .8f, .9f).Value);
           ImGui::BulletText     ("Game Restart Required");
           ImGui::PopStyleColor  ();
+        }
+
+        ImGui::TreePop     ( );
+      } ImGui::TreePop     ( );
+      ImGui::PopStyleColor (3);
+    }
+
+    else if (SK_GL_OnD3D11)
+    {
+      ImGui::PushStyleColor (ImGuiCol_Header,        ImVec4 (0.90f, 0.68f, 0.02f, 0.45f));
+      ImGui::PushStyleColor (ImGuiCol_HeaderHovered, ImVec4 (0.90f, 0.72f, 0.07f, 0.80f));
+      ImGui::PushStyleColor (ImGuiCol_HeaderActive,  ImVec4 (0.87f, 0.78f, 0.14f, 0.80f));
+      ImGui::TreePush ("");
+
+      const bool filtering =
+        ImGui::CollapsingHeader ("Texture Filtering");
+
+      if (filtering)
+      {
+        ImGui::TreePush ("");
+
+        if (ImGui::Checkbox ("Force Anisotropic Filtering", &config.render.d3d12.force_anisotropic))
+        {
+          config.utility.save_async ();
+        }
+
+        ImGui::SetItemTooltip ("Upgrade standard bilinear or trilinear filtering to anisotropic");
+
+        ImGui::SameLine ();
+
+        if (ImGui::SliderInt ("Anistropic Level", &config.render.d3d12.max_anisotropy, -1, 16,
+                                                   config.render.d3d12.max_anisotropy > 0 ? "%dx" : "Game Default"))
+        {
+          config.utility.save_async ();
+        }
+
+        ImGui::SetItemTooltip ("Force maximum anisotropic filtering level, for native anisotropic "
+                               "filtered render passes as well as any forced.");
+
+        if (ImGui::SliderFloat ("Mipmap LOD Bias", &config.render.d3d12.force_lod_bias, -5.0f, 5.0f,
+                                                    config.render.d3d12.force_lod_bias == 0.0f ? "Game Default" : "%3.2f"))
+        {
+          config.utility.save_async ();
         }
 
         ImGui::TreePop     ( );

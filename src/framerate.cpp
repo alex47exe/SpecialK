@@ -619,16 +619,6 @@ SK_ImGui_LatentSyncConfig (void)
             config.render.framerate.latent_sync.scanline_resync);
         }
 
-        if ( ImGui::SliderInt ( "Anti-Roll",
-                                  &config.render.framerate.latent_sync.scanline_error,
-                                    0, 2, (config.render.framerate.latent_sync.scanline_error != 1) ?
-                                                                                 "%d Clock Ticks" :
-                                                                                 "%d Clock Tick" )
-           )
-        {
-          __scanline.lock.requestResync ();
-        }
-
         ImGui::InputFloat ("Retire Stats",  &__SK_LatentSync_SwapSecs, 0.1f, 1.0f, "After %.3f Seconds");
 
         if (SK_GetCurrentRenderBackend ().api == SK_RenderAPI::OpenGL)
@@ -698,7 +688,6 @@ SK_ImGui_LatentSyncConfig (void)
       ImGui::Text     ("Flip Time:       ");
       ImGui::Text     ("Busy Wait %%:    ");
       ImGui::Text     ("");
-      ImGui::Text     ("Anti-Roll:       ");
       if (config.render.framerate.latent_sync.delay_bias != 0.0f)
         ImGui::Text   ("Latency Boost:   ");
     }
@@ -732,9 +721,6 @@ SK_ImGui_LatentSyncConfig (void)
                                  static_cast <double> (SK_PerfTicksPerMs)) * 10000.0);
       ImGui::Text       ("%3.1f%%", wait_time.getBusyPercent ());
       ImGui::Text       ("");
-      ImGui::Text       ((const char *)u8"%5.2f μs",
-                                (static_cast <double> (config.render.framerate.latent_sync.scanline_error) /
-                                 static_cast <double> (SK_PerfTicksPerMs)) * 10000.0);
       if (config.render.framerate.latent_sync.delay_bias != 0.0f)
         ImGui::Text     ("-%5.2f ms",
                                 (static_cast <double> (__SK_LatentSyncPostDelay) /
@@ -1358,16 +1344,9 @@ SK::Framerate::Limiter::init (double target, bool _tracks_window)
     auto const pDisplay =
       &rb.displays [rb.active_display];
 
-    if (pDisplay->signal.timing.vsync_freq.Numerator > 0)
-    {
-      ticks_per_frame +=
-        ( ticks_per_frame / ( ( pDisplay->signal.timing.vsync_freq.Denominator * SK_PerfFreq ) /
-                                pDisplay->signal.timing.vsync_freq.Numerator ) ) * config.render.framerate.latent_sync.scanline_error;
-    }
-
     if (pDisplay->signal.timing.vsync_freq.Numerator > 0 &&
-        next_vsync > now - (pDisplay->signal.timing.vsync_freq.Denominator * SK_PerfFreq * 120) /
-                           (pDisplay->signal.timing.vsync_freq.Numerator))
+        next_vsync > now - (ULONGLONG)round ((double)(pDisplay->signal.timing.vsync_freq.Denominator * SK_PerfFreq * 120) /
+                                             (double)(pDisplay->signal.timing.vsync_freq.Numerator)))
     {
 #if 0
       SK_ImGui_Warning (SK_FormatStringW (L"VSync Freq: %5.2f Hz, HSync Freq: %5.2f kHz",
@@ -1380,8 +1359,8 @@ SK::Framerate::Limiter::init (double target, bool _tracks_window)
       while (next_vsync < now)
       {
         next_vsync +=
-          ( pDisplay->signal.timing.vsync_freq.Denominator * SK_PerfFreq ) /
-          ( pDisplay->signal.timing.vsync_freq.Numerator                 );
+          (ULONGLONG)round ((double)( pDisplay->signal.timing.vsync_freq.Denominator * SK_PerfFreq ) /
+                            (double)( pDisplay->signal.timing.vsync_freq.Numerator                 ));
       }
     }
 
@@ -1440,6 +1419,20 @@ SK::Framerate::Limiter::try_wait (void)
 //#define _RESTORE_TIMER_RES
 extern ZwSetTimerResolution_pfn
        ZwSetTimerResolution_Original;
+
+void
+SK_Framerate_SanitizeTimerResolution (void)
+{
+  auto _SetTimerResolution =
+    ( ZwSetTimerResolution_Original != nullptr ) ?
+      ZwSetTimerResolution_Original              :
+      ZwSetTimerResolution;
+
+  ULONG set = (ULONG)(10000.0 * SK::Framerate::Limiter::timer_res_ms),
+                                     current = 0;
+  _SetTimerResolution (10000, TRUE, &current);
+  _SetTimerResolution (set,   TRUE, &current);
+}
 
 void SK_Framerate_SetPowerThrottlingPolicy (bool always_high_res)
 {
@@ -1601,13 +1594,13 @@ SK::Framerate::Limiter::wait (void)
       &rb.displays [rb.active_display];
 
 
-  LONGLONG ticks_per_scanline = (pDisplay->signal.timing.hsync_freq.Numerator > 0) ?
-    (pDisplay->signal.timing.hsync_freq.Denominator * SK_PerfFreq) /
-    (pDisplay->signal.timing.hsync_freq.Numerator)                                 : 1;
+  auto ticks_per_scanline = (pDisplay->signal.timing.hsync_freq.Numerator > 0) ?
+   (LONGLONG)round ((double)(pDisplay->signal.timing.hsync_freq.Denominator * SK_PerfFreq) /
+                    (double)(pDisplay->signal.timing.hsync_freq.Numerator))    : 1;
 
-  LONGLONG ticks_per_refresh  = (pDisplay->signal.timing.vsync_freq.Numerator > 0) ?
-    (pDisplay->signal.timing.vsync_freq.Denominator * SK_PerfFreq) /
-    (pDisplay->signal.timing.vsync_freq.Numerator)                                 : 1;
+  auto ticks_per_refresh  = (pDisplay->signal.timing.vsync_freq.Numerator > 0) ?
+   (LONGLONG)round ((double)(pDisplay->signal.timing.vsync_freq.Denominator * SK_PerfFreq) /
+                    (double)(pDisplay->signal.timing.vsync_freq.Numerator))    : 1;
 
 
   if (! standalone)
@@ -1744,6 +1737,8 @@ SK::Framerate::Limiter::wait (void)
     {
       rb.d3d11.immediate_ctx->Flush ();
     }
+
+    SK_Framerate_SanitizeTimerResolution ();
 
     // Create an unnamed waitable timer.
     if (! timer_wait.isValid ())
@@ -1926,8 +1921,6 @@ SK::Framerate::Limiter::wait (void)
                   modf ( static_cast <double> (SK_PerfFreq) /
                          static_cast <double> (fps),     &dTicksPerFrame );
           ticks_per_frame  = sk::narrow_cast <ULONGLONG> (dTicksPerFrame);
-          ticks_per_frame +=
-            ( ticks_per_frame / ticks_per_refresh ) * config.render.framerate.latent_sync.scanline_error;
 
           __SK_LatentSync_FrameInterval = ticks_per_frame;
 
@@ -2179,8 +2172,8 @@ SK::Framerate::Limiter::wait (void)
               if (pDisplay->signal.timing.hsync_freq.Numerator > 0)
               {
                 ticks_per_scanline =
-                  ( pDisplay->signal.timing.hsync_freq.Denominator * SK_PerfFreq ) /
-                    pDisplay->signal.timing.hsync_freq.Numerator;
+                  (LONGLONG)round ((double)( pDisplay->signal.timing.hsync_freq.Denominator * SK_PerfFreq ) /
+                                   (double)  pDisplay->signal.timing.hsync_freq.Numerator);
               }
 
               if (D3DKMTGetScanLine != nullptr && ticks_per_scanline > 0)
@@ -2874,6 +2867,8 @@ SK_Framerate_WaitUntilQPC (LONGLONG llQPC, HANDLE& hTimer)
 {
   if (llQPC < SK_QueryPerf ().QuadPart)
     return;
+
+  SK_Framerate_SanitizeTimerResolution ();
 
   if ((LONG_PTR)hTimer < 0)
   {             hTimer = SK_HasHighResWaitableTimer ?

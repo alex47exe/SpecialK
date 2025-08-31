@@ -165,6 +165,8 @@ SK_GetCurrentGameID (void)
           { L"Secret_of_Mana.exe",                     SK_GAME_ID::SecretOfMana                 },
           { L"DBFighterZ.exe",                         SK_GAME_ID::DragonBallFighterZ           },
           { L"Nino2.exe",                              SK_GAME_ID::NiNoKuni2                    },
+          { L"FarCry3.exe",                            SK_GAME_ID::FarCry3                      },
+          { L"farcry3_d3d11.exe",                      SK_GAME_ID::FarCry3                      },
           { L"FarCry4.exe",                            SK_GAME_ID::FarCry4                      },
           { L"FarCry5.exe",                            SK_GAME_ID::FarCry5                      },
           { L"Chrono Trigger.exe",                     SK_GAME_ID::ChronoTrigger                },
@@ -266,6 +268,7 @@ SK_GetCurrentGameID (void)
           { L"CrashBandicootNSaneTrilogy.exe",         SK_GAME_ID::CrashBandicootNSaneTrilogy   },
           { L"Outlaws.exe",                            SK_GAME_ID::StarWarsOutlaws              },
           { L"Outlaws_Plus.exe",                       SK_GAME_ID::StarWarsOutlaws              },
+          { L"JediSurvivor.exe",                       SK_GAME_ID::StarWarsJediSurvivor         },
           { L"shadPS4.exe",                            SK_GAME_ID::ShadPS4                      },
           { L"GoWR.exe",                               SK_GAME_ID::GodOfWarRagnarok             },
           { L"METAPHOR.exe",                           SK_GAME_ID::Metaphor                     },
@@ -304,6 +307,7 @@ SK_GetCurrentGameID (void)
           { L"tq.exe",                                 SK_GAME_ID::TitanQuest                   },
           { L"eso64.exe",                              SK_GAME_ID::ElderScrollsOnline           },
           { L"zosEGSStarter.exe",                      SK_GAME_ID::Launcher                     },
+          { L"crs-video.exe",                          SK_GAME_ID::Launcher                     }, // Used by many games for FMV playback
         };
 
     first_check  = false;
@@ -716,6 +720,8 @@ struct
   struct {
     sk::ParameterStringW* notify_corner           = nullptr;
     sk::ParameterBool*    reuse_overlay_pause     = nullptr;
+    sk::ParameterInt*     equivalent_steam_app    = nullptr;
+    sk::ParameterStringW* type                    = nullptr;
   } system;
 } platform;
 
@@ -763,6 +769,14 @@ struct {
   struct
   {
     sk::ParameterFloat*   hdr_luminance           = nullptr;
+  } overlay;
+} galaxy;
+
+struct {
+  struct
+  {
+    sk::ParameterFloat*   hdr_luminance           = nullptr;
+    sk::ParameterBool*    allow_windowed_mode     = nullptr;
   } overlay;
 } discord;
 
@@ -936,6 +950,11 @@ struct {
 
     struct
     {
+      sk::ParameterInt*   allow_latency_wait      = nullptr;
+    } engine;
+
+    struct
+    {
       sk::ParameterInt*     offset                = nullptr;
       sk::ParameterInt*     resync                = nullptr;
       sk::ParameterInt*     error                 = nullptr;
@@ -1083,6 +1102,7 @@ struct {
     sk::ParameterBool*    disable_ime             = nullptr;
     sk::ParameterBool*    prevent_no_legacy       = nullptr;
     sk::ParameterBool*    prevent_no_hotkeys      = nullptr;
+    sk::ParameterBool*    allow_imgui_toggle      = nullptr;
   } keyboard;
 
   struct
@@ -1677,8 +1697,10 @@ auto DeclKeybind =
 
     ConfigEntry (uplay.overlay.hdr_luminance,            L"Make the uPlay Overlay visible in HDR mode!",               osd_ini,         L"uPlay.Overlay",         L"Luminance_scRGB"),
     ConfigEntry (rtss.overlay.hdr_luminance,             L"Make the RTSS Overlay visible in HDR mode!",                osd_ini,         L"RTSS.Overlay",          L"Luminance_scRGB"),
-    ConfigEntry (discord.overlay.hdr_luminance,          L"Make the Discord Overlay visible in HDR mode!",             osd_ini,         L"Discord.Overlay",       L"Luminance_scRGB"),
     ConfigEntry (reshade_cfg.overlay.hdr_luminance,      L"Make the ReShade Overlay visible in HDR mode!",             osd_ini,         L"ReShade.Overlay",       L"Luminance_scRGB"),
+    ConfigEntry (galaxy.overlay.hdr_luminance,           L"Make the Galaxy Overlay visible in HDR mode!",              osd_ini,         L"Galaxy.Overlay",        L"Luminance_scRGB"),
+    ConfigEntry (discord.overlay.hdr_luminance,          L"Make the Discord Overlay visible in HDR mode!",             osd_ini,         L"Discord.Overlay",       L"Luminance_scRGB"),
+    ConfigEntry (discord.overlay.allow_windowed_mode,    L"Allow Discord to composite a Win32 window over the game?",  osd_ini,         L"Discord.Overlay",       L"AllowWindowedMode"),
 
     ConfigEntry (display.confirm_mode_changes,           L"Show Confirmation Dialog when Changing Display Modes",      osd_ini,         L"Display.Settings",      L"ConfirmChanges"),
     ConfigEntry (display.save_monitor_prefs,             L"Remember Monitor Preferences for the Current Game",         dll_ini,         L"Display.Monitor",       L"RememberPreference"),
@@ -1786,6 +1808,8 @@ auto DeclKeybind =
     Keybind ( &config.reshade.toggle_overlay_keybind,    L"Toggle ReShade Overlay (Add-On version)",                   osd_ini,         L"ReShade.AddOn"),
     Keybind ( &config.reshade.inject_reshade_keybind,    L"Inject ReShade (6.0+) as a Global PlugIn",                  osd_ini,         L"ReShade.AddOn"),
 
+    Keybind ( &config.control_panel.keys.toggle,         L"Toggle Special K's Control Panel",                          osd_ini,         L"ImGui.Global"),
+
 
     // Input
     //////////////////////////////////////////////////////////////////////////
@@ -1799,6 +1823,7 @@ auto DeclKeybind =
     ConfigEntry (input.keyboard.disable_ime,             L"Disable IME input services for the game",                   dll_ini,         L"Input.Keyboard",        L"DisableIME"),
     ConfigEntry (input.keyboard.prevent_no_legacy,       L"Prevent games from disabling legacy keyboard messages",     dll_ini,         L"Input.Keyboard",        L"PreventRawInputNoLegacy"),
     ConfigEntry (input.keyboard.prevent_no_hotkeys,      L"Prevent games from disabling hotkeys",                      dll_ini,         L"Input.Keyboard",        L"PreventRawInputNoHotkeys"),
+    ConfigEntry (input.keyboard.allow_imgui_toggle,      L"Enable ImGui control panel keybinding",                     dll_ini,         L"Input.Keyboard",        L"EnableImGuiToggle"),
 
     ConfigEntry (input.mouse.disabled_to_game,           L"Completely stop all mouse input from reaching the Game",    dll_ini,         L"Input.Mouse",           L"DisabledToGame"),
     ConfigEntry (input.mouse.prevent_no_legacy,          L"Prevent games from disabling legacy mouse messages",        dll_ini,         L"Input.Mouse",           L"PreventRawInputNoLegacy"),
@@ -2043,14 +2068,15 @@ auto DeclKeybind =
     ConfigEntry (render.framerate.
                                 streamline_limit_policy, L"When to apply Native Frame pacing.",                        dll_ini,         L"Render.FrameRate",      L"StreamlineEnforcementPolicy"),
 
-    ConfigEntry (render.framerate.control.render_ahead,  L"Maximum number of CPU-side frames to work ahead of GPU.",   dll_ini,         L"FrameRate.Control",     L"MaxRenderAheadFrames"),
-    ConfigEntry (render.framerate.override_cpu_count,    L"Number of CPU cores to tell the game about",                dll_ini,         L"FrameRate.Control",     L"OverrideCPUCoreCount"),
+    ConfigEntry (render.framerate.control.render_ahead,  L"Maximum number of CPU-side frames to work ahead of GPU.",   dll_ini,         L"FrameRate.Engine",      L"MaxRenderAheadFrames"),
+    ConfigEntry (render.framerate.engine.
+                                      allow_latency_wait,L"Allow the game to use a Latency Waitable SwapChain.",       dll_ini,         L"FrameRate.Engine",      L"AllowDXGILatencyWait"),
+    ConfigEntry (render.framerate.override_cpu_count,    L"Number of CPU cores to tell the game about",                dll_ini,         L"FrameRate.Engine",      L"OverrideCPUCoreCount"),
     ConfigEntry (render.framerate.latent_sync.offset,    L"Offset in Scanlines from Top of Screen to Steer Tearing",   dll_ini,         L"FrameRate.LatentSync",  L"TearlineOffset"),
     ConfigEntry (render.framerate.latent_sync.resync,    L"Frequency (in frames) to Resync Timing",                    dll_ini,         L"FrameRate.LatentSync",  L"ResyncFrequency"),
-    ConfigEntry (render.framerate.latent_sync.error,     L"Expected Error (in QPC ticks) of Refresh Rate Calculation", dll_ini,         L"FrameRate.LatentSync",  L"RoundingError"),
     ConfigEntry (render.framerate.latent_sync.bias,      L"Controls Distribution of Idle Time Per-Delayed Frame",      dll_ini,         L"FrameRate.LatentSync",  L"DelayBias"),
     ConfigEntry (render.framerate.latent_sync.auto_bias, L"Automatically Sets Delay Bias For Minimum Latency",         dll_ini,         L"FrameRate.LatentSync",  L"AutoBias"),
-      ConfigEntry (render.framerate.latent_sync.
+    ConfigEntry (render.framerate.latent_sync.
                                        auto_bias_target, L"Target input latency (in milliseconds or %) for auto-bias", dll_ini,         L"FrameRate.LatentSync",  L"AutoBiasTarget"),
     ConfigEntry (render.framerate.latent_sync.
                                           max_auto_bias, L"Maximum percentage to bias towards low input latency",      dll_ini,         L"FrameRate.LatentSync",  L"MaxAutoBias"),
@@ -2285,6 +2311,8 @@ auto DeclKeybind =
 
     ConfigEntry (platform.system.notify_corner,          L"Overlay Notification Position  (non-Big Picture Mode)",     dll_ini,         L"Platform.System",       L"NotifyCorner"),
     ConfigEntry (platform.system.reuse_overlay_pause,    L"Pause Overlay Aware games when control panel is visible",   dll_ini,         L"Platform.System",       L"ReuseOverlayPause"),
+    ConfigEntry (platform.system.equivalent_steam_app,   L"The Steam AppID for this non-Steam game if it exists",      dll_ini,         L"Platform.System",       L"EquivalentSteamApp"),
+    ConfigEntry (platform.system.type,                   L"String identifying the detected store for this game",       dll_ini,         L"Platform.System",       L"Type"),
 
     ConfigEntry (steam.system.appid,                     L"Steam AppID",                                               dll_ini,         L"Steam.System",          L"AppID"),
     ConfigEntry (steam.system.init_delay,                L"Delay SteamAPI initialization if the game doesn't do it",   dll_ini,         L"Steam.System",          L"AutoInitDelay"),
@@ -3044,14 +3072,28 @@ auto DeclKeybind =
         // Game shares buggy XInput code with Watch_Dogs2
         config.input.gamepad.xinput.placehold [0] = true;
       } break;
+#endif
+      case SK_GAME_ID::FarCry3:
       case SK_GAME_ID::FarCry4:
       {
-        // It is not possible to use flip model in this game due to dxdiagn,
-        //   Windows 11 can successfully upgrade the game however.
-        config.render.framerate.disable_flip =  true;
-        config.render.framerate.flip_discard = false;
+        config.apis.d3d9.hook   = false;
+        config.apis.d3d9ex.hook = false;
+        config.apis.OpenGL.hook = false;
+
+        if (SK_IsCurrentGame (SK_GAME_ID::FarCry3))
+        {
+          // SteamAPI is too old, ignore.
+          config.platform.silent = true;
+        }
+
+        else
+        {
+          // It is not possible to use flip model in this game due to dxdiagn,
+          //   Windows 11 can successfully upgrade the game however.
+          config.render.framerate.disable_flip =  true;
+          config.render.framerate.flip_discard = false;
+        }
       } break;
-#endif
 
       case SK_GAME_ID::ChronoTrigger:
         // Don't accidentally hook the D3D9 device used for video playback
@@ -3116,7 +3158,7 @@ auto DeclKeybind =
       case SK_GAME_ID::BaldursGate3:
       {
         // Game has native support for DualSense, but not DualSense Edge
-        config.input.gamepad.scepad.hide_ds_edge_pid = true;
+        config.input.gamepad.scepad.hide_ds_edge_pid = SK_Enabled;
         config.input.gamepad.xinput.emulate          = false;
 
         // The Vulkan executable is simply bg3.exe,
@@ -3903,6 +3945,12 @@ auto DeclKeybind =
         SK_GetCurrentRenderBackend ().windows.capcom = true;
       } break;
 
+      case SK_GAME_ID::StarWarsJediSurvivor:
+      {
+        // Game has native support for DualSense, but not DualSense Edge
+        config.input.gamepad.scepad.hide_ds_edge_pid = SK_Enabled;
+      } break;
+
       case SK_GAME_ID::FinalFantasy7Remake:
       {
         SK_D3D11_DeclHUDShader_Vtx (0x38a98690);
@@ -4234,9 +4282,9 @@ auto DeclKeybind =
         // Engine does not use Latency Waitable SwapChains correctly,
         //   which actually leads to unbounded latency!
         config.render.framerate.engine_overrides.
-                              allow_latency_wait = false;
+                              allow_latency_wait = FALSE;
         config.render.framerate.engine_overrides.
-                           allow_wait_for_vblank = false;
+                           allow_wait_for_vblank = FALSE;
         break;
 
       case SK_GAME_ID::TitanQuest:
@@ -4684,11 +4732,12 @@ auto DeclKeybind =
 
 //  render.framerate.control.
 //                  render_ahead->load        (config.render.framerate.max_render_ahead);
-  render.framerate.override_cpu_count->load (config.render.framerate.override_num_cpus);
+  render.framerate.engine.allow_latency_wait
+                                     ->load   (config.render.framerate.engine_overrides.allow_latency_wait);
+  render.framerate.override_cpu_count->load   (config.render.framerate.override_num_cpus);
 
   render.framerate.latent_sync.offset->load   (config.render.framerate.latent_sync.scanline_offset);
   render.framerate.latent_sync.resync->load   (config.render.framerate.latent_sync.scanline_resync);
-  render.framerate.latent_sync.error->load    (config.render.framerate.latent_sync.scanline_error);
   render.framerate.latent_sync.bias->load     (config.render.framerate.latent_sync.delay_bias);
   render.framerate.latent_sync.auto_bias->load(config.render.framerate.latent_sync.auto_bias);
   render.framerate.latent_sync.max_auto_bias
@@ -5112,6 +5161,7 @@ auto DeclKeybind =
   input.keyboard.disable_ime->load       (config.input.keyboard.disable_ime);
   input.keyboard.prevent_no_legacy->load (config.input.keyboard.prevent_no_legacy);
   input.keyboard.prevent_no_hotkeys->load(config.input.keyboard.prevent_no_hotkeys);
+  input.keyboard.allow_imgui_toggle->load(config.input.keyboard.allow_imgui_toggle);
 
   input.mouse.disabled_to_game->load     (config.input.mouse.disabled_to_game);
   config.input.mouse.
@@ -5888,10 +5938,14 @@ auto DeclKeybind =
   }
 
   platform.system.reuse_overlay_pause->load   (config.platform.reuse_overlay_pause);
+  platform.system.equivalent_steam_app->load  (config.platform.equivalent_steam_app);
+  platform.system.type->load                  (config.platform.type);
   platform.overlay.hdr_luminance->load        (config.platform.overlay_hdr_luminance);
   uplay.overlay.hdr_luminance->load           (config.uplay.overlay_luminance);
+  galaxy.overlay.hdr_luminance->load          (config.galaxy.overlay_luminance);
   rtss.overlay.hdr_luminance->load            (config.rtss.overlay_luminance);
   discord.overlay.hdr_luminance->load         (config.discord.overlay_luminance);
+  discord.overlay.allow_windowed_mode->load   (config.discord.allow_windowed_mode);
 
   steam.screenshots.smart_capture->load       (config.steam.screenshots.enable_hook);
   screenshots.include_osd_default->load       (config.screenshots.show_osd_by_default);
@@ -5918,8 +5972,19 @@ auto DeclKeybind =
   screenshots.png.st2084_bits->load           (config.screenshots.max_st2084_bits);
   screenshots.clipboard_hdr_format->load      (config.screenshots.clipboard_hdr_format);
 
+  // Auto-Config for Unity Engine Games on First Launch
+  //
+  if ( PathFileExistsW (L"UnityPlayer.dll") &&
+       config.render.framerate.engine_overrides.allow_latency_wait == -1 )
+  {
+    config.render.framerate.engine_overrides.allow_latency_wait    = FALSE;
+    config.render.framerate.engine_overrides.allow_wait_for_vblank = FALSE;
+    config.textures.cache.ignore_nonmipped                         =  true;
+  }
+
   LoadKeybind (&config.render.keys.hud_toggle);
   LoadKeybind (&config.osd.keys.console_toggle);
+  LoadKeybind (&config.control_panel.keys.toggle);
   LoadKeybind (&config.screenshots.game_hud_free_keybind);
   LoadKeybind (&config.screenshots.sk_osd_free_keybind);
   LoadKeybind (&config.screenshots.sk_osd_insertion_keybind);
@@ -5945,6 +6010,19 @@ auto DeclKeybind =
   LoadKeybind (&config.widgets.hide_all_widgets_keybind);
   LoadKeybind (&config.reshade.toggle_overlay_keybind);
   LoadKeybind (&config.reshade.inject_reshade_keybind);
+
+
+  // Never allow this to be unbound, revert back to Ctrl+Shift+Backspace if necessary.
+  //
+  if (config.control_panel.keys.toggle.masked_code == 0)
+  {
+    config.control_panel.keys.toggle.ctrl  = true;
+    config.control_panel.keys.toggle.alt   = false;
+    config.control_panel.keys.toggle.shift = true;
+    config.control_panel.keys.toggle.vKey  = VK_BACK;
+    config.control_panel.keys.toggle.update ();
+    config.control_panel.keys.toggle.param->store (config.control_panel.keys.toggle.human_readable);
+  }
 
 
   if (config.steam.dll_path.empty ())
@@ -6685,6 +6763,7 @@ SK_SaveConfig ( std::wstring name,
   input.keyboard.disable_ime->store           (config.input.keyboard.disable_ime);
   input.keyboard.prevent_no_legacy->store     (config.input.keyboard.prevent_no_legacy);
   input.keyboard.prevent_no_hotkeys->store    (config.input.keyboard.prevent_no_hotkeys);
+  input.keyboard.allow_imgui_toggle->store    (config.input.keyboard.allow_imgui_toggle);
 
   input.mouse.disabled_to_game->store         (config.input.mouse.org_disabled_to_game);
   input.mouse.prevent_no_legacy->store        (config.input.mouse.prevent_no_legacy);
@@ -6974,6 +7053,8 @@ SK_SaveConfig ( std::wstring name,
                                        store (config.render.framerate.streamline.enforcement_policy);
 
   render.framerate.override_cpu_count->store (config.render.framerate.override_num_cpus);
+  render.framerate.engine.allow_latency_wait
+                                     ->store (config.render.framerate.engine_overrides.allow_latency_wait);
 
   if (  SK_IsInjected ()                       ||
       ( SK_GetDLLRole () & DLL_ROLE::DInput8 ) ||
@@ -7025,7 +7106,6 @@ SK_SaveConfig ( std::wstring name,
 
     render.framerate.latent_sync.offset->store    (config.render.framerate.latent_sync.scanline_offset);
     render.framerate.latent_sync.resync->store    (config.render.framerate.latent_sync.scanline_resync);
-    render.framerate.latent_sync.error->store     (config.render.framerate.latent_sync.scanline_error);
     render.framerate.latent_sync.bias->store      (config.render.framerate.latent_sync.delay_bias);
     render.framerate.latent_sync.auto_bias->store (config.render.framerate.latent_sync.auto_bias);
     render.framerate.latent_sync.max_auto_bias
@@ -7372,6 +7452,8 @@ SK_SaveConfig ( std::wstring name,
   platform.system.notify_corner->store         (
                     SK_Steam_PopupOriginToWStr (config.platform.notify_corner));
   platform.system.reuse_overlay_pause->store   (config.platform.reuse_overlay_pause);
+  platform.system.equivalent_steam_app->store  (config.platform.equivalent_steam_app);
+  platform.system.type->store                  (config.platform.type);
   platform.log.silent->store                   (config.platform.silent);
   platform.overlay.hdr_luminance->store        (config.platform.overlay_hdr_luminance);
 
@@ -7401,8 +7483,10 @@ SK_SaveConfig ( std::wstring name,
   screenshots.avif.compression_speed->store    (config.screenshots.avif.compression_speed);
 
   uplay.overlay.hdr_luminance->store           (config.uplay.overlay_luminance);
-  discord.overlay.hdr_luminance->store         (config.discord.overlay_luminance);
+  galaxy.overlay.hdr_luminance->store          (config.galaxy.overlay_luminance);
   rtss.overlay.hdr_luminance->store            (config.rtss.overlay_luminance);
+  discord.overlay.hdr_luminance->store         (config.discord.overlay_luminance);
+  discord.overlay.allow_windowed_mode->store   (config.discord.allow_windowed_mode);
 
   silent->store                                (config.system.silent);
   log_level->store                             (config.system.log_level);
@@ -9107,7 +9191,9 @@ bool
 sk_config_t::input_s::keyboard_s::needsLowLevelKeyboardHook (void)
 {
   return
-    alt_tab_adhd_pace > 0 || enable_win_key != SK_NoPreference || (enable_alt_tab != SK_NoPreference && SK_Input_IsGameUsingLowLevelKeyboardHooks ());
+    alt_tab_adhd_pace > 0 || (enable_win_key != SK_NoPreference && (enable_win_key == SK_Disabled || SK_Input_IsGameUsingLowLevelKeyboardHooks ()))
+                          || (enable_alt_tab != SK_NoPreference && (enable_alt_tab == SK_Disabled || SK_Input_IsGameUsingLowLevelKeyboardHooks ()))
+                          || config.input.keyboard.dinput_win_key == SK_Disabled;
 }
 
 bool

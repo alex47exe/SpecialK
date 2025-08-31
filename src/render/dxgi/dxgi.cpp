@@ -572,7 +572,7 @@ bool WaitForInitDXGI (DWORD dwTimeout)
     return true;
 
   // Waiting while Streamline has plugins loaded would deadlock us in local injection
-  if (SK_IsModuleLoaded (L"sl.common.dll"))
+  if (SK_IsModuleLoaded (L"sl.common.dll") || SK_IsModuleLoaded (L"NvPresent64.dll"))
   {
     SK_Thread_SpinUntilFlaggedEx (&__dxgi_ready, 250UL);
   }
@@ -3353,15 +3353,7 @@ SK_DXGI_PresentBase ( IDXGISwapChain         *This,
     } // BitBlt needs no Tearing Flags!
     else                                            Flags &= ~DXGI_PRESENT_ALLOW_TEARING;
 
-    int flags = Flags;
-
-    if ( SK_DXGI_IsFlipModelSwapChain (desc) && pLimiter->get_limit () > 0.0L )
-    {
-      if (config.render.framerate.drop_late_flips)
-      {
-        flags |= DXGI_PRESENT_RESTART;
-      }
-    }
+    int flags = Flags;  
 
     // Application preference
     if (interval == SK_NoPreference)
@@ -3369,6 +3361,26 @@ SK_DXGI_PresentBase ( IDXGISwapChain         *This,
 
     rb.present_interval      = interval;
     rb.present_interval_orig = SyncInterval;
+
+    const bool framerate_limited_flip_model =
+      ( SK_DXGI_IsFlipModelSwapChain (desc) && pLimiter->get_limit () > 0.0L );
+
+    if (framerate_limited_flip_model)
+    {
+      if (config.render.framerate.drop_late_flips && interval == 1)
+      {
+        // This may cause tearing on some drivers w/ user overrides.
+        if (config.render.dxgi.allow_tearing && !rb.isTrueFullscreen ())
+        {
+          interval = 0;
+          flags   &= ~DXGI_PRESENT_ALLOW_TEARING;
+        }
+
+        // Safe path that will never cause tearing, but may not behave
+        //   as intended.
+        flags |= DXGI_PRESENT_RESTART;
+      }
+    }
 
     if (interval != 0 || rb.isTrueFullscreen ()) // FSE can't use this flag
       flags &= ~DXGI_PRESENT_ALLOW_TEARING;
@@ -3421,17 +3433,6 @@ SK_DXGI_PresentBase ( IDXGISwapChain         *This,
       if (interval == 0) flags |=  DXGI_PRESENT_ALLOW_TEARING;
       else               flags &= ~DXGI_PRESENT_ALLOW_TEARING;
     }
-
-
-#if 0
-    if ( config.nvidia.sleep.low_latency_boost &&
-         config.nvidia.sleep.enable            &&
-         sk::NVAPI::nv_hardware                &&
-         config.render.framerate.target_fps != 0.0 )
-    {
-      flags |= DXGI_PRESENT_DO_NOT_WAIT;
-    }
-#endif
 
 
     SK_LatentSync_BeginSwap ();
@@ -5295,7 +5296,7 @@ SK_DXGI_CreateSwapChain_PreInit (
       pDesc->Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
     }
 
-    if (config.render.framerate.swapchain_wait != 0)
+    if (config.render.framerate.swapchain_wait > 0)
     {
       // Turn off SK's Waitable SwapChain override, the game's already using it!
       if (pDesc->Flags & DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT)
@@ -6571,6 +6572,24 @@ DXGIFactory_CreateSwapChain_Override (
                                    pDesc, ppSwapChain );
   }
 
+  if (SK_NvAPI_IsSmoothingMotion ())
+  {
+    extern bool __SK_HDR_Disallow16BitSwap;
+                __SK_HDR_Disallow16BitSwap = true;
+
+    if (__SK_HDR_16BitSwap)
+    {
+      __SK_HDR_10BitSwap =  true;
+      __SK_HDR_16BitSwap = false;
+
+      SK_HDR_SetOverridesForGame (__SK_HDR_16BitSwap, __SK_HDR_10BitSwap);
+
+      SK_ImGui_Warning (
+        L"scRGB HDR has been changed to HDR10 because NVIDIA Smooth Motion was detected."
+      );
+    }
+  }
+
   if (SK_GetCallingDLL () == SK_GetModuleHandleW (L"sl.dlss_g.dll") ||
                              SK_GetModuleHandleW (L"nvngx_dlssg.dll") != nullptr)
   {
@@ -6646,6 +6665,13 @@ DXGIFactory_CreateSwapChain_Override (
     DXGI_CALL ( ret,
                   CreateSwapChain_Original ( This, pDevice,
                                             pDesc, ppSwapChain ) );
+
+    if (ret == S_OK && ppSwapChain != nullptr && pDesc != nullptr &&
+                      !SK_DXGI_IsSwapChainReal (*pDesc))
+    {
+      const uint8_t                                                 x = 1;
+      (*ppSwapChain)->SetPrivateData (SKID_DXGI_DummySwapChain, 1, &x);
+    }
 
     return ret;
   }
@@ -7328,6 +7354,12 @@ _In_opt_       IDXGIOutput                     *pRestrictToOutput,
 
     if (pStreamlineFactory)
       SK_LOGi0 (L"Ignoring call because it came from a Streamline proxy factory...");
+
+    if (ret == S_OK && ppSwapChain != nullptr)
+    {
+      const uint8_t                                                 x = 1;
+      (*ppSwapChain)->SetPrivateData (SKID_DXGI_DummySwapChain, 1, &x);
+    }
 
     return ret;
   }
@@ -9584,7 +9616,8 @@ SK_DXGI_HookSwapChain (IDXGISwapChain* pProxySwapChain)
     return;
 
   const bool bHasStreamline =
-    SK_IsModuleLoaded (L"sl.interposer.dll");
+    SK_IsModuleLoaded (L"sl.interposer.dll") ||
+    SK_IsModuleLoaded (L"NvPresent64.dll");
 
   SK_ComPtr <IDXGISwapChain> pSwapChain;
 
@@ -9796,7 +9829,8 @@ SK_DXGI_HookDevice1 (IDXGIDevice1* pProxyDevice)
     return;
 
   const bool bHasStreamline =
-    SK_IsModuleLoaded (L"sl.interposer.dll");
+    SK_IsModuleLoaded (L"sl.interposer.dll") ||
+    SK_IsModuleLoaded (L"NvPresent64.dll");
 
   SK_ComPtr <IDXGIDevice1> pDevice;
 
@@ -9951,7 +9985,8 @@ SK_DXGI_HookFactory (IDXGIFactory* pProxyFactory)
   SK_GetDXGIFactoryInterfaceVer (pProxyFactory);
 
   const bool bHasStreamline =
-    SK_IsModuleLoaded (L"sl.interposer.dll");
+    SK_IsModuleLoaded (L"sl.interposer.dll") ||
+    SK_IsModuleLoaded (L"NvPresent64.dll");
 
   SK_ComPtr <IDXGIFactory> pFactory;
 
@@ -10290,7 +10325,7 @@ HookDXGI (LPVOID user)
 
 
     bool    bHookSuccess   = false;
-    bool    bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll");
+    bool    bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll") || SK_IsModuleLoaded (L"NvPresent64.dll");
     HRESULT hr             = E_NOTIMPL;
 
     SK_ComPtr <IDXGIAdapter>
@@ -11569,7 +11604,7 @@ SK_DXGI_QuickHook (void)
       __SK_DisableQuickHook = TRUE;
     }
 
-    if ( SK_IsModuleLoaded (L"sl.interposer.dll") )
+    if ( SK_IsModuleLoaded (L"sl.interposer.dll") || SK_IsModuleLoaded (L"NvPresent64.dll") )
     {
       SK_LOGi0 (L" # DXGI QuickHook disabled because an NVIDIA Streamline Interposer is present...");
 

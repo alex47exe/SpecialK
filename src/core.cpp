@@ -34,6 +34,7 @@
 #include <reflex/pclstats.h>
 
 #include <SpecialK/storefront/epic.h>
+#include <SpecialK/storefront/gog.h>
 #include <SpecialK/storefront/xbox.h>
 #include <SpecialK/control_panel/platform.h>
 
@@ -1116,7 +1117,8 @@ void BasicInit (void)
   //   features in addition to Special K's WMI monitoring services
   SK_WMI_Init ();
 
-  SK::EOS::Init (false);
+  SK::EOS::Init    (false);
+  SK::Galaxy::Init (     );
 
   //// Do this from the startup thread [these functions queue, but don't apply]
   if (! config.input.dont_hook_core)
@@ -3631,6 +3633,52 @@ SK_FrameCallback ( SK_RenderBackend& rb,
         }
 
         SK_RunOnce (rb.gsync_state.update (true));
+
+        if (config.platform.equivalent_steam_app == -1)
+        {
+          SK_RunOnce (
+            auto appname =
+              SK_GetFriendlyAppName ();
+
+            std::wstring url =
+              SK_FormatStringW (
+                LR"(https://www.pcgamingwiki.com/w/index.php?search=%ws)", SK_Network_MakeEscapeSequencedURL (SK_Platform_RemoveTrademarkSymbols (SK_UTF8ToWideChar (appname))).c_str ()
+              );
+
+            SK_Network_EnqueueDownload (
+              sk_download_request_s (L"pcgw_entry.html", url.data (),
+                []( const std::vector <uint8_t>&& data,
+                    const std::wstring_view       file )
+                {
+                  if (data.empty ())
+                    return true;
+
+                  std::ignore = file;
+
+                  auto steamdb_appid =
+                    StrStrIA ((const char *)data.data (), "https://steamdb.info/app/");
+
+                  if (steamdb_appid != nullptr)
+                  {
+                    if (1 != sscanf (steamdb_appid, "https://steamdb.info/app/%d/", &config.platform.equivalent_steam_app))
+                    {
+                      config.platform.equivalent_steam_app = 0;
+                    }
+                  }
+
+                  return true;
+                } ),
+              false
+            );
+          );
+        }
+        else
+        {
+          SK_RunOnce ({
+            void SK_Platform_PingBackendForNonSteamGame (void);
+                 SK_Platform_PingBackendForNonSteamGame ();
+          });
+        }
       }
     } break;
   }
@@ -4096,13 +4144,13 @@ SK_BackgroundRender_EndFrame (void)
   }
 #endif
 
+  const bool implicit_smart_always_on_top =
+    (config.window.always_on_top == NoPreferenceOnTop && rb.isFakeFullscreen ());
+
   fullscreen_last_frame =
         rb.isTrueFullscreen ();
   if (! fullscreen_last_frame)
   {
-    bool implicit_smart_always_on_top =
-      (config.window.always_on_top == NoPreferenceOnTop && rb.isFakeFullscreen ());
-
     static bool last_foreground = false;
 
     static const
@@ -4176,6 +4224,92 @@ SK_BackgroundRender_EndFrame (void)
       SK_Inject_PostHeartbeatToSKIF ();
     }
   }
+
+  // Dumber solution to the complicated foreground window cache thing above,
+  //   but more reliable.  Performance?
+  auto HandleOverlayWindows = [&](void)
+  {
+    static DWORD dwLastChecked = 0;
+           DWORD dwTimeNow     = SK_timeGetTime ();
+
+    if (dwTimeNow < dwLastChecked + 666UL)
+      return;
+
+    dwLastChecked = dwTimeNow;
+
+    auto GetWindowsAbove = [&](HWND targetHwnd) -> std::vector <HWND>
+    {
+      std::vector <HWND> windowsAbove;
+
+      HWND hwnd =
+        GetTopWindow (nullptr);
+
+      while (hwnd && hwnd != targetHwnd)
+      {
+        if (IsWindowVisible (hwnd))
+          windowsAbove.push_back (hwnd);
+
+        hwnd = GetNextWindow
+          (hwnd, GW_HWNDNEXT);
+      }
+
+      return windowsAbove;
+    };
+
+    auto windows =
+      GetWindowsAbove (game_window.hWnd);
+
+    int hits = 0;
+
+    for ( auto window : windows )
+    {
+      RECT                    rcWindow = {};
+      GetWindowRect (window, &rcWindow);
+      InflateRect           (&rcWindow, -15, -15);
+
+      RECT                rcIntersect;
+      if (IntersectRect (&rcIntersect, &rcWindow, &game_window.actual.window))
+      {
+        ++hits;
+
+        if (! config.discord.allow_windowed_mode)
+        {
+          wchar_t                        wszTitle [128] = {};
+          InternalGetWindowText (window, wszTitle, 127);
+
+          if (         *wszTitle == L'D' &&
+              StrStrIW (wszTitle,   L"Discord Overlay"))
+          {
+            ShowWindow (window, SW_HIDE);
+
+            SK_ImGui_CreateNotification (
+                  "Discord.OverlayHidden", SK_ImGui_Toast::Warning,
+                    "The Discord Overlay has been hidden to prevent performance problems.\r\n\r\n"
+                    "\t * Consider disabling it, or set AllowWindowedMode=true in Global\\osd.ini to ignore this.",
+                          "Performance Stealing Overlay Hidden", 15000,
+                                  SK_ImGui_Toast::UseDuration |
+                                  SK_ImGui_Toast::ShowTitle   |
+                                  SK_ImGui_Toast::ShowCaption |
+                                  SK_ImGui_Toast::ShowNewest );
+          }
+        }
+      }
+    }
+
+    // If not using Multitasking-on-Top, then skip the stuff below.
+    if (config.window.always_on_top != SmartAlwaysOnTop && !implicit_smart_always_on_top)
+      return;
+
+    // There are windows higher in Z-Order than the game,
+    //   but they are not overlapping it...
+    if (hits == 0 && !windows.empty ())
+    {
+      //SK_ImGui_Warning (L"Brought Game Window To Top...");
+      SK_DeferCommand ("Window.TopMost true");
+    }
+  };
+
+  HandleOverlayWindows ();
 }
 
 void
@@ -5108,6 +5242,20 @@ SK_GetStoreOverlayState (bool bReal)
   return s_LastState.load ();
 }
 
+std::wstring
+SK_Platform_RemoveTrademarkSymbols (std::wstring name)
+{
+  std::wstring out;
+
+  for ( auto& wc : name )
+  {
+    if (wc != L'™' && wc != L'®')
+      out += wc;
+  }
+
+  return out;
+}
+
 SK_LazyGlobal <iSK_Logger> dll_log;
 SK_LazyGlobal <iSK_Logger> crash_log;
 SK_LazyGlobal <iSK_Logger> budget_log;
@@ -5115,6 +5263,7 @@ SK_LazyGlobal <iSK_Logger> game_debug;
 SK_LazyGlobal <iSK_Logger> tex_log;
 SK_LazyGlobal <iSK_Logger> steam_log;
 SK_LazyGlobal <iSK_Logger> epic_log;
+SK_LazyGlobal <iSK_Logger> gog_log;
 
 
 SK_LazyGlobal <concurrency::concurrent_unordered_map <const wchar_t*, uint64_t>> SK_EventMarker_StartTimes;

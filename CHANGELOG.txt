@@ -1,4 +1,227 @@
-﻿25.8.13.3
+﻿25.8.30.3
+=========
+ + Make the Ctrl+Shift+Backspace keybinding for toggling SK's Control Panel
+     a standard configurable keybinding.
+
+     * The binding can be edited under Input Management | Keyboard.
+
+25.8.30.2
+=========
+ + Query the NVIDIA driver setting for ReBar before installing NvAPI hooks,
+     to prevent rare race conditions in 32-bit application init.
+
+25.8.30.1
+=========
+ + Improved Ubisoft+ and Steam platform identification.
+ + Improved GOG platform detection in Unreal Engine games.
+
+25.8.30
+=======
+ + Handle Steam AppId lookup for games with Unicode characters in their name.
+ + Remove Trademark symbols before performing Steam AppId lookup.
+
+25.8.29
+=======
+ + Download achievement lock/unlock icons for non-Steam games.
+ + Augment non-Steam games with achievement rarity info from Steam.
+ + Add in-game Player Count to bottom of SK's control panel for Epic/GOG/Xbox.
+
+25.8.28.2
+=========
+ + Identify a game's storefront platform as (and record in INI) one of:
+
+     Steam, Epic, GOG, Xbox, Origin, Ubisoft or Unknown
+
+    Also include this identifier when querying achievement metadata from
+      Special K's backend server in order to identify which stores are
+        being used for what games.
+
+25.8.28.1
+=========
+ + Remove DLSS Preset A, B, C, D, E options when users are using DLSS ver.
+     >= 310.4.0, since NVIDIA has forgotten their ABC's.
+
+25.8.28
+=======
+ + Fixed potential rounding errors in Latent Sync's scanline timing and set
+     new default anti-roll to 0 ticks.
+ + Change Latent Sync's default auto-bias mode to % latency and set default
+     maximum auto-bias adjust to 50%.
+
+25.8.27.3
+=========
+ + Fix serialized root sig. 1_1 issues when overriding D3D12 texture filtering.
+
+25.8.27.2
+=========
+ + Implement automatic Epic Game Store / Microsoft Store -> Steam AppId mapping
+     for games without special Unicode characters in their names.
+
+25.8.27.1
+=========
+ + Implement automatic GOG gameId -> Steam AppId mapping.
+
+25.8.27
+=======
+ + Added initial framework for GOG Galaxy integration (achievement/overlay).
+ + Unblocked the GOG Galaxy overlay in OpenGL software.
+ + Added system to ping SK's backend server when non-Steam games are launched,
+     if a known equivalent Steam game exists.
+
+    * Uses [Platform.System] EquivalentSteamApp=... and follows the same
+        privacy policy as Steam games do.
+
+   - Currently EquivalentSteamApp is undefined; it will automatically populate
+       in the future and allow https://backend.special-k.info to aggregate
+         statistics for Epic, GOG and Microsoft Store games.
+
+25.8.26
+=======
+ + Fixed Forced Anisotropic Filtering not handling Bilinear -> Anisotropic
+     filter upgrade in D3D11 (only Trilinear -> Anisotropic was handled).
+
+25.8.25.1
+=========
+ + Fixed unintentional Multitasking-on-Top for users who have not set the mode.
+
+25.8.25
+=======
+ + Automatically hide the new Discord overlay, since it draws a Win32 window
+     on top of games CONSTANTLY whether the image is blank or not and that
+       prevents VRR from working.
+
+    * It can be re-enabled in Global\osd.ini:
+
+        [Discord.Overlay]
+        AllowWindowedMode=true
+
+25.8.24.4
+=========
+ + Improved reliability of "Multitasking-On-Top" in multi-monitor scenarios.
+
+    * Dragging a window from a different monitor to the same monitor as the
+        game is running on will not raise that window above the game unless
+          SK's injection service is "running".
+
+      If you run into this problem, you can always alt-tab twice to force
+        the other application's window to be moved on top.
+
+25.8.24.3
+=========
+ + Add list of possible conflicting applications to "Composed Flip" / VRR
+     status text in SK's Control Panel.
+
+25.8.24.2
+=========
+ + Texture filtering overrides can be configured in real-time in OpenGL-IK.
+
+     * Applies only to older-style engines that do not use Sampler Objects.
+
+25.8.24.1
+=========
+ + Apply the existing DXGI OverrideMSAA INI setting to OpenGL's
+     "Default Framebuffer".
+
+    ( Does not apply to more advanced engines that use Framebuffer Objects )
+
+    >> NVIDIA GPUs support up to 16x MSAA in OpenGL, but do not support MSAA
+         when 16-bpc color is used.
+
+     * SK will automatically change the HDR format from 16-bpc (scRGB) to
+         10-bpc (HDR10) if necessary to accomodate MSAA.
+
+25.8.24
+=======
+ + Slight improvement to NVIDIA Smooth Motion compatibility, only Unreal Engine
+     games work correctly at the moment because they are 10-bpc native.
+
+25.8.23
+=======
+ + Identify DualSense Edge controllers as DualSense controllers in Star Wars:
+     Jedi Survivor, since it only supports original DualSense.
+
+25.8.22.2
+=========
+ + Correctly identify OpenGL/DXGI interop on NVIDIA GPUs when Special K's own
+     interop system is disabled.
+
+25.8.22.1
+=========
+ + Improved NVIDIA Smooth Motion compatibility by detecting and ignoring
+     windows created with the window class 'InvisibleWindowClassNvPresent'.
+
+    * Upgrading 8-bit SwapChains to HDR causes visual glitches, so non-Unreal
+        games may not use HDR when Smooth Motion is active at the moment.
+
+25.8.22
+=======
+ + Disable Flip Model override in FarCry 3 as well as D3D10 warning.
+
+25.8.20.1
+=========
+ + Automatically enable Flip Metering in games with NV Smooth Motion enabled.
+ + Add support for Reflex and apply its framerate limiter to Smooth Motion.
+ + Switch from scRGB to HDR10 when Smooth Motion is enabled.
+
+   * Current NVAPI bug does not allow non-admin processes to read the value
+       of DRS DWORD: 0xB0D384C0, so Smooth Motion is detected by the presence
+         of NvPresent{64}.dll instead.
+
+25.8.20
+=======
+ + Handle uninitialized IAudioSessionControl2 in SK_WASAPI_AudioSession.
+
+25.8.18.1
+=========
+ + Added INI option to disable Ctrl+Shift+Backspace.
+   
+     [Input.Keyboard]
+     EnableCtrlShiftBackspace={true|false}   Default: true
+
+    - This should likely be set in Global\master_SpecialK.ini in order to
+        not have to disable it in every game...
+
+ + Added boolean command console variable to control UI activation
+
+     ImGui.Active {true|false|~}, ~ toggles
+
+ + Added command console variable to enable/disable Ctrl+Shift+Backspace
+
+     ImGui.CtrlShiftBackspace {true|false|~}
+
+   @ Add a macro to Global\macros.ini like so to customize the activation keys:
+   =
+      [Macro.ControlPanel]
+      Ctrl+Shift+Backspace=ImGui.Active ~
+
+     - Use some other combination of keys, or this is pointless ;)
+
+25.8.18
+=======
+ + Add frame generation multiplier to LFC calc. when DLSS Frame Generation is
+     active and Native Pacing is enabled, since paced framerate and output
+       framerate are two different things in that case.
+
+25.8.17
+=======
+ + Disabled Latency Waitable SwapChains in Unity engine by default.
+ + Added INI option to control whether engines are allowed to use Latency Wait:
+
+     [FrameRate.Engine]
+     AllowDXGILatencyWait={-1,0,1}  Default=-1 (No Preference),  0=No,  1=Yes
+
+25.8.16.1
+=========
+ + Reduced overhead of SK_ImGui_WantGamepadCapture and SK_Xbox_GetOverlayState
+
+25.8.16
+=======
+ + Added "NVIDIA DLSS-G MFGLW" to list of valid DLSS Frame Generation DLLs.
+ + Added crs-video.exe (used by SONY ports) to internal injection blacklist.
+ + Add input latency markers to various mouse and keyboard codepaths that it
+     did not previously apply to.
+
+25.8.13.3
 =========
  + Revert 25.8.12, because the bug was fixed in later versions of NVIDIA Streamline,
      and the fix causes those games to not work.
