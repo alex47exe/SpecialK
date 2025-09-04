@@ -2743,6 +2743,10 @@ SK_Input_EnumOpenHIDFiles (void)
         if (pHandleInfoEx->Handles [i].ProcessId       != dwPidOfMe &&
             pHandleInfoEx->Handles [i].ProcessId       != dwSteamClientPid)
           continue;
+
+        // Avoid some kind of locked file in Unity games, no idea what these access parameters mean...
+        if (pHandleInfoEx->Handles [i].GrantedAccess == 0x120189)
+          continue; // Failure to skip this file would cause a hang trying to query file details.
     
         HANDLE file =
           pHandleInfoEx->Handles [i].Handle;
@@ -2817,7 +2821,6 @@ SK_Input_EnumOpenHIDFiles (void)
 
         SK_LOGi0 (L"File Name=%ws", handle_name.c_str ());
 #endif
-
         if (SK_HidD_GetAttributes (file, &hidAttribs))
         {
           PHIDP_PREPARSED_DATA                 preparsed_data = nullptr;
@@ -2999,6 +3002,8 @@ SK_Input_HookHID (void)
     SK_ReadFile              = ReadFile_Original;
     SK_GetOverlappedResult   = GetOverlappedResult_Original;
     SK_GetOverlappedResultEx = GetOverlappedResultEx_Original;
+
+    SK_Input_EnumOpenHIDFiles ();
 
     SK_ApplyQueuedHooks ();
 
@@ -3310,8 +3315,6 @@ SK_Input_PreHookHID (void)
 
         ret = true;
       }
-
-      //SK_Input_EnumOpenHIDFiles ();
     }
 
     InterlockedIncrement (&_init);
