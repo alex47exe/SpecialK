@@ -1,4 +1,55 @@
-﻿25.9.3.2
+﻿25.9.19
+=======
+ + Added support for Assassin's Creed: Shadows 1.1.2.
+
+25.9.17
+=======
+ + Switched controller power-off chord to activate on button release instead
+     of press, in order to prevent powering-off DualSense controllers with
+       updated firmwares when users attempt to press+hold PlayStation+Triangle
+         for 3 seconds to pair the controller to a different device.
+
+25.9.16.1
+=========
+ + Disable hooks on timeBeginPeriod (...) and timeEndPeriod (...) that SK
+     normally applies to keep games from shooting themselves in the foot w/
+       timer resolution changes -- when UseMaxTimerResolution=false.
+
+25.9.16
+=======
+ + Added INI setting to control whether the Windows kernel's timer resolution
+     is set to maximum supported for the game's process.
+
+    * The is generally no reason to turn this off, other than testing if the
+        improved timer resolution is the reason for a game's performance boost.
+
+    [FrameRate.Engine]
+    UseMaxTimerResolution={true|false}  Default=true (for obvious reasons)
+
+25.9.13
+=======
+ + Ignore bug in NVIDIA Streamline in Borderlands 4 that causes it to
+     try to set the wrong HDR colorspace (scRGB) for HDR10.
+
+25.9.11
+=======
+ + Remove support for Assassin's Creed: Shadows; it will be treated like
+     a generic D3D12 game now. SK's plug-in is no longer compatible.
+
+25.9.4.1
+========
+ + Apply XInput deadzone to XInputGetStateEx (...) function for engines
+     using SDL or Unity, since they do not use the documented XInput API...
+ + Disable OpenGL hooks in Unity engine games, since Unity loads the DLL,
+     but does not actually use GL and the GOG overlay has compatibility
+       issues in GL.
+
+25.9.4
+======
+ + Fixed change made in 25.3.5.1 to address REFramework DirectInput8 input
+     issues, that was affecting non-CRAPCOM games (i.e. Hollow Knight).
+
+25.9.3.2
 ========
  + Apply the "NoDrawOverlay" option in [Steam.System] to all platform
      overlays (except Game Bar).

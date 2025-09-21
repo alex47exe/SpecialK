@@ -3488,6 +3488,9 @@ SK_FrameCallback ( SK_RenderBackend& rb,
       //                 * Also fix Steam Input in CAPCOM games
       if (frames_drawn > 15)
       {
+        void        SK_Input_EnumOpenHIDFiles (void);
+        SK_RunOnce (SK_Input_EnumOpenHIDFiles ());
+
         // Horizon: Forbidden West Hack
         // ----------------------------
         //   Since we have to delay injection as a compatibility hack for Nixxes
@@ -4062,6 +4065,10 @@ SK_BackgroundRender_EndFrame (void)
 
           SK_RestartGame ();
         }
+
+        // Unity loads OpenGL but never uses it, disable OpenGL hooks to avoid
+        //   unnecessary complications in GOG games.
+        config.apis.OpenGL.hook = false;
       }
 
       if (SK_GetModuleHandleW (L"SDL2.dll") ||
