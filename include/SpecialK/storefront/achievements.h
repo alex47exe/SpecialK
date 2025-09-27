@@ -39,17 +39,30 @@
 //
 struct SK_Achievement
 {
-  std::string name_;          // UTF-8 (I think?)
+  std::string name_ = "";             // UTF-8 (I think?)
 
   struct text_s
   {
-    struct
+    struct state_s
     {
-      std::wstring human_name;  // UTF-16
-      std::wstring desc;        // UTF-16
+      std::wstring human_name = L"";  // UTF-16
+      std::wstring desc       = L"";  // UTF-16
     } unlocked,
       locked;
   } text_;
+
+  struct tracked_stats_s
+  {
+    struct trackable_s
+    {
+      std::string name      =    ""; // Human readable name
+      int32_t     current   =     0; // Current stat
+      int32_t     threshold =     0; // Unlock after
+      bool        trackable = false; // Is this more than a lock/unlock 2-state thing?
+    };
+
+    std::vector <trackable_s> data;
+  } tracked_stats_;
 
   // If we were to call ISteamStats::GetAchievementName (...),
   //   this is the index we could use.
@@ -82,6 +95,10 @@ struct SK_Achievement
 
   bool        unlocked_       = false;
   bool        hidden_         = false;
+
+  // Metadata for the Achievement Tracker widget
+  bool        tracked_        = false;
+  bool        ignored_        = false;
 };
 
 struct ImGuiWindow;

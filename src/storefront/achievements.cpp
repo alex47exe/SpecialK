@@ -1401,6 +1401,7 @@ SK_AchievementManager::Achievement::Achievement (int idx, const char* szName, IS
 SK_AchievementManager::Achievement::Achievement ( int                            idx,
                                                   EOS_Achievements_DefinitionV2* def )
 {
+
   idx_                      = idx;
   name_                     = def->AchievementId;
 
@@ -1410,13 +1411,138 @@ SK_AchievementManager::Achievement::Achievement ( int                           
   text_.unlocked.human_name = SK_UTF8ToWideChar (def->UnlockedDisplayName);
   text_.unlocked.desc       = SK_UTF8ToWideChar (def->UnlockedDescription);
 
+  if (def->StatThresholdsCount > 0)
+  {
+    if (! def->bIsHidden)
+    {
+      if ( def->StatThresholdsCount          != 1 ||
+           def->StatThresholds [0].Threshold != 1 )
+      {
+#if 0
+        epic_log->Log (
+          L"Achievement: '%ws' (%ws) has %d tracked stats for unlock:",
+            text_.locked.human_name.c_str (),
+            text_.locked.      desc.c_str (), def->StatThresholdsCount
+        );
+#endif
+      }
+    }
+
+    tracked_stats_.data.resize (def->StatThresholdsCount);
+    for ( uint32_t i = 0 ; i <  def->StatThresholdsCount ; ++i )
+    {
+      auto& tracked_stat =
+        tracked_stats_.data [i];
+
+      tracked_stat.name      = def->StatThresholds [i].Name;
+      tracked_stat.threshold = def->StatThresholds [i].Threshold;
+
+      if (tracked_stat.threshold > 1)
+      {
+        tracked_stat.trackable = true;
+
+        if (! def->bIsHidden)
+        {
+#if 0
+          epic_log->Log (
+            L" * %hs [%d]", tracked_stat.name.c_str (),
+                            tracked_stat.threshold
+          );
+#endif
+        }
+      }
+    }
+  }
+
 
   static const auto
     achievements_path =
       std::filesystem::path (
            SK_GetConfigPath () )
-     / LR"(SK_Res/Achievements)";
+    / LR"(SK_Res/Achievements)";
 
+  static auto const global_stats_filename =
+    achievements_path / LR"(GlobalStatsForGame.json)";
+
+  static FILE*   fGlobalStats  = nullptr;
+  fGlobalStats = fGlobalStats != nullptr ? fGlobalStats :
+        _wfopen (global_stats_filename.c_str (), L"rb+");
+
+  if (fGlobalStats != nullptr)
+  {
+    static bool loaded = false;
+
+    try
+    {
+      static std::vector <BYTE> data;
+
+                   fseek (fGlobalStats, 0, SEEK_END);
+      data.resize (ftell (fGlobalStats));
+                  rewind (fGlobalStats);
+
+      if (! data.empty ())
+      {
+        static nlohmann::json jsonStats;
+
+        if (! loaded)
+        {
+          if (0 != fread (data.data (), data.size (), 1, fGlobalStats))
+          {
+            jsonStats =
+              std::move (
+                nlohmann::json::parse ( data.cbegin (),
+                                        data.cend   (), nullptr, true )
+              );
+
+            loaded = true;
+          }
+        }
+
+        if ( jsonStats.contains ("achievementpercentages") &&
+             jsonStats          ["achievementpercentages"].contains ("achievements") )
+        {
+          const auto& achievements_ =
+            jsonStats ["achievementpercentages"]["achievements"];
+
+          for ( const auto& achievement : achievements_ )
+          {
+            if (! _stricmp (achievement ["name"].get <std::string_view> ().data (), name_.c_str ()))
+            {
+              global_percent_ =
+                static_cast <float> (
+                  atof (achievement ["percent"].get <std::string_view> ().data ())
+                );
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    catch (const std::exception& e)
+    {
+#ifdef __CPP20
+      const auto&& src_loc =
+        std::source_location::current ();
+
+      steam_log->Log ( L"%hs (%d;%d): json parse failure: %hs",
+                                   src_loc.file_name     (),
+                                   src_loc.line          (),
+                                   src_loc.column        (), e.what ());
+      steam_log->Log (L"%hs",      src_loc.function_name ());
+      steam_log->Log (L"%hs",
+        std::format ( std::string ("{:*>") +
+                   std::to_string (src_loc.column        ()), 'x').c_str ());
+#else
+      std::ignore = e;
+#endif
+
+      loaded = false;
+
+      fclose (fGlobalStats);
+              fGlobalStats = nullptr;
+    }
+  }
 
   // Epic allows up to 1024x1024 achievement icons, and also allows PNG
   //
@@ -1532,11 +1658,20 @@ SK_AchievementManager::getAchievements (size_t* pnAchievements)
   ISteamUserStats* stats =
      steam_ctx.UserStats ();
 
-  if ((! stats) || config.platform.steam_is_b0rked)
-    return nullptr;
+  if (! SK::EOS::GetTicksRetired ())
+  {
+    if ((! stats) || config.platform.steam_is_b0rked)
+    {
+      // If not Epic and Steam is b0rked, abort
+      if (! SK::EOS::GetTicksRetired ())
+        return nullptr;
+    }
+  }
 
-  size_t           count =
-    stats->GetNumAchievements ();
+  const size_t count =
+    (stats != nullptr)            ?
+     stats->GetNumAchievements () : // Steam
+        achievements.list.size ();  // Epic
 
   if (pnAchievements != nullptr)
      *pnAchievements = count;
@@ -1584,14 +1719,14 @@ SK_AchievementManager::clearPopups (void)
 #define UNCOMMON    50.0f
 #define RARE        25.0f
 #define VERY_RARE   15.0f
-#define ONE_PERCENT  1.0f
+#define LEGENDARY    1.0f
 
 
 std::string
 SK_Achievement_RarityToColor (float percent)
 {
 #ifdef SK_USE_OLD_ACHIEVEMENT_COLORS
-  if (percent <= ONE_PERCENT)
+  if (percent <= LEGENDARY)
     return "FFFF1111";
 
   if (percent <= VERY_RARE)
@@ -1624,8 +1759,8 @@ SK_Achievement_RarityToColor (float percent)
 const char*
 SK_Achievement_RarityToName (float percent)
 {
-  if (percent <= ONE_PERCENT)
-    return "The Other 1%";
+  if (percent <= LEGENDARY)
+    return "Legendary";
 
   if (percent <= VERY_RARE)
     return "Very Rare";
@@ -1782,8 +1917,8 @@ SK_AchievementManager::drawPopups (void)
       const float fGlobalPercent =
         it->achievement->global_percent_;
 
-      // Only Steam has rarity information; Epic has XP, but SK is unable to use that info.
-      if (fGlobalPercent < 10.0f && SK::SteamAPI::AppID () != 0)
+                                  // fGlobalPercent may be 0.0 and still considered valid only on Steam.
+      if (fGlobalPercent < 10.0f && (fGlobalPercent > 0.0f || SK::SteamAPI::AppID () != 0))
         ImGui::PushStyleColor (ImGuiCol_Border, rare_border_color);
 
       auto text =
@@ -1850,14 +1985,14 @@ SK_AchievementManager::drawPopups (void)
           (SK::SteamAPI::AppID () != 0);
 
         ImGui::BeginGroup    (  );
-        if (bSteam) // Only Steam has unlock percentage stats
+        if (bSteam || fGlobalPercent > 0.0f) // Only Steam has unlock percentage stats that can reach 0.0%
         ImGui::TextUnformatted ("Global: ");
         if (it->achievement->friends_.possible > 0)
         ImGui::TextUnformatted ("Friends: ");
         ImGui::EndGroup      (  );
         ImGui::SameLine      (  );
         ImGui::BeginGroup    (  );
-        if (bSteam) // Only Steam has unlock percentage stats
+        if (bSteam || fGlobalPercent > 0.0f) // Only Steam has unlock percentage stats that can reach 0.0%
         ImGui::Text          ("%6.2f%%", fGlobalPercent);
         if (it->achievement->friends_.possible > 0)
         ImGui::Text          ("%6.2f%%",

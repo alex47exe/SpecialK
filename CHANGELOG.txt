@@ -1,4 +1,63 @@
-﻿25.9.19
+﻿25.8.27
+=======
+ + Added rudimentary config support to Epic Games Store achievement tracker.
+
+25.8.26.3
+=========
+ + Various static analysis code cleanup
+ + Added memory addresses for Assassin's Creed: Shadows 1.1.3
+
+25.8.26.2
+=========
+ + Fixed rare mishandling of malformed PNG chunks when altering the colorspace
+     of HDR encoded PNGs in order to make them compatible with Discord.
+
+25.9.26.1
+=========
+ + Added very crappy achievement tracker widget that currently only works for
+     games on Epic Games Store (not currently configurable; tracks everything).
+
+25.9.26
+=======
+ + Added achievement stat data (i.e. Achievement awarded for killling 69 wolves,
+     count number of wolves killed) to Epic Online Services log in preparation
+       for a new Achievement Tracker Widget and Achievement List UI.
+
+    * New widget will eventually be extended to GOG, but it is doubtful that it
+        will be usable on Steam.
+
+25.9.25.1
+=========
+ + Prevent selecting AVIF screenshot clipboard format unless HDR screenshot
+     format is also set to AVIF (because of compression overhead and perf cost
+       of encoding twice)...
+
+25.9.25
+=======
+ + Added achievement rarity (global unlock %) statistics to Epic Games Store
+     achievement popups.
+
+25.9.23.3
+=========
+ + Added pointer scan to make Silent Hill f framerate unlock compatible with
+     the Steam version.
+
+25.9.23.2
+=========
+ + Added hacky alternative framerate limiter disable for Silent Hill f that
+     does not conflict with DLSS resolution scaling (but will stop working
+       after every patch).
+
+25.9.23.1
+=========
+ + Added framerate limiter bypass for Silent Hill f; set to unlimited in-game,
+     cutscene framerate will remain unlimited.
+
+25.9.23
+=======
+ + Disable Drag N' Drop support in Unreal Engine games to fix Silent Hill f.
+
+25.9.19
 =======
  + Added support for Assassin's Creed: Shadows 1.1.2.
 
