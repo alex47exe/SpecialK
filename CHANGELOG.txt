@@ -1,13 +1,140 @@
-﻿25.8.27
+﻿25.9.30.1
+=========
+ + Run the HDR widget's draw code at least once per-session to trigger
+     correct behavior when user has configured adjustments to native HDR
+       games (used to require manually opening the widget before they stuck).
+
+25.9.30
+=======
+ + Added support for sorting the achievement list by rarity.
+ + Made achievement guide links selectable using keyboard / gamepad.
+
+25.9.29.2
+=========
+ + Change Silent Hill f Framerate Limiter option to cutscene framerate limit.
+ + Fixed potential crash due to late initialization of achievement tracker.
+
+25.9.29.1
+=========
+ + Disable D3D9/D3D9Ex/OpenGL hooks in Stellaris, since the game renders in
+     D3D11 and only uses those APIs for video playback.
+
+25.9.29
+=======
+ + Avoid initializing achievement tracking backend too early,
+     (delay until first graphics frame completes).
+
+25.9.28.9
+=========
+ + Enclose all game-specific plug-in control panels in unique ImGui ID spaces,
+     to prevent name collisions between the plug-in's UI controls and the main
+       software's UI controls.
+
+25.9.28.8
+=========
+ + Made Silent Hill f's framerate limiter bypass code a config option, but kept
+     it enabled by default because @#$% that stuttery thing ruining cutscenes.
+ + Auto-load SHfFix.asi if it is present in Silent Hill f.
+
+25.9.28.7
+=========
+ + Achievement tracker will only show achievements with recent progress updates
+     when flashed.
+ + Added tooltips to achievement list in control panel and a button to open the
+     achievements widget.
+
+25.9.28.6
+=========
+ + Add word-wrap to achievement tracker descriptions.
+ + Add achievement list to the control panel itself, without having to open
+     the tracker widget.
+ + Process tracked achievements even if the tracker widget has never opened.
+
+25.9.28.5
+=========
+ + Flash the Achievement Tracker widget visible for 2.5 seconds whenever a
+     tracked achievement makes progress and the widget is not visible.
+ + Revert pull request #291 from AnubyteCode:denuvo because it is causing
+     crashes in emulated games.
+
+25.9.28.4
+=========
+ + Add config setting to show/hide achievement rarity in the achievement
+     widget while it is in tracker-only (control panel closed) mode.
+
+25.9.28.3
+=========
+ + Added configurable search URL (i.e. duckduckgo.com/?q=!trueachievements)
+     to open the Steam overlay (or web browser if not applicable) to a guide
+       page by clicking any achievements listed in the tracker.
+
+    * TrueAchievements is for Xbox, but tends to have more detailed info...
+        !truesteam is also an option, do not expect any useful info though :)
+
+25.9.28.2
+=========
+ + Fixed rare situation where global achievement unlock %s change while
+     displaying an achievement popup and the rare gold border does not
+       go away when the achievement popup does.
+
+25.9.28.1
+=========
+ + Store Achievement Tracker's "Show Hidden" setting globally.
+ + Removed unimplemented settings from Achievement Tracker Widget config.
+ + Fix minor tokenize/serialize issues when configuring tracked achievements.
+
+25.9.28
+=======
+ + Merge pull request #288 from mcha-forks:mochaa/watch-dogs
+    * Watch_Dogs: New PlugIn (Input / VMProtect-related stuff)
+ + Merge pull request #291 from AnubyteCode:denuvo
+    * Improved Steam Denuvo activation file management
+ + Merge pull request #294 from Nustat0:oglvk-interop-api
+    * Identify the API for Vulkan / OpenGL -> DXGI interop
+ + Merge pull request #179 from Kethen:d9vk_double_process_fix
+    * d9vk double processing fix
+ + Merge pull request #152 from Nustat0:latent-sync-adaptive-tearing
+    * Added Adaptive Tearing options and enabled Latent Sync 2x.. modes
+
+25.9.27.5
+=========
+ + Switched all achievement text to UTF-8 to avoid UTF-8 to UTF-16 conversion.
+
+25.9.27.4
+=========
+ + Improve handling of null-termination in SK_UTF8ToWideChar (...) and
+     SK_WideCharToUTF8 (...).
+
+25.9.27.3
+=========
+ + Added the 'hidden' status metadata to Epic and Steam achievements.
+ + Added explicit null terminator to the end of all strings returned by Steam,
+     because it seems Valve is not doing so.
+
+25.9.27.2
+=========
+ + Fixed achievement tracker widget in Steam games.
+
+25.9.27.1
+=========
+ + Enabled achievement tracker widget for Steam (no idea if it works, lol).
+ + Hide the achievement tracker widget when control panel is closed if no
+     tracked achievements have been setup.
+ + Move unlocked achievements to the bottom of the tracker widget and disable
+     the option to track them.
+ + Fixed widget flash keybind not actually making widgets visible; useful for
+     the achievement tracker to pop the widget up for n-seconds for a glance.
+
+25.9.27
 =======
  + Added rudimentary config support to Epic Games Store achievement tracker.
 
-25.8.26.3
+25.9.26.3
 =========
  + Various static analysis code cleanup
  + Added memory addresses for Assassin's Creed: Shadows 1.1.3
 
-25.8.26.2
+25.9.26.2
 =========
  + Fixed rare mishandling of malformed PNG chunks when altering the colorspace
      of HDR encoded PNGs in order to make them compatible with Discord.

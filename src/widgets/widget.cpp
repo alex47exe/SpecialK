@@ -397,7 +397,7 @@ SK_Widget::draw_base (void)
     setVisible (visible).setAutoFit      (autofit      ).setResizable (resizable).
     setMovable (movable).setClickThrough (click_through);
 
-    if (visible)
+    if (isVisible ())
     {
       ImGui::SetNextWindowSize (ImVec2 ( std::min ( max_size.x * ui_scale, std::max ( size.x, min_size.x * ui_scale ) ),
                                          std::min ( max_size.y * ui_scale, std::max ( size.y, min_size.y * ui_scale ) ) ) );
@@ -408,13 +408,13 @@ SK_Widget::draw_base (void)
   }
 
 
-  if ((! visible) || locked)
+  if ((! isVisible ()) || locked)
     return;
 
 
   int flags = ImGuiWindowFlags_NoTitleBar      |   ImGuiWindowFlags_NoCollapse         |
             /*ImGuiWindowFlags_NoScrollbar     |*/ ImGuiWindowFlags_NoFocusOnAppearing |
-              ImGuiWindowFlags_NoSavedSettings | (border ? 0x0 : ImGuiWindowFlags_NoBackground);
+              ImGuiWindowFlags_NoSavedSettings | ((border && !simple_bg) ? 0x0 : ImGuiWindowFlags_NoBackground);
 
   if (autofit)
     flags |= ImGuiWindowFlags_AlwaysAutoResize;
@@ -917,7 +917,7 @@ SK_ImGui_WidgetRegistry::DispatchKeybinds ( BOOL Control,
     {
       if (uiMaskedKeyCode == widget->getToggleKey ().masked_code)
       {
-        widget->setVisible (! widget->isVisible ());
+        widget->setVisible (! widget->visible);
 
         // Turn off global widget hiding if user tries to toggle any individual widget
         if (SK_ImGui_Widgets->hide_all)

@@ -121,7 +121,7 @@ public:
        {
          SK::SteamAPI::TakeScreenshot (
            SK_ScreenshotStage::EndOfFrame, false,
-             SK_FormatString ("Achievements\\%ws", achievement->text_.unlocked.human_name.c_str ())
+             SK_FormatString ("Achievements\\%hs", achievement->text_.unlocked.human_name.c_str ())
          );
        }
     }
@@ -143,20 +143,20 @@ public:
                         achievement->unlocked_ ? L'X' : L' ',
                      i, achievement->name_.data ());
       epic_log->LogEx  (false,
-                        L"  + Human Readable Name...: %ws\n",
+                        L"  + Human Readable Name...: %hs\n",
                         achievement->      unlocked_                    ?
                         achievement->text_.unlocked.human_name.c_str () :
                         achievement->text_.  locked.human_name.c_str ());
       if (! (achievement->unlocked_ && achievement->text_.locked.desc.empty ()))
       {
         epic_log->LogEx (false,
-                        L"  *- Detailed Description.: %ws\n",
+                        L"  *- Detailed Description.: %hs\n",
                         achievement->text_.locked.desc.c_str ());
       }
       else if ((achievement->unlocked_ && !achievement->text_.unlocked.desc.empty ()))
       {
         epic_log->LogEx (false,
-                        L"  *- Detailed Description.: %ws\n",
+                        L"  *- Detailed Description.: %hs\n",
                         achievement->text_.unlocked.desc.c_str ());
       }
 
@@ -580,22 +580,22 @@ SK_EOS_Achievements_RefreshPlayerStats (void)
 
         if (result == EOS_EResult::EOS_Success)
         {
-          auto pManagedAchievement =
+          auto managed_achievement =
             eos_achievements->getAchievement (achv->AchievementId);
 
-          pManagedAchievement->unlocked_               =
+          managed_achievement->unlocked_               =
             (achv->UnlockTime != EOS_ACHIEVEMENTS_ACHIEVEMENT_UNLOCKTIME_UNDEFINED);
-          pManagedAchievement->time_                   = achv->UnlockTime;
-          pManagedAchievement->progress_.precalculated = achv->Progress;
+          managed_achievement->time_                   = achv->UnlockTime;
+          managed_achievement->progress_.precalculated = achv->Progress;
 
-          for ( size_t i = 0 ; i < pManagedAchievement->tracked_stats_.data.size () ; ++i )
+          for ( size_t i = 0 ; i < managed_achievement->tracked_stats_.data.size () ; ++i )
           {
             for ( size_t j = 0 ; j < (size_t)achv->StatInfoCount ; ++j )
             {
-              if (! _stricmp (pManagedAchievement->tracked_stats_.data [i].name.c_str (), achv->StatInfo [j].Name))
+              if (! _stricmp (managed_achievement->tracked_stats_.data [i].name.c_str (), achv->StatInfo [j].Name))
               {
-                pManagedAchievement->tracked_stats_.data [i].threshold = achv->StatInfo [j].ThresholdValue;
-                pManagedAchievement->tracked_stats_.data [i].current   = achv->StatInfo [j].CurrentValue;
+                managed_achievement->tracked_stats_.data [i].threshold = achv->StatInfo [j].ThresholdValue;
+                managed_achievement->tracked_stats_.data [i].current   = achv->StatInfo [j].CurrentValue;
                 break;
               }
             }
@@ -603,14 +603,39 @@ SK_EOS_Achievements_RefreshPlayerStats (void)
 
           if (achv->StatInfoCount == 1)
           {
-            pManagedAchievement->progress_.current       = pManagedAchievement->tracked_stats_.data [0].current;
-            pManagedAchievement->progress_.max           = pManagedAchievement->tracked_stats_.data [0].threshold;
-            pManagedAchievement->progress_.precalculated = 100.0 * (static_cast <double> (pManagedAchievement->progress_.current) /
-                                                                    static_cast <double> (pManagedAchievement->progress_.max));
+            if (managed_achievement->                progress_.current != (uint32_t)managed_achievement->tracked_stats_.data [0].current &&
+                managed_achievement->tracked_stats_.data [0].threshold !=           managed_achievement->tracked_stats_.data [0].current)
+            {
+              if (managed_achievement->progress_.last_update_ms != 0 && managed_achievement->tracked_)
+              {
+                if (auto tracker  = SK_Widget_GetAchievementTracker ();
+                         tracker != nullptr)
+                         tracker->flashVisible (config.platform.achievements.tracker_flash_seconds);
+              }
+
+              managed_achievement->progress_.last_update_ms =
+                SK::ControlPanel::current_time;
+            }
+
+            managed_achievement->progress_.current       = managed_achievement->tracked_stats_.data [0].current;
+            managed_achievement->progress_.max           = managed_achievement->tracked_stats_.data [0].threshold;
+            managed_achievement->progress_.precalculated = 100.0 * (static_cast <double> (managed_achievement->progress_.current) /
+                                                                    static_cast <double> (managed_achievement->progress_.max));
           }
 
-          if (pManagedAchievement->unlocked_)
+          else if (achv->StatInfoCount == 0)
           {
+            managed_achievement->progress_.current       = 0;
+            managed_achievement->progress_.max           = 1;
+            managed_achievement->progress_.precalculated = 0.0f;
+          }
+
+          if (managed_achievement->unlocked_)
+          {
+            managed_achievement->progress_.current =
+            managed_achievement->progress_.max;
+            managed_achievement->progress_.precalculated = 100.0f;
+
             ++unlock_count;
           }
 
@@ -647,7 +672,7 @@ SK_EOS_Achievements_RefreshPlayerStats (void)
               // This callback gets sent for achievements that are already unlocked...
               if (! pAchievement->unlocked_)
               {
-                epic_log->Log ( L" Achievement: '%ws' (%ws) - Unlocked!",
+                epic_log->Log ( L" Achievement: '%hs' (%hs) - Unlocked!",
                                    pAchievement->text_.unlocked.human_name.c_str (),
                                    pAchievement->text_.unlocked.desc      .c_str () );
 

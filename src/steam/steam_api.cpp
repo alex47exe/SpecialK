@@ -2060,11 +2060,11 @@ public:
                         achievement->unlocked_ ? L'X' : L' ',
                         i, achievement->name_.c_str ());
       steam_log->LogEx (false,
-                        L"  + Human Readable Name...: %ws\n",
+                        L"  + Human Readable Name...: %hs\n",
                         achievement->text_.locked.human_name.c_str ());
       if (! achievement->text_.locked.desc.empty ())
         steam_log->LogEx (false,
-                          L"  *- Detailed Description.: %ws\n",
+                          L"  *- Detailed Description.: %hs\n",
                           achievement->text_.locked.desc.c_str ());
 
       if (achievement->global_percent_ > 0.0f)
@@ -2588,6 +2588,20 @@ public:
       if (steam_ctx.UserStats ())
         achievement->update (steam_ctx.UserStats ());
 
+      if (achievement->progress_.current != pParam->m_nCurProgress &&
+                  pParam->m_nMaxProgress != pParam->m_nCurProgress)
+      {
+        if (achievement->progress_.last_update_ms != 0 && achievement->tracked_)
+        {
+          if (auto tracker  = SK_Widget_GetAchievementTracker ();
+                   tracker != nullptr)
+                   tracker->flashVisible (config.platform.achievements.tracker_flash_seconds);
+        }
+
+        achievement->progress_.last_update_ms =
+          SK::ControlPanel::current_time;
+      }
+
       achievement->progress_.current = pParam->m_nCurProgress;
       achievement->progress_.max     = pParam->m_nMaxProgress;
 
@@ -2615,7 +2629,7 @@ public:
           playSound ();
         }
 
-        steam_log->Log ( L" Achievement: '%ws' (%ws) - Unlocked!",
+        steam_log->Log ( L" Achievement: '%hs' (%hs) - Unlocked!",
                            achievement->text_.unlocked.human_name.c_str (),
                            achievement->text_.unlocked.desc      .c_str ());
 
@@ -2626,7 +2640,7 @@ public:
            {
              SK::SteamAPI::TakeScreenshot (
                SK_ScreenshotStage::EndOfFrame, false,
-                 SK_FormatString ("Achievements\\%ws", achievement->text_.unlocked.human_name.c_str ())
+                 SK_FormatString ("Achievements\\%hs", achievement->text_.unlocked.human_name.c_str ())
              );
            }
         }
@@ -2641,7 +2655,7 @@ public:
           static_cast <float> (pParam->m_nCurProgress) /
           static_cast <float> (pParam->m_nMaxProgress);
 
-        steam_log->Log ( L" Achievement: '%ws' (%ws) - "
+        steam_log->Log ( L" Achievement: '%hs' (%hs) - "
                          L"Progress %lu / %lu (%04.01f%%)",
                            achievement->text_.locked.human_name.c_str (),
                            achievement->text_.locked.desc      .c_str (),
@@ -2843,6 +2857,12 @@ private:
 
 static std::unique_ptr <SK_Steam_AchievementManager> steam_achievements = nullptr;
 static std::unique_ptr <SK_Steam_ScreenshotManager>  steam_screenshots  = nullptr;
+
+SK_AchievementManager* SK_Steam_GetAchievementManager (void)
+{
+  return
+    steam_achievements.get ();
+}
 
 void
 SK_Steam_PlayUnlockSound (void)
@@ -4738,6 +4758,16 @@ SK_SteamAPI_InitManagers (void)
 
       if (! steam_achievements)
       {
+        auto apps  = steam_ctx.Apps  ();
+        auto utils = steam_ctx.Utils ();
+
+        if (   apps  != nullptr )
+        { if ( utils != nullptr )
+            steam_log->Log (L" Steam UI Language.....: %hs", utils->GetSteamUILanguage        ());
+          steam_log->Log   (L" Current Game Language.: %hs",  apps->GetCurrentGameLanguage    ());
+          steam_log->Log   (L" Supported Languages...: %hs",  apps->GetAvailableGameLanguages ());
+        }
+
         has_global_data = false;
         next_friend     = 0;
 

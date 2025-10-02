@@ -2455,6 +2455,10 @@ SK_StartupCore (const wchar_t* backend, void* callback)
         plugin_mgr->config_fns.emplace (SK_Okami_PlugInCfg);
         break;
 
+      case SK_GAME_ID::WatchDogs:
+        SK_WatchDogs_InitPlugin();
+        break;
+
       case SK_GAME_ID::Yakuza0:
       case SK_GAME_ID::YakuzaKiwami:
       case SK_GAME_ID::YakuzaKiwami2:
@@ -5141,6 +5145,21 @@ SK_API_IsDXGIBased (SK_RenderAPI api)
       return true;
     default:
       return false;
+  }
+}
+
+bool
+SK_API_IsLayeredOnD3D10 (SK_RenderAPI api)
+{
+  switch (api)
+  {
+    case SK_RenderAPI::D3D10:
+      return true;
+    default:
+      return
+        ( static_cast <UINT> (api) &
+          static_cast <UINT> (SK_RenderAPI::D3D10) )
+       == static_cast <UINT> (SK_RenderAPI::D3D10);
   }
 }
 

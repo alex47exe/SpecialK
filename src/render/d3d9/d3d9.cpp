@@ -1397,9 +1397,23 @@ SK_D3D9_SetFPSTarget ( D3DPRESENT_PARAMETERS* pPresentationParameters,
         }
       };
 
-    if (       config.render.framerate.present_interval != SK_NoPreference &&
+    int presentationInterval =
+      config.render.framerate.present_interval;
+
+    // Latent VSync...
+    if  ( ( config.render.framerate.present_interval == 0 &&
+            config.render.framerate.target_fps > 0.0f      ) &&
+          ( config.render.framerate.tearing_mode ==
+              SK_TearingMode::AlwaysOff                   ||
+            config.render.framerate.tearing_mode ==
+              SK_TearingMode::AlwaysOff_LowLatency         ) )
+    {
+      presentationInterval = 1;
+    }
+
+    if (                           presentationInterval != SK_NoPreference &&
          (! _SK_D3D9_IsPresentIntervalEquivalent (
-               config.render.framerate.present_interval,
+                                   presentationInterval,
           pPresentationParameters->PresentationInterval) ) )
     {
       SK_LOGi0 (
@@ -1407,24 +1421,24 @@ SK_D3D9_SetFPSTarget ( D3DPRESENT_PARAMETERS* pPresentationParameters,
 
         SK_D3D9_GetNominalPresentInterval (
           pPresentationParameters->PresentationInterval
-        ),     config.render.framerate.present_interval
+        ),                         presentationInterval
       );
 
-      if (     config.render.framerate.present_interval == 0)
+      if (                       presentationInterval == 0)
         pPresentationParameters->PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
-      else if (config.render.framerate.present_interval == 1)
+      else if (                  presentationInterval == 1)
         pPresentationParameters->PresentationInterval = D3DPRESENT_INTERVAL_ONE;
-      else if (config.render.framerate.present_interval == 2)
+      else if (                  presentationInterval == 2)
         pPresentationParameters->PresentationInterval = D3DPRESENT_INTERVAL_TWO;
-      else if (config.render.framerate.present_interval == 3)
+      else if (                  presentationInterval == 3)
         pPresentationParameters->PresentationInterval = D3DPRESENT_INTERVAL_THREE;
-      else if (config.render.framerate.present_interval == 4)
+      else if (                  presentationInterval == 4)
         pPresentationParameters->PresentationInterval = D3DPRESENT_INTERVAL_FOUR;
       else
       {
         SK_LOGi0 (
           L"Invalid Present Interval: %d Requested; defaulting to 1:1 Refresh",
-            config.render.framerate.present_interval );
+                                 presentationInterval );
 
         pPresentationParameters->PresentationInterval = D3DPRESENT_INTERVAL_ONE;
       }
@@ -1606,6 +1620,19 @@ SK_D3D9_Present_GrandCentral ( sk_d3d9_swap_dispatch_s* dispatch )
   if (dispatch->Type != SK_D3D9_PresentType::Device9Ex_PresentEx)
     pDevEx = nullptr;
 
+  /*
+  * avoid double processing when d9vk is used
+  *
+  * while there are instances of chained creation/presentation that might
+  * make sense to fix on d9vk's side, fixing D3D9SwapChainEx::Present
+  * vftable hook from d9vk is extremely messy, given D3D9Device(Ex)::Present
+  * on that side runs D3D9SwapChainEx::Present on an internally allocated
+  * implicit swapchain
+  */
+  thread_local bool processing = false;
+
+  bool process =
+    SK_D3D9_ShouldProcessPresentCall (dispatch->Source) && !processing;
 
   auto CallFunc = [&](void) ->
   HRESULT
@@ -1616,9 +1643,12 @@ SK_D3D9_Present_GrandCentral ( sk_d3d9_swap_dispatch_s* dispatch )
       {
         if (config.render.framerate.target_fps > 0.0f)   // Limit Configured
         {
-          // Now we WaitForVBLANK
-          extern void SK_D3DKMT_WaitForVBlank (void);
-                      SK_D3DKMT_WaitForVBlank ();
+          if (process)
+          {
+            // Now we WaitForVBLANK
+            extern void SK_D3DKMT_WaitForVBlank (void);
+                        SK_D3DKMT_WaitForVBlank ();
+          }
         }
       }
     }
@@ -1716,17 +1746,13 @@ SK_D3D9_Present_GrandCentral ( sk_d3d9_swap_dispatch_s* dispatch )
     return E_NOTIMPL;
   };
 
-  bool process =
-    SK_D3D9_ShouldProcessPresentCall (dispatch->Source);
-
-
-
   SK_RenderBackend& rb =
     SK_GetCurrentRenderBackend ();
 
 
   if (process || trigger_reset != reset_stage_e::Clear)
   {
+    processing = true;
     if ( rb.api == SK_RenderAPI::D3D9   ||
          rb.api == SK_RenderAPI::D3D9Ex ||
          rb.api == SK_RenderAPI::Reserved )
@@ -1761,6 +1787,7 @@ SK_D3D9_Present_GrandCentral ( sk_d3d9_swap_dispatch_s* dispatch )
 
       SK_D3D9_EndFrame ();
 
+      processing = false;
       return hr;
     }
 #endif
@@ -1878,7 +1905,7 @@ SK_D3D9_Present_GrandCentral ( sk_d3d9_swap_dispatch_s* dispatch )
     if (hr != D3D_OK && trigger_reset == reset_stage_e::Clear)
       trigger_reset = reset_stage_e::Initiate;
 
-
+    processing = false;
     return hr;
   }
 

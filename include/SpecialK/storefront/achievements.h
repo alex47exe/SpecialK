@@ -45,8 +45,8 @@ struct SK_Achievement
   {
     struct state_s
     {
-      std::wstring human_name = L"";  // UTF-16
-      std::wstring desc       = L"";  // UTF-16
+      std::string human_name = "";  // UTF-8
+      std::string desc       = "";  // UTF-8
     } unlocked,
       locked;
   } text_;
@@ -79,11 +79,12 @@ struct SK_Achievement
 
   struct
   {
-    int       current         = 0;
-    int       max             = 0;
+    uint32_t  current         = 0;
+    uint32_t  max             = 0;
     double    precalculated   = 0.0;
+    uint32_t  last_update_ms  = 0;
 
-    float getPercent (void) noexcept
+    float getPercent (void) const noexcept
     {
       if (precalculated != 0.0)
         return sk::narrow_cast <float> (precalculated);
@@ -193,5 +194,12 @@ protected:
   bool                  default_loaded = false;
   std::vector <uint8_t> unlock_sound; // A .WAV (PCM) file
 };
+
+class SK_Widget;
+
+SK_Widget*
+SK_Widget_GetAchievementTracker (void);
+
+void SK_Platform_DownloadGlobalAchievementStats (void);
 
 #endif /* __SK__ACHIEVEMENTS_H__ */

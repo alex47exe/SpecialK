@@ -646,6 +646,61 @@ SK_Platform_GetNumPlayers (void)
   return players;
 }
 
+void
+SK_Platform_DownloadGlobalAchievementStats (void)
+{
+  static const auto appid =
+    config.platform.equivalent_steam_app;
+
+  if (appid == -1)
+    return;
+
+  static const auto
+    achievements_path =
+      std::filesystem::path (
+           SK_GetConfigPath () )
+     / LR"(SK_Res/Achievements)";
+
+  static std::error_code           ec = { };
+
+  std::filesystem::create_directories (
+                achievements_path, ec );
+
+  static const auto
+    global_stats = ( achievements_path /
+                   L"GlobalStatsForGame.json" );
+
+  // Throttle updates to once every 15 minutes
+  if ((! std::filesystem::exists (global_stats, ec)) || std::filesystem::file_time_type::clock::now ( ) -
+                                                        std::filesystem::last_write_time ( global_stats, ec ) > 15min)
+  {  
+    SK_Network_EnqueueDownload (
+      sk_download_request_s (global_stats,
+        SK_Steam_FormatApiRequest
+        ( "ISteamUserStats", "GetGlobalAchievementPercentagesForApp", 2,
+           SK_HTTP_BundleArgs (
+           { SK_HTTP_MakeKVPair ( "gameid",
+                                   appid ),
+             SK_HTTP_MakeKVPair ( "platform",
+                                   SK_WideCharToUTF8 (config.platform.type).data () ),
+             SK_HTTP_MakeKVPair ( "sk_version",
+                                  SK_GetVersionStrA () ) }
+                              )
+        ),[]( const std::vector <uint8_t>&& data,
+              const std::wstring_view       file )
+        {
+          if (data.empty ())
+            return true;
+    
+          std::ignore = file;
+    
+          return false;
+        }
+      )
+    );
+  }
+}
+
 // Downloads Steam achievement information and updates game
 //   popularity info for non-Steam games.
 //
@@ -702,33 +757,7 @@ SK_Platform_PingBackendForNonSteamGame (void)
   && ((! std::filesystem::exists (global_stats, ec)) || std::filesystem::file_time_type::clock::now ( ) -
                                                         std::filesystem::last_write_time ( global_stats, ec ) > 8h) )
   {
-    std::filesystem::create_directories (
-                  achievements_path, ec );
-
-    SK_Network_EnqueueDownload (
-      sk_download_request_s (global_stats,
-        SK_Steam_FormatApiRequest
-        ( "ISteamUserStats", "GetGlobalAchievementPercentagesForApp", 2,
-           SK_HTTP_BundleArgs (
-           { SK_HTTP_MakeKVPair ( "gameid",
-                                   appid ),
-             SK_HTTP_MakeKVPair ( "platform",
-                                   SK_WideCharToUTF8 (config.platform.type).data () ),
-             SK_HTTP_MakeKVPair ( "sk_version",
-                                  SK_GetVersionStrA () ) }
-                              )
-        ),[]( const std::vector <uint8_t>&& data,
-              const std::wstring_view       file )
-        {
-          if (data.empty ())
-            return true;
-
-          std::ignore = file;
-
-          return false;
-        }
-      )
-    );
+    SK_Platform_DownloadGlobalAchievementStats ();
   }
 
   if ( static bool        checked_schema = false ;
@@ -1230,15 +1259,21 @@ SK_AchievementManager::Achievement::Achievement (int idx, const char* szName, IS
     const char* desc =
       stats->GetAchievementDisplayAttribute (szName, "desc");
 
+    const char* hidden =
+      stats->GetAchievementDisplayAttribute (szName, "hidden");
+
+    if (*hidden == '1')
+         hidden_ = true;
+
     text_.locked.human_name =
-      (human != nullptr ? SK_UTF8ToWideChar (human) : L"<INVALID>");
+      (human != nullptr ? human : "<INVALID>");
     text_.locked.desc =
-      ( desc != nullptr ? SK_UTF8ToWideChar (desc)  : L"<INVALID>");
+      ( desc != nullptr ? desc  : "<INVALID>");
 
     text_.unlocked.human_name =
-      (human != nullptr ? SK_UTF8ToWideChar (human) : L"<INVALID>");
+      (human != nullptr ? human : "<INVALID>");
     text_.unlocked.desc =
-      ( desc != nullptr ? SK_UTF8ToWideChar (desc)  : L"<INVALID>");
+      ( desc != nullptr ? desc  : "<INVALID>");
   }
 
   static SK_LazyGlobal <nlohmann::json> json;
@@ -1405,29 +1440,16 @@ SK_AchievementManager::Achievement::Achievement ( int                           
   idx_                      = idx;
   name_                     = def->AchievementId;
 
-  text_.locked.human_name   = SK_UTF8ToWideChar (def->LockedDisplayName);
-  text_.locked.desc         = SK_UTF8ToWideChar (def->LockedDescription);
+  text_.locked.human_name   = def->LockedDisplayName;
+  text_.locked.desc         = def->LockedDescription;
 
-  text_.unlocked.human_name = SK_UTF8ToWideChar (def->UnlockedDisplayName);
-  text_.unlocked.desc       = SK_UTF8ToWideChar (def->UnlockedDescription);
+  text_.unlocked.human_name = def->UnlockedDisplayName;
+  text_.unlocked.desc       = def->UnlockedDescription;
+
+  hidden_ = def->bIsHidden;
 
   if (def->StatThresholdsCount > 0)
   {
-    if (! def->bIsHidden)
-    {
-      if ( def->StatThresholdsCount          != 1 ||
-           def->StatThresholds [0].Threshold != 1 )
-      {
-#if 0
-        epic_log->Log (
-          L"Achievement: '%ws' (%ws) has %d tracked stats for unlock:",
-            text_.locked.human_name.c_str (),
-            text_.locked.      desc.c_str (), def->StatThresholdsCount
-        );
-#endif
-      }
-    }
-
     tracked_stats_.data.resize (def->StatThresholdsCount);
     for ( uint32_t i = 0 ; i <  def->StatThresholdsCount ; ++i )
     {
@@ -1440,16 +1462,6 @@ SK_AchievementManager::Achievement::Achievement ( int                           
       if (tracked_stat.threshold > 1)
       {
         tracked_stat.trackable = true;
-
-        if (! def->bIsHidden)
-        {
-#if 0
-          epic_log->Log (
-            L" * %hs [%d]", tracked_stat.name.c_str (),
-                            tracked_stat.threshold
-          );
-#endif
-        }
       }
     }
   }
@@ -1917,9 +1929,14 @@ SK_AchievementManager::drawPopups (void)
       const float fGlobalPercent =
         it->achievement->global_percent_;
 
+      bool has_rare_border = false;
+
                                   // fGlobalPercent may be 0.0 and still considered valid only on Steam.
       if (fGlobalPercent < 10.0f && (fGlobalPercent > 0.0f || SK::SteamAPI::AppID () != 0))
+      {
+        has_rare_border = true;
         ImGui::PushStyleColor (ImGuiCol_Border, rare_border_color);
+      }
 
       auto text =
         it->achievement->unlocked_ ? &it->achievement->text_.unlocked
@@ -1959,8 +1976,8 @@ SK_AchievementManager::drawPopups (void)
           ImGui::PopID       (  );
         }
 
-        std::string
-          text_desc = SK_WideCharToUTF8 (text->desc);
+        std::string&
+          text_desc = text->desc;
 
         ImGui::SameLine      (  );
         ImGui::PushID        (it->window);
@@ -1969,7 +1986,7 @@ SK_AchievementManager::drawPopups (void)
           ImGui::GetCursorPosX( );
         ImGui::BeginGroup    (  );
         ImGui::TextColored   (ImColor (1.0f, 1.0f, 1.0f, 1.0f),
-               "%hs", SK_WideCharToUTF8 (text->human_name).c_str ());
+               "%hs", text->human_name.c_str ());
         ImGui::PushStyleColor(ImGuiCol_Text, ImColor (0.7f, 0.7f, 0.7f, 1.0f).Value);
         auto size =
           ImGui::CalcTextSize(text_desc.c_str (), nullptr, false, 313.0f);
@@ -2026,7 +2043,7 @@ SK_AchievementManager::drawPopups (void)
             it->time = SK_timeGetTime ();
       }
 
-      if (fGlobalPercent < 10.0f && SK::SteamAPI::AppID () != 0)
+      if (has_rare_border)
         ImGui::PopStyleColor (  );
 
       const float delta_y =
@@ -2105,7 +2122,7 @@ SK_AchievementManager::drawPopups (void)
 
       SK::SteamAPI::TakeScreenshot (
         SK_ScreenshotStage::PrePresent, false,
-          SK_FormatString ("Achievements\\%ws", text->human_name.c_str ())
+          SK_FormatString ("Achievements\\%hs", text->human_name.c_str ())
                                    );
 
       take_screenshot = -1;
@@ -2138,9 +2155,9 @@ SK_AchievementManager::createPopupWindow (SK_AchievementPopup* popup)
 
   auto icon_filename =
     achievements_path /
-      SK_FormatStringW ( L"%ws_%hs.jpg",
-            achievement->unlocked_ ? L"Unlocked"
-                                   : L"Locked",
+      SK_FormatStringW ( L"%hs_%hs.jpg",
+            achievement->unlocked_ ? "Unlocked"
+                                   : "Locked",
             achievement->name_.c_str () );
 
   const SK_RenderBackend& rb =

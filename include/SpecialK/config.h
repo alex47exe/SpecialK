@@ -118,6 +118,16 @@ enum SK_FrametimeMethod
   SK_FrametimeMeasures_NewFrameBegin = 2
 };
 
+enum SK_TearingMode
+{
+  AlwaysOn             = 0,
+  AlwaysOff            = 1,
+  AlwaysOff_LowLatency = 2,
+  AdaptiveOn           = 3,
+  AdaptiveOff          = 4, // Adaptive VSync
+  AppControlled        = SK_NoPreference
+};
+
 struct sk_config_t
 {
   sk_config_t (void)
@@ -490,6 +500,8 @@ struct sk_config_t
       bool      play_sound            =  true;
       bool      pull_friend_stats     =  true;
       bool      pull_global_stats     =  true; // N/A for EOS
+
+      float     tracker_flash_seconds = 10.0f;
     } achievements;
 
     float       overlay_hdr_luminance = 4.37F; // 350 nits
@@ -741,6 +753,8 @@ struct sk_config_t
       } rescan_;
       int     refresh_denom       =     1;
       int     pin_render_thread   = SK_NoPreference;
+      int     tearing_mode        = SK_TearingMode::AppControlled;
+      bool    turn_vsync_off      = false; // Turns VSync Off in Adaptive VSync mode
       bool    flip_discard        =  true; // Enabled by default (7/6/21)
       bool    flip_sequential     = false;
       bool    disable_flip        = false;
@@ -793,7 +807,7 @@ struct sk_config_t
             }, L"ToggleFCATBars"
           };
         int   scanline_offset      =    -1;
-        int   scanline_resync      =  1000;
+        int   scanline_resync      = 30000;
         float delay_bias           =  0.0f;
         bool  auto_bias            = false;
         float max_auto_bias        =  0.5f;
@@ -1723,6 +1737,7 @@ enum class SK_GAME_ID
   EverQuest,                    // eqgame.exe
   GodEater2RageBurst,           // GE2RB.exe
   GodEater3,                    // ge3.exe
+  WatchDogs,                    // watch_dogs.exe
   WatchDogs2,                   // WatchDogs2.exe
   NieRAutomata,                 // NieRAutomata.exe
   Warframe_x64,                 // Warframe.x64.exe
@@ -1895,6 +1910,7 @@ enum class SK_GAME_ID
   StellarBlade,                 // SB-Win64-Shipping.exe
   Dishonored2,                  // Dishonored2.exe
   TitanQuest,                   // tq.exe
+  Stellaris,                    // stellaris.exe
 
   UNKNOWN_GAME               = 0xffff
 };
