@@ -29,11 +29,28 @@
 
 #include <galaxy/IListenerRegistrar.h>
 #include <galaxy/IUtils.h>
+#include <galaxy/IUser.h>
+#include <galaxy/IStats.h>
+#include <galaxy/1_152_10/IStats.h>
+#include <galaxy/1_152_1/IStats.h>
+#include <galaxy/1_121_2/InitOptions.h>
 
 #ifdef  __SK_SUBSYSTEM__
 #undef  __SK_SUBSYSTEM__
 #endif
 #define __SK_SUBSYSTEM__ L"GOG Galaxy"
+
+#define GALAXY_VIRTUAL_HOOK(_Base,_Index,_Name,_Override,_Original,_Type) {   \
+  void** _vftable = *(void***)*(_Base);                                       \
+                                                                              \
+  if ((_Original) == nullptr) {                                               \
+    SK_CreateVFTableHook2 ( L##_Name,                                         \
+                              _vftable,                                       \
+                                (_Index),                                     \
+                                  (_Override),                                \
+                                    (LPVOID *)&(_Original));                  \
+  }                                                                           \
+}
 
 class SK_Galaxy_OverlayManager : public galaxy::api::IOverlayStateChangeListener
 {
@@ -222,6 +239,742 @@ SK::Galaxy::IsOverlayAware (void)
     galaxy_overlay->isOverlayAware ();
 }
 
+class SK_Galaxy_AchievementManager : public SK_AchievementManager
+{
+public:
+  void unlock (const char* szAchievement)
+  {
+    if (szAchievement == nullptr)
+      return;
+
+    size_t index   = (size_t)-1;
+    bool   numeric = true;
+
+    for ( const char* ch = szAchievement ;
+                     *ch != '\0'         ;
+                      ch = CharNextA (ch) )
+    {
+      if ((! isalnum (ch [0])) || isalpha (ch [0]))
+      {
+        numeric = false;
+        break;
+      }
+    }
+
+    if (numeric)
+    {
+      index = atoi (szAchievement);
+    }
+
+    for (uint32 i = 0; i < SK_Galaxy_GetNumPossibleAchievements (); i++)
+    {
+      Achievement* achievement =
+                   achievements.list [i];
+
+      if (achievement == nullptr || achievement->name_.empty ())
+        continue;
+
+      if (! _stricmp (achievement->name_.c_str (), szAchievement))
+      {
+        index = i;
+        break;
+      }
+    }
+
+    if (index >= SK_Galaxy_GetNumPossibleAchievements ())
+      return;
+
+    Achievement* achievement =
+                 achievements.list [index];
+
+    if ( config.platform.achievements.popup.show
+              && achievement != nullptr )
+    {
+      if (platform_popup_cs != nullptr)
+          platform_popup_cs->lock ();
+
+      SK_AchievementPopup popup = { };
+
+      // Little bit of sanity goes a long way
+      if (achievement->progress_.current ==
+          achievement->progress_.max)
+      {
+        // It's implicit
+        achievement->unlocked_ = true;
+
+        if (achievement->time_ == 0)
+            achievement->time_ = time (nullptr);
+      }
+
+      popup.window      = nullptr;
+      popup.final_pos   = false;
+      popup.achievement = achievement;
+
+      popups.push_back (popup);
+
+      if (platform_popup_cs != nullptr)
+          platform_popup_cs->unlock ();
+    }
+
+    if (config.platform.achievements.play_sound && (! unlock_sound.empty ()))
+    {
+      playSound ();
+    }
+
+    // If the user wants a screenshot, but no popups (why?!), this is when
+    //   the screenshot needs to be taken.
+    if (       config.platform.achievements.take_screenshot )
+    {  if ( (! config.platform.achievements.popup.show) )
+       {
+         SK::SteamAPI::TakeScreenshot (
+           SK_ScreenshotStage::EndOfFrame, false,
+             SK_FormatString ("Achievements\\%hs", achievement->text_.unlocked.human_name.c_str ())
+         );
+       }
+    }
+
+    log_all_achievements ();
+  }
+
+  void log_all_achievements (void) const
+  {
+    for (uint32 i = 0; i < SK_Galaxy_GetNumPossibleAchievements (); i++)
+    {
+      const Achievement* achievement =
+                         achievements.list [i];
+
+      if (achievement == nullptr || achievement->name_.empty ())
+        continue;
+
+      gog_log->LogEx  (false, L"\n [%c] Achievement %03lu......: '%hs'\n",
+                       achievement->unlocked_ ? L'X' : L' ',
+                    i, achievement->name_.data ());
+      gog_log->LogEx  (false,
+                       L"  + Human Readable Name...: %hs\n",
+                       achievement->      unlocked_                    ?
+                       achievement->text_.unlocked.human_name.c_str () :
+                       achievement->text_.  locked.human_name.c_str ());
+      if (! (achievement->unlocked_ && achievement->text_.locked.desc.empty ()))
+      {
+        gog_log->LogEx (false,
+                       L"  *- Detailed Description.: %hs\n",
+                       achievement->text_.locked.desc.c_str ());
+      }
+      else if ((achievement->unlocked_ && !achievement->text_.unlocked.desc.empty ()))
+      {
+        gog_log->LogEx (false,
+                        L"  *- Detailed Description.: %hs\n",
+                        achievement->text_.unlocked.desc.c_str ());
+      }
+
+      if (achievement->global_percent_ > 0.0f)
+      {
+        gog_log->LogEx (false,
+                        L"  #-- Rarity (Global).....: %6.2f%%\n",
+                        achievement->global_percent_);
+      }
+      if (achievement->friends_.possible > 0)
+      {
+        gog_log->LogEx (false,
+                        L"  #-- Rarity (Friend).....: %6.2f%%\n",
+          100.0 * (static_cast <double> (achievement->friends_.unlocked) /
+                   static_cast <double> (achievement->friends_.possible)) );
+      }
+
+      if (achievement->progress_.current != achievement->progress_.max &&
+          achievement->progress_.max     != 1) // Don't log achievements that are simple yes/no
+      {
+        gog_log->LogEx (false,
+                        L"  @--- Progress To Unlock.: % 6.2f%%　　[ %d / %d ]\n",
+         100.0 * (static_cast <double> (achievement->progress_.current) /
+                  static_cast <double> (achievement->progress_.max)),
+                                        achievement->progress_.current,
+                                        achievement->progress_.max);
+      }
+
+      if (achievement->unlocked_)
+      {
+        gog_log->LogEx (false,
+                        L"  @--- Player Unlocked At.: %s",
+                        _wctime64 (&achievement->time_));
+      }
+    }
+
+    epic_log->LogEx (false, L"\n");
+  }
+
+  void clear_achievement (int idx)
+  {
+    std::ignore = idx;
+    //const Achievement* achievement =
+    //                   achievements.list [idx];
+
+    // TODO
+  }
+
+  int possible = 0;
+};
+
+SK_LazyGlobal <SK_Galaxy_AchievementManager> galaxy_achievements;
+
+SK_AchievementManager*
+SK_Galaxy_GetAchievementManager (void)
+{
+  return
+    galaxy_achievements.getPtr ();
+}
+
+// The Galaxy client is not capable of reporting this... wtf?!
+size_t
+SK_Galaxy_GetNumPossibleAchievements (void)
+{
+  return
+    galaxy_achievements->possible;
+}
+
+float
+__stdcall
+SK_Galaxy_PercentOfAchievementsUnlocked (void)
+{
+  return galaxy_achievements->getPercentOfAchievementsUnlocked ();
+}
+
+float
+__stdcall
+SK::Galaxy::PercentOfAchievementsUnlocked (void)
+{
+  return SK_Galaxy_PercentOfAchievementsUnlocked ();
+}
+
+int
+__stdcall
+SK_Galaxy_NumberOfAchievementsUnlocked (void)
+{
+  return galaxy_achievements->getNumberOfAchievementsUnlocked ();
+}
+
+int
+__stdcall
+SK::Galaxy::NumberOfAchievementsUnlocked (void)
+{
+  return SK_Galaxy_NumberOfAchievementsUnlocked ();
+}
+
+void
+SK_Galaxy_PlayUnlockSound (void)
+{
+  galaxy_achievements->playSound ();
+}
+
+void
+SK_Galaxy_LoadUnlockSound (const wchar_t* wszUnlockSound)
+{
+  galaxy_achievements->loadSound (wszUnlockSound);
+}
+
+void
+SK_Galaxy_LogAllAchievements (void)
+{
+  galaxy_achievements->log_all_achievements ();
+}
+
+void
+SK_Galaxy_UnlockAchievement (uint32_t idx)
+{
+  galaxy_achievements->unlock (std::to_string (idx).c_str ());
+}
+
+int
+SK_Galaxy_DrawOSD ()
+{
+  if (galaxy_achievements.getPtr () != nullptr)
+  {
+    return
+      galaxy_achievements->drawPopups ();
+  }
+
+  return 0;
+}
+
+static bool has_unlock_callback = false;
+
+namespace galaxy
+{
+  namespace api
+  {
+    using ProcessData_pfn         = void (__cdecl *)(void);
+    using Init_pfn                = void (__cdecl *)(struct galaxy::api::InitOptions const&);
+    using Shutdown_pfn            = void (__cdecl *)(void);
+    using CreateInstance_pfn      = galaxy::api::IGalaxy* (__cdecl *)(void);
+    using ProcessData_IGalaxy_pfn = void (__cdecl *)(IGalaxy* This);
+    using Shutdown_IGalaxy_pfn    = void (__cdecl *)(IGalaxy* This);
+
+    static Init_pfn                Init_Original                = nullptr;
+    static Shutdown_pfn            Shutdown_Original            = nullptr;
+    static ProcessData_pfn         ProcessData_Original         = nullptr;
+    static CreateInstance_pfn      CreateInstance_Original      = nullptr;
+    static ProcessData_IGalaxy_pfn ProcessData_IGalaxy_Original = nullptr;
+    static Shutdown_IGalaxy_pfn    Shutdown_IGalaxy_Original    = nullptr;
+
+    static volatile LONGLONG ticks = 0;
+
+    void
+    ProcessDataHook_Impl (IGalaxy* This = nullptr)
+    {
+      SK_LOG_FIRST_CALL
+
+      if (This == nullptr && gog->Stats () == nullptr)
+      {
+        const auto Stats     = (IStats*             (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?Stats@api@galaxy@@YAPEAVIStats@12@XZ");
+        const auto Utils     = (IUtils*             (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?Utils@api@galaxy@@YAPEAVIUtils@12@XZ");
+        const auto User      = (IUser*              (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?User@api@galaxy@@YAPEAVIUser@12@XZ");
+        const auto Registrar = (IListenerRegistrar* (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?ListenerRegistrar@api@galaxy@@YAPEAVIListenerRegistrar@12@XZ");
+
+        IStats*             pStats     = Stats     != nullptr ? Stats     () : nullptr;
+        IUtils*             pUtils     = Utils     != nullptr ? Utils     () : nullptr;
+        IUser*              pUser      = User      != nullptr ? User      () : nullptr;
+        IListenerRegistrar* pRegistrar = Registrar != nullptr ? Registrar () : nullptr;
+
+        gog->Init (pStats, pUtils, pUser, pRegistrar);
+      }
+
+      else if (This != nullptr && gog->Stats () == nullptr)
+      {
+        IStats*             pStats     = This->GetStats             ();
+        IUtils*             pUtils     = This->GetUtils             ();
+        IUser*              pUser      = This->GetUser              ();
+        IListenerRegistrar* pRegistrar = This->GetListenerRegistrar ();
+
+        gog->Init (pStats, pUtils, pUser, pRegistrar);
+      }
+
+      static bool need_stats_refresh  = true;
+      static bool global_stats_loaded = false;
+
+      auto stats = gog->Stats ();
+
+      IListenerRegistrar* registrar =
+        gog->Registrar ();
+
+      static const auto
+        achievements_path =
+          std::filesystem::path (
+               SK_GetConfigPath () )
+        / LR"(SK_Res/Achievements)";
+
+      static auto const global_stats_filename =
+        achievements_path / LR"(GlobalStatsForGame.json)";
+
+      class SK_IUserTimePlayedRetrieveListener : public IUserTimePlayedRetrieveListener
+      {
+      public:
+        void OnUserTimePlayedRetrieveSuccess (GalaxyID userID) final
+        {
+          std::ignore = userID;
+
+          auto stats = gog->Stats ();
+
+          uint32_t playing_time = SK_Galaxy_Stats_GetUserTimePlayed (stats);
+          if (playing_time != 0)
+          {
+            gog_log->Log (
+              L"User has played this game for %5.2f Hours", (float)playing_time / 60.0f
+            );
+          }
+        }
+
+        void OnUserTimePlayedRetrieveFailure (GalaxyID userID, FailureReason failureReason) final
+        {
+          gog_log->Log (L"RequestUserTimePlayed Failed=%x", failureReason);
+
+          std::ignore = userID;
+          std::ignore = failureReason;
+        }
+      } static time_played;
+
+      class SK_IAchievementChangeListener : public IAchievementChangeListener
+      {
+      public:
+        virtual void OnAchievementUnlocked (const char* name) final
+        {
+          auto pAchievement =
+            galaxy_achievements->getAchievement (name);
+
+          if (pAchievement != nullptr)
+          {
+            // This callback gets sent for achievements that are already unlocked...
+            if (! pAchievement->unlocked_)
+            {
+              gog_log->Log ( L" Achievement: '%hs' (%hs) - Unlocked!",
+                               pAchievement->text_.unlocked.human_name.c_str (),
+                               pAchievement->text_.unlocked.desc      .c_str () );
+
+              galaxy_achievements->total_unlocked++;
+              galaxy_achievements->percent_unlocked =
+                static_cast <float> (
+                  static_cast <double> (galaxy_achievements->total_unlocked) /
+                  static_cast <double> (galaxy_achievements->possible)
+                );
+
+              SK_Galaxy_Stats_RequestUserStatsAndAchievements (gog->Stats ());
+
+              galaxy_achievements->unlock (name);
+            }
+          }
+        }
+      } static achievement_change;
+
+      class SK_IUserStatsAndAchievementsRetrieveListener : public IUserStatsAndAchievementsRetrieveListener
+      {
+      public:
+        virtual void OnUserStatsAndAchievementsRetrieveSuccess (GalaxyID userID) final
+        {
+          if (userID != gog->User ()->GetGalaxyID ())
+          {
+            gog_log->Log (
+              L"userID=%d does not match Stats and Achievements userID=%d",
+              userID.ToUint64 (), gog->User ()->GetGalaxyID ().ToUint64 ()
+            );
+          }
+
+          if (! global_stats_loaded)
+          {
+            auto stats = gog->Stats ();
+
+            static FILE*   fGlobalStats  = nullptr;
+            fGlobalStats = fGlobalStats != nullptr ? fGlobalStats :
+                  _wfopen (global_stats_filename.c_str (), L"rb+");
+
+            if (fGlobalStats != nullptr)
+            {
+              static bool loaded = false;
+
+              try
+              {
+                static std::vector <BYTE> data;
+        
+                             fseek (fGlobalStats, 0, SEEK_END);
+                data.resize (ftell (fGlobalStats));
+                            rewind (fGlobalStats);
+
+                if (! data.empty ())
+                {
+                  static nlohmann::json jsonStats;
+
+                  if (! loaded)
+                  {
+                    if (0 != fread (data.data (), data.size (), 1, fGlobalStats))
+                    {
+                      jsonStats =
+                        std::move (
+                          nlohmann::json::parse ( data.cbegin (),
+                                                  data.cend   (), nullptr, true )
+                        );
+
+                      loaded              = true;
+                      global_stats_loaded = true;
+                    }
+                  }
+
+                  if ( jsonStats.contains ("achievementpercentages") &&
+                       jsonStats          ["achievementpercentages"].contains ("achievements") )
+                  {
+                    const auto& achievements_ =
+                      jsonStats ["achievementpercentages"]["achievements"];
+
+                    int idx = 0;
+
+                    for ( const auto& achievement : achievements_ )
+                    {
+                      auto galaxy_achievement =
+                        new SK_AchievementManager::Achievement (
+                          idx++, achievement ["name"].get <std::string_view> ().data (), (galaxy::api::IStats *)stats
+                        );
+
+                      galaxy_achievement->global_percent_ = static_cast <float> (
+                        atof (achievement ["percent"].get <std::string_view> ().data ())
+                      );
+
+                      galaxy_achievements->possible++;
+                      galaxy_achievements->addAchievement (galaxy_achievement);
+                    }
+                  }
+                }
+
+                else
+                {
+                  throw (std::exception ());
+                }
+              }
+
+              catch (const std::exception& e)
+              {
+                std::ignore = e;
+
+                loaded = false;
+
+                fclose (fGlobalStats);
+                        fGlobalStats = nullptr;
+
+                DeleteFileW (global_stats_filename.c_str ());
+
+                gog_log->Log (
+                  L"Global Achievement Stats JSON was corrupted and has been deleted."
+                );
+
+                SK_Platform_DownloadGlobalAchievementStats ();
+
+                need_stats_refresh  =  true;
+                global_stats_loaded = false;
+              }
+            }
+          };
+
+          int    unlock_count = 0;
+          size_t num_achvs    = 0;
+          auto   achievements = galaxy_achievements->getAchievements (&num_achvs);
+
+          for ( size_t i = 0 ; i < num_achvs ; ++i )
+          {
+            auto galaxy_achievement =
+              achievements [i];
+
+            uint32_t time;
+            SK_Galaxy_Stats_GetAchievement ( gog->Stats (),
+              galaxy_achievement->name_.c_str (),
+              galaxy_achievement->unlocked_,
+              time
+            );
+
+            if (galaxy_achievement->unlocked_) {
+                galaxy_achievement->time_ = time;
+                unlock_count++;
+            }
+          }
+
+          galaxy_achievements->log_all_achievements ();
+
+          if (! std::exchange (has_unlock_callback, true))
+          {
+            galaxy_achievements->loadSound (config.platform.achievements.sound_file.c_str ());
+
+            gog->Registrar ()->Register (achievement_change.GetListenerType (), &achievement_change);
+          }
+
+          galaxy_achievements->total_unlocked   = unlock_count;
+          galaxy_achievements->percent_unlocked =
+            static_cast <float> (
+              static_cast <double> (galaxy_achievements->total_unlocked) /
+              static_cast <double> (SK_Galaxy_GetNumPossibleAchievements ())
+            );
+        }
+
+        virtual void OnUserStatsAndAchievementsRetrieveFailure (GalaxyID userID, FailureReason failureReason) final
+        {
+          std::ignore = userID;
+          std::ignore = failureReason;
+
+          gog_log->Log (L"RequestUserStatsAndAchievements Failed=%x", failureReason);
+        }
+      } static stats_and_achievements;
+
+      SK_RunOnce (
+      //registrar->Register (           time_played.GetListenerType (), &time_played);
+        registrar->Register (stats_and_achievements.GetListenerType (), &stats_and_achievements);
+
+       //stats->RequestUserTimePlayed                    (     );
+         ;
+      );
+
+      // Attempt to auto-recover from errors, but throttle any attempt to do so
+      //   in order to avoid runaway filesystem checks for the JSON file.
+      static DWORD
+          dwLastChecked = 0;
+      if (dwLastChecked < SK::ControlPanel::current_time - 500UL)
+      {   dwLastChecked = SK::ControlPanel::current_time;
+        if (need_stats_refresh && PathFileExistsW (global_stats_filename.c_str ()))
+        {   need_stats_refresh = false;
+          static int refresh_count = 0;
+
+          // Give up after a few tries...
+          if (++refresh_count < 4)
+          {
+            SK_Galaxy_Stats_RequestUserStatsAndAchievements (stats);
+          }
+        }
+      }
+    }
+
+    void
+    __cdecl
+    ProcessData_Detour (void)
+    {
+      InterlockedIncrement64 (&ticks);
+
+      static bool
+            crashed = false;
+      if (! crashed)
+      {
+        __try {
+          ProcessDataHook_Impl ();
+        }
+
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+          crashed = true;
+        }
+      }
+
+      // The game's callback handlers might not be expecting to be invoked,
+      //   and while that's a bug in the game itself, we can't let it crash.
+      __try {
+        ProcessData_Original ();
+      }
+
+      __except (EXCEPTION_EXECUTE_HANDLER)
+      {
+        gog_log->Log (
+          L"Structured Exception encountered during ProcessData (...)"
+        );
+      }
+    }
+
+    void
+    __cdecl
+    ProcessData_IGalaxy_Detour (IGalaxy* This)
+    {
+      InterlockedIncrement64 (&ticks);
+
+      static bool
+            crashed = false;
+      if (! crashed)
+      {
+        __try {
+          ProcessDataHook_Impl ();
+        }
+
+        __except (EXCEPTION_EXECUTE_HANDLER)
+        {
+          crashed = true;
+        }
+      }
+
+      // The game's callback handlers might not be expecting to be invoked,
+      //   and while that's a bug in the game itself, we can't let it crash.
+      __try {
+        ProcessData_IGalaxy_Original (This);
+      }
+
+      __except (EXCEPTION_EXECUTE_HANDLER)
+      {
+        gog_log->Log (
+          L"Structured Exception encountered during ProcessData (...)"
+        );
+      }
+    }
+
+    void
+    __cdecl
+    Shutdown_Detour (void)
+    {
+      SK_LOG_FIRST_CALL
+
+      gog->Shutdown (true);
+
+      Shutdown_Original ();
+    }
+
+    void
+    __cdecl
+    Shutdown_IGalaxy_Detour (IGalaxy* This)
+    {
+      SK_LOG_FIRST_CALL
+
+      gog->Shutdown (true);
+
+      Shutdown_IGalaxy_Original (This);
+    }
+
+    galaxy::api::IGalaxy*
+    __cdecl
+    CreateInstance_Detour (void)
+    {
+      SK_LOG_FIRST_CALL
+
+      auto instance =
+        CreateInstance_Original ();
+
+      if (instance != nullptr)
+      {
+        GALAXY_VIRTUAL_HOOK ( &instance,      3,
+                            "IGalaxy::Shutdown",
+                             Shutdown_IGalaxy_Detour,
+                             Shutdown_IGalaxy_Original,
+                             Shutdown_IGalaxy_pfn );
+
+        GALAXY_VIRTUAL_HOOK ( &instance,     16,
+                            "IGalaxy::ProcessData",
+                             ProcessData_IGalaxy_Detour,
+                             ProcessData_IGalaxy_Original,
+                             ProcessData_IGalaxy_pfn );
+
+        bool bEnable = SK_EnableApplyQueuedHooks ();
+                             SK_ApplyQueuedHooks ();
+        if (!bEnable) SK_DisableApplyQueuedHooks ();
+      }
+
+      return
+        instance;
+    }
+
+    void
+    __cdecl
+    Init_Detour (struct galaxy::api::InitOptions const& initOptions)
+    {
+      SK_LOG_FIRST_CALL
+
+      const char* clientID     = initOptions.clientID;
+      const char* clientSecret = initOptions.clientSecret;
+
+      // The API changed at 1.121.2 to use a slightly altered structure defined
+      //   in InitOptions.h instead of IGalaxy.h
+      if (gog->version >= SK_GalaxyContext::Version_1_121_2)
+      {
+        InitOptions_1_121_2& initOptions_Versioned =
+          (InitOptions_1_121_2 &)initOptions;
+
+        clientID     = initOptions_Versioned.clientID;
+        clientSecret = initOptions_Versioned.clientSecret;
+      }
+
+      gog_log->Log (L"clientID.......: %hs", clientID);
+      gog_log->Log (L"clientSecret...: %hs", clientSecret);
+
+      Init_Original (initOptions);
+
+      const auto Stats     = (IStats*             (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Stats@api@galaxy@@YAPEAVIStats@12@XZ"); // 64-bit
+      const auto Utils     = (IUtils*             (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Utils@api@galaxy@@YAPEAVIUtils@12@XZ"); // 64-bit
+      const auto User      = (IUser*              (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?User@api@galaxy@@YAPEAVIUser@12@XZ"); // 64-bit
+      const auto Registrar = (IListenerRegistrar* (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?ListenerRegistrar@api@galaxy@@YAPEAVIListenerRegistrar@12@XZ"); // 64-bit
+
+      IStats*             pStats     = Stats     != nullptr ? Stats     () : nullptr;
+      IUtils*             pUtils     = Utils     != nullptr ? Utils     () : nullptr;
+      IUser*              pUser      = User      != nullptr ? User      () : nullptr;
+      IListenerRegistrar* pRegistrar = Registrar != nullptr ? Registrar () : nullptr;
+
+      gog->Init (pStats, pUtils, pUser, pRegistrar);
+    }
+  }
+}
+
 void
 SK::Galaxy::Init (void)
 {
@@ -371,7 +1124,34 @@ SK::Galaxy::Init (void)
     gog_log->init (L"logs/galaxy.log", L"wt+,ccs=UTF-8");
     gog_log->silent = config.platform.silent;
 
-    gog_log->Log (L"Galaxy DLL: %p", SK_LoadLibraryW (wszGalaxyDLLName));
+    gog->PreInit (hModGalaxy);
+    gog_log->Log (
+      L"Galaxy DLL.....: %ws",
+        SK_GetModuleFullName (gog->GetGalaxyDLL ()).c_str ()
+    );
+
+    std::wstring ver_str =
+      SK_GetDLLVersionShort (wszGalaxyDLLName);
+
+    int                                         major,  minor,  build,  rev = 0;
+    swscanf (ver_str.c_str (), L"%d.%d.%d.%d", &major, &minor, &build, &rev);
+
+    if (rev == 0)
+      gog_log->Log (L"Galaxy Version.: %d.%d.%d",    major, minor, build);
+    else // This is never expected to be non-zero
+      gog_log->Log (L"Galaxy Version.: %d.%d.%d.%d", major, minor, build, rev);
+
+    //
+    // Find the highest version implemented and assign the appropriate enum value;
+    //
+    //   Enum values are sorted in ascending order so inequalities can be used.
+    //
+    if (     (major == 1 && (minor > 152 || (minor == 152 && build >= 10))) || major > 1)
+      gog->version = SK_GalaxyContext::Version_1_152_10;
+    else if ((major == 1 && (minor > 152 || (minor == 152 && build >= 1))))
+      gog->version = SK_GalaxyContext::Version_1_152_1;
+    else if ((major == 1 && (minor > 121 || (minor == 121 && build >= 2))))
+      gog->version = SK_GalaxyContext::Version_1_121_2;
 
     SK_ICommandProcessor* cmd = nullptr;
 
@@ -387,7 +1167,6 @@ SK::Galaxy::Init (void)
 
     if (cmd != nullptr)
     {
-#if 0
       cmdAddAliasedVar (TakeScreenshot,
           SK_CreateVar (SK_IVariable::Boolean,
                           (bool *)&config.platform.achievements.take_screenshot));
@@ -409,22 +1188,67 @@ SK::Galaxy::Init (void)
       cmdAddAliasedVar (PlaySound,
           SK_CreateVar (SK_IVariable::Boolean,
                           (bool *)&config.platform.achievements.play_sound));
-#endif
-
-      gog->PreInit (hModGalaxy);
     }
   }
 
   auto _SetupGalaxy =
   [&](void)
   {
-#if 0
     // Hook code here (i.e. Listener registrar Register/Unregister and IGalaxy::ProcessData (...))
+#ifdef _M_AMD64
+    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Init@api@galaxy@@YAXAEBUInitOptions@12@@Z",
+                               galaxy::api::Init_Detour,
+      static_cast_p2p <void> (&galaxy::api::Init_Original) );
+    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?ProcessData@api@galaxy@@YAXXZ",
+                               galaxy::api::ProcessData_Detour,
+      static_cast_p2p <void> (&galaxy::api::ProcessData_Original) );
+    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Shutdown@api@galaxy@@YAXXZ",
+                               galaxy::api::Shutdown_Detour,
+      static_cast_p2p <void> (&galaxy::api::Shutdown_Original) );
+
+#else
+    //SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Init@api@galaxy@@YAXAEBUInitOptions@12@@Z", //64-bit name
+    //                           galaxy::api::Init_Detour,
+    //  static_cast_p2p <void> (&galaxy::api::Init_Original) );
+    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?CreateInstance@GalaxyFactory@api@galaxy@@SAPAVIGalaxy@23@XZ",
+                               galaxy::api::CreateInstance_Detour,
+      static_cast_p2p <void> (&galaxy::api::CreateInstance_Original) );
+    //SK_CreateDLLHook2 (     wszGalaxyDLLName, "?ProcessData@api@galaxy@@YAXXZ", // 64-bit name
+    //                           galaxy::api::ProcessData_Detour,
+    //  static_cast_p2p <void> (&galaxy::api::ProcessData_Original) );
+    //SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Shutdown@api@galaxy@@YAXXZ", // 64-bit name
+    //                           galaxy::api::Shutdown_Detour,
+    //  static_cast_p2p <void> (&galaxy::api::Shutdown_Original) );
+
+    galaxy::api::IGalaxy** ppInstance =
+      (galaxy::api::IGalaxy **)SK_GetProcAddress (wszGalaxyDLLName, "?instance@GalaxyFactory@api@galaxy@@0PAVIGalaxy@23@A");
+
+    if (ppInstance != nullptr && *ppInstance != nullptr)
+    {
+      galaxy::api::IStats*             pStats     = (*ppInstance)->GetStats             ();
+      galaxy::api::IUtils*             pUtils     = (*ppInstance)->GetUtils             ();
+      galaxy::api::IUser*              pUser      = (*ppInstance)->GetUser              ();
+      galaxy::api::IListenerRegistrar* pRegistrar = (*ppInstance)->GetListenerRegistrar ();
+
+      gog->Init (pStats, pUtils, pUser, pRegistrar);
+
+      GALAXY_VIRTUAL_HOOK ( ppInstance,      3,
+                          "IGalaxy::Shutdown",
+                           galaxy::api::Shutdown_IGalaxy_Detour,
+                           galaxy::api::Shutdown_IGalaxy_Original,
+                                        Shutdown_IGalaxy_pfn );
+
+      GALAXY_VIRTUAL_HOOK ( ppInstance,     16,
+                          "IGalaxy::ProcessData",
+                           galaxy::api::ProcessData_IGalaxy_Detour,
+                           galaxy::api::ProcessData_IGalaxy_Original,
+                                        ProcessData_IGalaxy_pfn );
+    }
+#endif
 
     bool bEnable = SK_EnableApplyQueuedHooks ();
                          SK_ApplyQueuedHooks ();
     if (!bEnable) SK_DisableApplyQueuedHooks ();
-#endif
   };
 
   if (hModGalaxy != nullptr)
@@ -447,6 +1271,31 @@ SK_GalaxyContext::PreInit (HMODULE hGalaxyDLL)
   sdk_dll_ = hGalaxyDLL;
 }
 
+void
+SK_GalaxyContext::Init ( galaxy::api::IStats*             stats,
+                         galaxy::api::IUtils*             utils,
+                         galaxy::api::IUser*              user,
+                         galaxy::api::IListenerRegistrar* registrar )
+{
+  stats_     = stats;
+  utils_     = utils;
+  user_      = user;
+  registrar_ = registrar;
+//friends_   = friends;
+}
+
+void
+SK_GalaxyContext::Shutdown (bool bGameRequested)
+{
+  std::ignore = bGameRequested;
+
+  stats_     = nullptr;
+  utils_     = nullptr;
+  user_      = nullptr;
+  registrar_ = nullptr;
+//friends_   = nullptr;
+}
+
 bool
 __stdcall
 SK_Galaxy_GetOverlayState (bool real)
@@ -459,13 +1308,178 @@ SK_Galaxy_GetOverlayState (bool real)
 SK_LazyGlobal <SK_GalaxyContext> gog;
 bool SK::Galaxy::overlay_state = false;
 
-volatile LONGLONG __SK_Galaxy_Ticks = 0;
-
 LONGLONG
 SK::Galaxy::GetTicksRetired (void)
 {
   return
-    ReadAcquire64 (&__SK_Galaxy_Ticks);
+    ReadAcquire64 (&galaxy::api::ticks);
 }
 
-// TODO: Add hook on IGalaxy::ProcessData (...) here that increments __SK_Galaxy_Ticks
+uint32_t
+SK_Galaxy_Stats_GetUserTimePlayed (galaxy::api::IStats* This)
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      return ((galaxy::api::IStats_1_152_1 *)This)->GetUserTimePlayed ();
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      return ((galaxy::api::IStats_1_152_10 *)This)->GetUserTimePlayed ();
+      break;
+  }
+}
+
+void
+SK_Galaxy_Stats_GetAchievementNameCopy ( galaxy::api::IStats* This,
+                                                    uint32_t  index,
+                                                        char* buffer,
+                                                    uint32_t  bufferLength )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      // Not Implemented
+      //((galaxy::api::IStats_1_152_1 *)This)->GetAchievementNameCopy (index, buffer, bufferLength);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->GetAchievementNameCopy (index, buffer, bufferLength);
+      break;
+  }
+}
+void
+SK_Galaxy_Stats_GetAchievement ( galaxy::api::IStats* This,
+                                          const char* name,
+                                                bool& unlocked,
+                                            uint32_t& unlockTime,
+                               galaxy::api::GalaxyID  userID )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      ((galaxy::api::IStats_1_152_1 *)This)->GetAchievement  (name, unlocked, unlockTime, userID);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->GetAchievement (name, unlocked, unlockTime, userID);
+      break;
+  }
+}
+
+void
+SK_Galaxy_Stats_GetAchievementDisplayNameCopy ( galaxy::api::IStats* This,
+                                                         const char* name,
+                                                               char* buffer,
+                                                           uint32_t  bufferLength )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      ((galaxy::api::IStats_1_152_1 *)This)->GetAchievementDisplayNameCopy  (name, buffer, bufferLength);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->GetAchievementDisplayNameCopy (name, buffer, bufferLength);
+      break;
+  }
+}
+void
+SK_Galaxy_Stats_GetAchievementDescriptionCopy ( galaxy::api::IStats* This,
+                                                         const char* name,
+                                                               char* buffer,
+                                                           uint32_t  bufferLength )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      ((galaxy::api::IStats_1_152_1 *)This)->GetAchievementDescriptionCopy  (name, buffer, bufferLength);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->GetAchievementDescriptionCopy (name, buffer, bufferLength);
+      break;
+  }
+}
+
+bool
+SK_Galaxy_Stats_IsAchievementVisibleWhileLocked ( galaxy::api::IStats* This,
+                                                           const char* name )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      return ((galaxy::api::IStats_1_152_1 *)This)->IsAchievementVisibleWhileLocked (name);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      return ((galaxy::api::IStats_1_152_10 *)This)->IsAchievementVisibleWhileLocked (name);
+      break;
+  }
+}
+
+void
+SK_Galaxy_Stats_RequestUserTimePlayed ( galaxy::api::IStats*                                This,
+                                        galaxy::api::GalaxyID                               userID,
+                                        galaxy::api::IUserTimePlayedRetrieveListener* const listener )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      ((galaxy::api::IStats_1_152_1 *)This)->RequestUserTimePlayed (userID, listener);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->RequestUserTimePlayed (userID, listener);
+      break;
+  }
+}
+
+void
+SK_Galaxy_Stats_RequestUserStatsAndAchievements (
+  galaxy::api::IStats*                                          This,
+  galaxy::api::GalaxyID                                         userID,
+  galaxy::api::IUserStatsAndAchievementsRetrieveListener* const listener )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      ((galaxy::api::IStats_1_152_1 *)This)->RequestUserStatsAndAchievements (userID, listener);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->RequestUserStatsAndAchievements (userID, listener);
+      break;
+  }
+}
+void
+SK_Galaxy_Stats_SetAchievement ( galaxy::api::IStats* This,
+                                          const char* name )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      ((galaxy::api::IStats_1_152_1 *)This)->SetAchievement (name);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->SetAchievement (name);
+      break;
+  }
+}
+
+void
+SK_Galaxy_Stats_ClearAchievement ( galaxy::api::IStats* This,
+                                            const char* name )
+{
+  switch (gog->version)
+  {
+    default:
+    case SK_GalaxyContext::Version_1_152_1:
+      ((galaxy::api::IStats_1_152_1 *)This)->ClearAchievement (name);
+      break;
+    case SK_GalaxyContext::Version_1_152_10:
+      ((galaxy::api::IStats_1_152_10 *)This)->ClearAchievement (name);
+      break;
+  }
+}

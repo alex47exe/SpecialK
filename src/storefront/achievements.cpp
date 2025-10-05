@@ -24,6 +24,7 @@
 #include <SpecialK/stdafx.h>
 #include <SpecialK/storefront/achievements.h>
 #include <SpecialK/storefront/epic.h>
+#include <SpecialK/storefront/gog.h>
 #include <SpecialK/resource.h>
 #include <imgui/backends/imgui_d3d12.h> // For D3D12 Texture Mgmt
 #include <imgui/backends/imgui_d3d11.h> // For D3D11 Texture Mgmt
@@ -1621,6 +1622,144 @@ SK_AchievementManager::Achievement::Achievement ( int                           
   }
 }
 
+#include <galaxy/IStats.h>
+#include <galaxy/1_152_10/IStats.h>
+#include <galaxy/1_152_1/IStats.h>
+
+SK_AchievementManager::Achievement::Achievement ( int                  idx,
+                                                  const char*          szName,
+                                                  void*                stats_ )
+{
+  SK_LOGi2 (L"Achievement Idx=%d, Name='%hs', stats=%p", idx, szName, stats_);
+
+  galaxy::api::IStats* stats = (galaxy::api::IStats *)stats_;
+
+  idx_                      = idx;
+  name_                     = szName;
+
+  char display_name [ 512] = { };
+  char desc         [4096] = { };
+
+  SK_Galaxy_Stats_GetAchievementDisplayNameCopy (stats, szName, display_name,  511);
+  SK_Galaxy_Stats_GetAchievementDescriptionCopy (stats, szName, desc,         4095);
+
+  text_.locked.human_name = display_name;
+  text_.locked.desc       = desc;
+
+  text_.unlocked.human_name = display_name;
+  text_.unlocked.desc       = desc;
+
+  hidden_ = !SK_Galaxy_Stats_IsAchievementVisibleWhileLocked (stats, szName);
+
+  uint32_t                                                  time;
+  SK_Galaxy_Stats_GetAchievement (stats, szName, unlocked_, time);
+
+  time_ = time;
+
+
+  static const auto
+    achievements_path =
+      std::filesystem::path (
+           SK_GetConfigPath () )
+    / LR"(SK_Res/Achievements)";
+
+  static auto const global_stats_filename =
+    achievements_path / LR"(GlobalStatsForGame.json)";
+
+  static FILE*   fGlobalStats  = nullptr;
+  fGlobalStats = fGlobalStats != nullptr ? fGlobalStats :
+        _wfopen (global_stats_filename.c_str (), L"rb+");
+
+  if (fGlobalStats != nullptr)
+  {
+    static bool loaded = false;
+
+    try
+    {
+      static std::vector <BYTE> data;
+
+                   fseek (fGlobalStats, 0, SEEK_END);
+      data.resize (ftell (fGlobalStats));
+                  rewind (fGlobalStats);
+
+      if (! data.empty ())
+      {
+        static nlohmann::json jsonStats;
+
+        if (! loaded)
+        {
+          if (0 != fread (data.data (), data.size (), 1, fGlobalStats))
+          {
+            jsonStats =
+              std::move (
+                nlohmann::json::parse ( data.cbegin (),
+                                        data.cend   (), nullptr, true )
+              );
+
+            loaded = true;
+          }
+        }
+
+        if ( jsonStats.contains ("achievementpercentages") &&
+             jsonStats          ["achievementpercentages"].contains ("achievements") )
+        {
+          const auto& achievements_ =
+            jsonStats ["achievementpercentages"]["achievements"];
+
+          for ( const auto& achievement : achievements_ )
+          {
+            if (! _stricmp (achievement ["name"].get <std::string_view> ().data (), name_.c_str ()))
+            {
+              global_percent_ =
+                static_cast <float> (
+                  atof (achievement ["percent"].get <std::string_view> ().data ())
+                );
+              break;
+            }
+          }
+        }
+      }
+
+      else
+      {
+        throw (std::exception ());
+      }
+    }
+
+    catch (const std::exception& e)
+    {
+#ifdef __CPP20
+      const auto&& src_loc =
+        std::source_location::current ();
+
+      steam_log->Log ( L"%hs (%d;%d): json parse failure: %hs",
+                                   src_loc.file_name     (),
+                                   src_loc.line          (),
+                                   src_loc.column        (), e.what ());
+      steam_log->Log (L"%hs",      src_loc.function_name ());
+      steam_log->Log (L"%hs",
+        std::format ( std::string ("{:*>") +
+                   std::to_string (src_loc.column        ()), 'x').c_str ());
+#else
+      std::ignore = e;
+#endif
+
+      loaded = false;
+
+      fclose (fGlobalStats);
+              fGlobalStats = nullptr;
+
+      DeleteFileW (global_stats_filename.c_str ());
+
+      SK_LOGi0 (
+        L"Global Achievement Stats JSON was corrupted and has been deleted."
+      );
+
+      SK_Platform_DownloadGlobalAchievementStats ();
+    }
+  }
+}
+
 void
 SK_AchievementManager::addAchievement (Achievement* achievement)
 {
@@ -1670,7 +1809,7 @@ SK_AchievementManager::getAchievements (size_t* pnAchievements)
   ISteamUserStats* stats =
      steam_ctx.UserStats ();
 
-  if (! SK::EOS::GetTicksRetired ())
+  if (! (SK::EOS::GetTicksRetired () || SK::Galaxy::GetTicksRetired ()))
   {
     if ((! stats) || config.platform.steam_is_b0rked)
     {
@@ -2293,8 +2432,10 @@ SK_AchievementManager::OnVarChange (SK_IVariable *var, void *val)
     if (bSteam)
       SK_Steam_UnlockAchievement (iAchievement);
 
-    else if (SK::EOS::GetTicksRetired ( ) > 0)
+    else if (SK::EOS::GetTicksRetired    ( ) > 0)
              SK_EOS_UnlockAchievement (iAchievement);
+    else if (SK::Galaxy::GetTicksRetired ( ) > 0)
+             SK_Galaxy_UnlockAchievement (iAchievement);
 
     return true;
   }

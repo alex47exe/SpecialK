@@ -23,6 +23,7 @@
 
 #include <SpecialK/stdafx.h>
 #include <SpecialK/storefront/epic.h> // Lazy EOS init
+#include <SpecialK/storefront/gog.h>  // Lazy Galaxy init
 
 #include <concurrent_unordered_set.h>
 
@@ -530,6 +531,14 @@ SK_TraceLoadLibrary (       HMODULE hCallingMod,
     else if (   StrStrI ( lpFileName, SK_TEXT("EOSSDK-Win")) ||
                 StrStrIW (wszCallingMod,     L"EOSSDK-Win") )
       SK_RunOnce (SK::EOS::Init (false));
+#ifdef _M_AMD64
+    else if (   StrStrI ( lpFileName, SK_TEXT("Galaxy64.dll")) ||
+                 StrStrIW (wszCallingMod,    L"Galaxy64.dll") )
+#else
+    else if (   StrStrI ( lpFileName, SK_TEXT("Galaxy.dll")) ||
+                 StrStrIW (wszCallingMod,    L"Galaxy.dll") )
+#endif
+      SK_RunOnce (SK::Galaxy::Init ());
     else if (   StrStrI ( lpFileName, SK_TEXT("libScePad")) ||
                 StrStrIW (wszCallingMod,     L"libScePad") )
       SK_RunOnce (SK_Input_HookScePad ());
@@ -940,7 +949,7 @@ LoadLibrary_Marshal ( LPVOID   lpRet,
     }
 
     // Avoid issues in OpenGL caused by GOG's overlay
-    else if (StrStrIW (compliant_path, L"overlay_mediator_") && (disable_platform_overlay || (SK_GetModuleHandleW (L"OpenGL32.dll") && config.apis.OpenGL.hook)))
+    else if (StrStrIW (compliant_path, L"overlay_mediator_") && (disable_platform_overlay/*|| (SK_GetModuleHandleW(L"OpenGL32.dll") && config.apis.OpenGL.hook)*/))
     {
       if (! disable_platform_overlay)
       {
@@ -2066,6 +2075,12 @@ SK_WalkModules_StepImpl (       HMODULE       hMod,
 
     if (! config.platform.silent)
     {
+      if ( StrStrIW (wszModName, SK_RunLHIfBitness (64, L"Galaxy64.dll",
+                                                        L"Galaxy.dll")) )
+      {
+        SK_RunOnce (SK::Galaxy::Init ());
+      }
+
       if ( StrStrIW (wszModName, wszSteamAPIDLL)    ||
            StrStrIW (wszModName, wszSteamAPIAltDLL) ||
            StrStrIW (wszModName, wszSteamNativeDLL) ||
