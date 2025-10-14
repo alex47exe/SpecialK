@@ -542,6 +542,24 @@ SK_TraceLoadLibrary (       HMODULE hCallingMod,
     else if (   StrStrI ( lpFileName, SK_TEXT("libScePad")) ||
                 StrStrIW (wszCallingMod,     L"libScePad") )
       SK_RunOnce (SK_Input_HookScePad ());
+    else if (   StrStrI ( lpFileName, SK_TEXT("mono-2.0-bdwgc.dll")) ||
+                StrStrIW (wszCallingMod,     L"mono-2.0-bdwgc.dll") )
+    {
+      void        SK_Unity_InitPlugin (void);
+      SK_RunOnce (SK_Unity_InitPlugin ());
+    }
+    else if (   StrStrI ( lpFileName, SK_TEXT("mono.dll")) ||
+                StrStrIW (wszCallingMod,     L"mono.dll") )
+    {
+      void        SK_Unity_InitPlugin (void);
+      SK_RunOnce (SK_Unity_InitPlugin ());
+    }
+    else if (   StrStrI ( lpFileName, SK_TEXT("GameAssembly.dll")) ||
+                StrStrIW (wszCallingMod,     L"GameAssembly.dll") )
+    {
+      void        SK_Unity_InitPlugin (void);
+      SK_RunOnce (SK_Unity_InitPlugin ());
+    }
     else if (   StrStrI ( lpFileName, SK_TEXT("dstorage.dll")) ||
                 StrStrIW (wszCallingMod,     L"dstorage.dll") )
     {
@@ -2248,6 +2266,9 @@ void
 __stdcall
 SK_EnumLoadedModules (SK_ModuleEnum when)
 {
+  SK_Thread_ScopedPriority
+            scoped_prio (THREAD_PRIORITY_TIME_CRITICAL);
+
   SK_PROFILE_FIRST_CALL
 
   // Begin logging new loads after this
@@ -2296,7 +2317,7 @@ SK_EnumLoadedModules (SK_ModuleEnum when)
       );
 
       SetCurrentThreadDescription (L"[SK] DLL Enumerator");
-      SetThreadPriority           (GetCurrentThread (), THREAD_PRIORITY_ABOVE_NORMAL);
+      SetThreadPriority           (GetCurrentThread (), THREAD_PRIORITY_TIME_CRITICAL);
 
       if ( WAIT_TIMEOUT ==
              SK_WaitForSingleObject (hWalkDone.m_h, 7500UL) )

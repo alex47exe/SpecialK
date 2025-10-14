@@ -27,6 +27,8 @@
 #include <SpecialK/storefront/gog.h>
 #include <SpecialK/control_panel/platform.h>
 
+#include <imgui/font_awesome.h>
+
 using namespace SK::ControlPanel;
 
 bool
@@ -34,6 +36,74 @@ SK::ControlPanel::Galaxy::Draw (void)
 {
   if (SK::Galaxy::GetTicksRetired () > 0)
   {
+    static bool restart_required = false;
+    bool        bDefaultOpen     = false;
+
+    // Uncollapse this header by default if the user is forcing the overlay off; make it obvious!
+    if ( config.steam.disable_overlay ||
+         config.platform.silent ) bDefaultOpen = true;
+
+    if (ImGui::CollapsingHeader ("Compatibility", bDefaultOpen ? ImGuiTreeNodeFlags_DefaultOpen
+                                                               : 0x0))
+    {
+      ImGui::TreePush   ("");
+      ImGui::BeginGroup (  );
+
+      if (ImGui::Checkbox (" Disable Galaxy Integration", &config.platform.silent))
+      {
+        restart_required = true;
+        config.utility.save_async_if (restart_required);
+      }
+
+      ImGui::SetItemTooltip ("Turns off almost all Galaxy-related features");
+
+      if (ImGui::Checkbox (" Prevent Overlay From Drawing  ",    &config.steam.disable_overlay))
+      {
+        restart_required = true;
+        config.utility.save_async_if (restart_required);
+      }
+      ImGui::EndGroup   (  );
+
+      if (! config.platform.silent)
+      {
+        ImGui::SameLine    ();
+        ImGui::SeparatorEx (ImGuiSeparatorFlags_Vertical);
+        ImGui::SameLine    ();
+        ImGui::BeginGroup  ();
+        if (ImGui::Checkbox(" Always Enable Galaxy Services", &config.galaxy.spawn_mini_client))
+        {
+          restart_required = true;
+          config.utility.save_async_if (restart_required);
+        }
+        ImGui::SetItemTooltip
+                           ( "Allows Achievements and Multiplayer Matchmaking "
+                             "even when the Galaxy client is not running." );
+        if (config.galaxy.spawn_mini_client)
+        {
+          if (ImGui::Checkbox ("Require Online Galaxy Functionality", &config.galaxy.require_online_mode))
+          {
+            restart_required = true;
+            config.utility.save_async_if (restart_required);
+          }
+          ImGui::SetItemTooltip (
+            "Enable this if your game needs to connect to the Internet for some features."
+          );
+        }
+        ImGui::EndGroup    ();
+      }
+
+      if (restart_required)
+      {
+        ImGui::SameLine       ();
+        ImGui::SeparatorEx    (ImGuiSeparatorFlags_Vertical);
+        ImGui::SameLine       ();
+        ImGui::PushStyleColor (ImGuiCol_Text, ImColor::HSV (.15f, .8f, .9f).Value);
+        ImGui::BulletText     ("Game Restart Required");
+        ImGui::PopStyleColor  ();
+      }
+  
+      ImGui::TreePop ();
+    }
     return true;
   }
 
@@ -45,20 +115,18 @@ SK::ControlPanel::Galaxy::DrawFooter (void)
 {
   if (SK::Galaxy::GetTicksRetired () > 0)
   {
-    ImGui::Columns    ( 1 );
+    ImGui::BeginGroup (   );
     ImGui::Separator  (   );
 
-    auto num_players =
+    const auto num_players =
       SK_Platform_GetNumPlayers ();
 
     if (num_players > 1)
-    {
-      ImGui::Columns    ( 2, "GalaxySep", true );
-    
+    { 
       static char szNumber       [16] = { };
       static char szPrettyNumber [32] = { };
     
-      const NUMBERFMTA fmt = { 0, 0, 3, (char *)".", (char *)",", 0 };
+      static const NUMBERFMTA fmt = { 0, 0, 3, (char *)".", (char *)",", 0 };
     
       snprintf (szNumber, 15, "%i", num_players);
     
@@ -68,15 +136,75 @@ SK::ControlPanel::Galaxy::DrawFooter (void)
                                szPrettyNumber, 32 );
     
       ImGui::Text       (" %s Players in-Game  ", szPrettyNumber);
-      ImGui::NextColumn (   );
+
+      // Track cumulative total time played in the status bar.
+      uint32_t
+          minutes = SK::Galaxy::MinutesPlayed ();
+      if (minutes > 0)
+      {
+        ImGui::SameLine    ();
+        ImGui::SameLine    ();
+        ImGui::SeparatorEx (ImGuiSeparatorFlags_Vertical);
+        ImGui::SameLine    ();
+        ImGui::SameLine    ();
+        ImGui::Text        ("  Your Hours Played :\t %4.1f ",
+          static_cast <float> (SK::Galaxy::MinutesPlayed ()) / 60.0f
+                            );
+      }
     }
 
-    ImGui::Bullet     ();   ImGui::SameLine ();
+    ImGui::SameLine    ();
+    ImGui::SameLine    ();
+    ImGui::SeparatorEx (ImGuiSeparatorFlags_Vertical);
+    ImGui::SameLine    ();
+    ImGui::SameLine    ();
+
+    static bool has_winhttp = false;
+
+    ImGui::BeginGroup      ();
+    ImGui::TextUnformatted ("  Galaxy Services:  ");
+    ImGui::SameLine        ();
+    if (! SK::Galaxy::IsSignedIn ())
+    {
+      SK_RunOnce (
+        has_winhttp = PathFileExistsW (L"winhttp.dll");
+      );
+
+      if (has_winhttp)
+      {
+        ImGui::TextColored (
+          ImVec4 (1.f, 1.f, 0.f, 1.f), ICON_FA_EXCLAMATION_TRIANGLE
+        );
+        ImGui::SameLine ();
+      }
+    }
+    ImGui::PushStyleColor  (ImGuiCol_Text, SK::Galaxy::IsSignedIn () ? ImVec4 (0.f, 1.f, 0.f, 1.f)
+                                                                     : ImVec4 (1.f, 0.f, 0.f, 1.f));
+    ImGui::TextUnformatted ( SK::Galaxy::IsSignedIn () ? "Signed In"
+                                                       : "Not Signed In" );
+    ImGui::SameLine        ();
+    ImGui::PushStyleColor  (ImGuiCol_Text, SK::Galaxy::IsLoggedOn () ? ImVec4 (1.f, 1.f, 1.f, 1.f)
+                                                                     : ImVec4 (.5f, .5f, .5f, 1.f));
+    ImGui::TextUnformatted ( SK::Galaxy::IsLoggedOn () ? " (Online)"
+                                                       : " (Offline)" );
+    ImGui::PopStyleColor   (2);
+    ImGui::EndGroup        ( );
+
+    if (has_winhttp)
+    {
+      ImGui::SetItemTooltip (
+        "winhttp.dll in the game's install directory is preventing GOG Galaxy from working!"
+      );
+    }
+
+    ImGui::SameLine        ( );
+    ImGui::Bullet          ( );
+    ImGui::SameLine        ( );
 
     bool pause =
       SK_Platform_GetOverlayState (false);
 
-    if ( ImGui::Selectable ( "GOG Galaxy Tick", &pause) &&
+    if ( ImGui::Selectable ( " Tick", &pause) &&
                              SK_Platform_IsOverlayAware () )
     {
       SK_Platform_SetOverlayState (pause);
@@ -96,9 +224,9 @@ SK::ControlPanel::Galaxy::DrawFooter (void)
       else if (ImGui::IsItemHovered ())
       {
         ImGui::BeginTooltip   (       );
-        ImGui::Text           ( "In"  );                ImGui::SameLine ();
+        ImGui::Text           ( "In"  );                  ImGui::SameLine ();
         ImGui::PushStyleColor ( ImGuiCol_Text, ImVec4 (0.95f, 0.75f, 0.25f, 1.0f) );
-        ImGui::Text           ( "Epic Overlay Aware");  ImGui::SameLine ();
+        ImGui::Text           ( "Galaxy Overlay Aware");  ImGui::SameLine ();
         ImGui::PopStyleColor  (       );
         ImGui::Text           ( "software, click to toggle the game's overlay pause mode." );
         ImGui::EndTooltip     (       );
@@ -118,7 +246,7 @@ SK::ControlPanel::Galaxy::DrawFooter (void)
 
     ImGui::SameLine ();
     ImGui::Text     ( ": %10llu  ", SK::Galaxy::GetTicksRetired () );
-    ImGui::Columns  (1, nullptr, false);
+    ImGui::EndGroup ();
 
     return true;
   }

@@ -924,6 +924,14 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
     <ClInclude Include="depends\include\adl\adl_defines.h" />
     <ClInclude Include="depends\include\adl\adl_sdk.h" />
     <ClInclude Include="depends\include\adl\adl_structures.h" />
+    <ClInclude Include="depends\include\aetherim\api.hpp" />
+    <ClInclude Include="depends\include\aetherim\class.hpp" />
+    <ClInclude Include="depends\include\aetherim\field.hpp" />
+    <ClInclude Include="depends\include\aetherim\image.hpp" />
+    <ClInclude Include="depends\include\aetherim\method.hpp" />
+    <ClInclude Include="depends\include\aetherim\table_defs.h" />
+    <ClInclude Include="depends\include\aetherim\type.hpp" />
+    <ClInclude Include="depends\include\aetherim\wrapper.hpp" />
     <ClInclude Include="depends\include\avif\avif.h" />
     <ClInclude Include="depends\include\avif\internal.h" />
     <ClInclude Include="depends\include\boost\align.hpp" />
@@ -1221,8 +1229,11 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
     <ClInclude Include="depends\include\EOS\eos_userinfo_types.h" />
     <ClInclude Include="depends\include\EOS\eos_version.h" />
     <ClInclude Include="depends\include\galaxy\1_121_2\InitOptions.h" />
+    <ClInclude Include="depends\include\galaxy\1_151_0\IUser.h" />
     <ClInclude Include="depends\include\galaxy\1_152_10\IStats.h" />
+    <ClInclude Include="depends\include\galaxy\1_152_10\IUser.h" />
     <ClInclude Include="depends\include\galaxy\1_152_1\IStats.h" />
+    <ClInclude Include="depends\include\galaxy\1_152_1\IUser.h" />
     <ClInclude Include="depends\include\galaxy\Errors.h" />
     <ClInclude Include="depends\include\galaxy\GalaxyAllocator.h" />
     <ClInclude Include="depends\include\galaxy\GalaxyExport.h" />
@@ -2035,6 +2046,7 @@ if exist "$(TargetDir)$(TargetName).exp" ( del "$(TargetDir)$(TargetName).exp" )
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release (clang)|Win32'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="src\plugins\unclassified.cpp" />
+    <ClCompile Include="src\plugins\unity.cpp" />
     <ClCompile Include="src\plugins\watch_dogs.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
     </ClCompile>

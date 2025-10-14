@@ -310,7 +310,9 @@ SK_GetCurrentGameID (void)
           { L"zosEGSStarter.exe",                      SK_GAME_ID::Launcher                     },
           { L"crs-video.exe",                          SK_GAME_ID::Launcher                     }, // Used by many games for FMV playback
           { L"SHf-Win64-Shipping.exe",                 SK_GAME_ID::SilentHill_f                 },
-          { L"stellaris.exe",                          SK_GAME_ID::Stellaris                    }
+          { L"stellaris.exe",                          SK_GAME_ID::Stellaris                    },
+          { L"TheLostCrown.exe",                       SK_GAME_ID::PrinceOfPersia_TheLostCrown  },
+          { L"TheLostCrown_plus.exe",                  SK_GAME_ID::PrinceOfPersia_TheLostCrown  },
         };
 
     first_check  = false;
@@ -773,6 +775,11 @@ struct {
   {
     sk::ParameterFloat*   hdr_luminance           = nullptr;
   } overlay;
+  struct
+  {
+    sk::ParameterBool*    spawn_mini_client       = nullptr;
+    sk::ParameterBool*    require_online_mode     = nullptr;
+  } system;
 } galaxy;
 
 struct {
@@ -1193,6 +1200,8 @@ struct {
       sk::ParameterStringW* left_paddle_bind      = nullptr;
       sk::ParameterStringW* right_paddle_bind     = nullptr;
       sk::ParameterStringW* touch_click_bind      = nullptr;
+      sk::ParameterFloat*   rumble_strength       = nullptr;
+      sk::ParameterBool*    improved_rumble       = nullptr;
     } scepad;
 
     struct {
@@ -1915,6 +1924,8 @@ auto DeclKeybind =
     ConfigEntry (input.gamepad.scepad.left_paddle_bind,  L"Keyboard Input to Generate when Left Paddle is Pressed",    dll_ini,         L"Input.libScePad",       L"LeftPaddle"),
     ConfigEntry (input.gamepad.scepad.right_paddle_bind, L"Keyboard Input to Generate when Right Paddle is Pressed",   dll_ini,         L"Input.libScePad",       L"RightPaddle"),
     ConfigEntry (input.gamepad.scepad.touch_click_bind,  L"Keyboard Input to Generate when Touch Pad is Clicked",      dll_ini,         L"Input.libScePad",       L"TouchpadClick"),
+    ConfigEntry (input.gamepad.scepad.rumble_strength,   L"Intensity of emulated rumble on DualSense controllers",     dll_ini,         L"Input.libScePad",       L"RumbleStrength"),
+    ConfigEntry (input.gamepad.scepad.improved_rumble,   L"Whether to use SONY's improved rumble on DualSense",        dll_ini,         L"Input.libScePad",       L"ImproveDualSenseRumble"),
 
     ConfigEntry (input.gamepad.hid.always_show_attach,   L"Show HID Attach Notifications if no Conflicts are Detected",input_ini,       L"Input.HID",             L"AlwaysShowAttachNotifications"),
     ConfigEntry (input.gamepad.low_battery_warning,      L"Percentage when SK will warn controller batteries are low", input_ini,       L"Input.Battery",         L"WarnIfPercentIsBelow"),
@@ -2343,6 +2354,9 @@ auto DeclKeybind =
     ConfigEntry (screenshots.include_osd_default,        L"Should a screenshot triggered BY Steam include SK's OSD?",  platform_ini,    L"Steam.Screenshots",     L"DefaultKeybindCapturesOSD"),
 
     ConfigEntry (eos.system.warned_online,               L"Has user been told about EOS incompatibility?",             dll_ini,         L"Platform.System",       L"WarnedEOSIncompat"),
+
+    ConfigEntry (galaxy.system.spawn_mini_client,        L"Start GalaxyCommunication.exe if Galaxy is not running.",   dll_ini,         L"Galaxy.System",         L"SpawnGalaxyCommunication"),
+    ConfigEntry (galaxy.system.require_online_mode,      L"Enable if the current game is unsuitable for offline-only.",dll_ini,         L"Galaxy.System",         L"RequireOnlineGalaxyMode"),
 
     // These are all system-wide for all Steam games
     ConfigEntry (platform.overlay.hdr_luminance,         L"Make the Steam Overlay visible in HDR mode!",               platform_ini,    L"Platform.Overlay",      L"Luminance_scRGB"),
@@ -4300,6 +4314,9 @@ auto DeclKeybind =
                            allow_wait_for_vblank = FALSE;
         break;
 
+      case SK_GAME_ID::PrinceOfPersia_TheLostCrown:
+        break;
+
       case SK_GAME_ID::TitanQuest:
         config.textures.cache.ignore_nonmipped = true; // Avoid UI corruption
         config.render.dxgi.deferred_isolation  = true;
@@ -5390,6 +5407,8 @@ auto DeclKeybind =
   input.gamepad.scepad.right_paddle_bind->load    (config.input.gamepad.scepad.right_paddle);
   input.gamepad.scepad.right_fn_bind->load        (config.input.gamepad.scepad.right_fn);
   input.gamepad.scepad.touch_click_bind->load     (config.input.gamepad.scepad.touch_click);
+  input.gamepad.scepad.improved_rumble->load      (config.input.gamepad.dualsense.improved_rumble);
+  input.gamepad.scepad.rumble_strength->load      (config.input.gamepad.dualsense.rumble_strength);
 
   input.gamepad.hid.always_show_attach->load      (config.input.gamepad.hid.always_show_attach);
   input.gamepad.low_battery_warning->load         (config.input.gamepad.low_battery_percent);
@@ -5987,9 +6006,11 @@ auto DeclKeybind =
   platform.system.reuse_overlay_pause->load   (config.platform.reuse_overlay_pause);
   platform.system.equivalent_steam_app->load  (config.platform.equivalent_steam_app);
   platform.system.type->load                  (config.platform.type);
+  galaxy.system.spawn_mini_client->load       (config.galaxy.spawn_mini_client);
+  galaxy.system.require_online_mode->load     (config.galaxy.require_online_mode);
+  galaxy.overlay.hdr_luminance->load          (config.galaxy.overlay_luminance);
   platform.overlay.hdr_luminance->load        (config.platform.overlay_hdr_luminance);
   uplay.overlay.hdr_luminance->load           (config.uplay.overlay_luminance);
-  galaxy.overlay.hdr_luminance->load          (config.galaxy.overlay_luminance);
   rtss.overlay.hdr_luminance->load            (config.rtss.overlay_luminance);
   discord.overlay.hdr_luminance->load         (config.discord.overlay_luminance);
   discord.overlay.allow_windowed_mode->load   (config.discord.allow_windowed_mode);
@@ -6946,6 +6967,8 @@ SK_SaveConfig ( std::wstring name,
   input.gamepad.scepad.right_paddle_bind->store    (config.input.gamepad.scepad.right_paddle);
   input.gamepad.scepad.right_fn_bind->store        (config.input.gamepad.scepad.right_fn);
   input.gamepad.scepad.touch_click_bind->store     (config.input.gamepad.scepad.touch_click);
+  input.gamepad.scepad.improved_rumble->store      (config.input.gamepad.dualsense.improved_rumble);
+  input.gamepad.scepad.rumble_strength->store      (config.input.gamepad.dualsense.rumble_strength);
 
   input.gamepad.hid.always_show_attach->store      (config.input.gamepad.hid.always_show_attach);
   input.gamepad.low_battery_warning->store         (config.input.gamepad.low_battery_percent);
@@ -7536,8 +7559,10 @@ SK_SaveConfig ( std::wstring name,
   screenshots.avif.scrgb_bit_depth->store      (config.screenshots.avif.scrgb_bit_depth);
   screenshots.avif.compression_speed->store    (config.screenshots.avif.compression_speed);
 
-  uplay.overlay.hdr_luminance->store           (config.uplay.overlay_luminance);
+  galaxy.system.spawn_mini_client->store       (config.galaxy.spawn_mini_client);
+  galaxy.system.require_online_mode->store     (config.galaxy.require_online_mode);
   galaxy.overlay.hdr_luminance->store          (config.galaxy.overlay_luminance);
+  uplay.overlay.hdr_luminance->store           (config.uplay.overlay_luminance);
   rtss.overlay.hdr_luminance->store            (config.rtss.overlay_luminance);
   discord.overlay.hdr_luminance->store         (config.discord.overlay_luminance);
   discord.overlay.allow_windowed_mode->store   (config.discord.allow_windowed_mode);

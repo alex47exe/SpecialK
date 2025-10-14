@@ -4063,7 +4063,7 @@ SK_BackgroundRender_EndFrame (void)
   {
     if (std::exchange (first_frame, false))
     {
-      if (PathFileExistsW (L"REFramework.dll"))
+     if (PathFileExistsW (L"REFramework.dll"))
              LoadLibraryW (L"REFramework.dll");
 
       if (SK_GetCurrentGameID () == SK_GAME_ID::Hello_Kitty_Island_Adventure)

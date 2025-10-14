@@ -289,6 +289,36 @@ SK_GetLocalAppDataDir (void)
   return dir;
 }
 
+std::wstring&
+SK_GetProgramDataDir (void)
+{
+  static volatile LONG __init = 0;
+
+  // Fast Path  (cached)
+  //
+  static std::wstring dir;
+
+  if (ReadAcquire (&__init) == 2)
+  {
+    if (! dir.empty ())
+      return dir;
+  }
+
+  HRESULT hr =
+    SK_Shell32_GetKnownFolderPath (FOLDERID_ProgramData, dir, &__init);
+
+  if (FAILED (hr))
+  {
+    SK_LOG0 ( ( L"ERROR: Could not get System's ProgramData Directory!  [HRESULT=%x]",
+                  hr ),
+                L" SpecialK " );
+  }
+
+  SK_Thread_SpinUntilAtomicMin (&__init, 2);
+
+  return dir;
+}
+
 std::wstring
 SK_GetFontsDir (void)
 {
@@ -671,7 +701,7 @@ SK_IsProcessRunning (const wchar_t* wszProcName)
   PROCESSENTRY32W pe32 = { };
 
   SK_AutoHandle hProcSnap (
-    CreateToolhelp32Snapshot ( TH32CS_SNAPPROCESS,
+    CreateToolhelp32Snapshot ( TH32CS_SNAPPROCESS | TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32,
                                  0 )
   );
 
@@ -681,11 +711,12 @@ SK_IsProcessRunning (const wchar_t* wszProcName)
   pe32.dwSize =
     sizeof (PROCESSENTRY32W);
 
-  if (! Process32FirstW ( hProcSnap,
-                            &pe32    )
-     )
+  while (! Process32FirstW ( hProcSnap,
+                               &pe32 )
+        )
   {
-    return false;
+    if (GetLastError () != ERROR_BAD_LENGTH)
+      return false;
   }
 
   do
@@ -696,8 +727,11 @@ SK_IsProcessRunning (const wchar_t* wszProcName)
     {
       return true;
     }
+
+    pe32.dwSize =
+      sizeof (PROCESSENTRY32W);
   } while ( Process32NextW ( hProcSnap,
-                               &pe32    )
+                               &pe32 )
           );
 
   return false;
@@ -1103,23 +1137,28 @@ FindProcessByName (const wchar_t* wszName)
   PROCESSENTRY32W pe32 = { };
 
   SK_AutoHandle hProcessSnap (
-    CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS, 0)
+    CreateToolhelp32Snapshot (TH32CS_SNAPPROCESS | TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, 0)
   );
 
   if ((intptr_t)hProcessSnap.m_h <= 0)// == INVALID_HANDLE_VALUE)
     return pe32;
 
-  pe32.dwSize = sizeof (PROCESSENTRY32W);
+  pe32.dwSize =
+    sizeof (PROCESSENTRY32W);
 
-  if (! Process32FirstW (hProcessSnap, &pe32))
+  while (! Process32FirstW ( hProcessSnap,
+                               &pe32 )
+        )
   {
-    return pe32;
+    if (GetLastError () != ERROR_BAD_LENGTH)
+      return { };
   }
 
   do
   {
-    if (wcsstr (pe32.szExeFile, wszName))
-      return pe32;
+    if (! SK_Path_wcsicmp ( wszName,
+                        pe32.szExeFile )
+       ) return pe32;
   } while (Process32NextW (hProcessSnap, &pe32));
 
   return pe32;

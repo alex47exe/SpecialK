@@ -2050,11 +2050,18 @@ public:
 
     for (uint32 i = 0; i < stats->GetNumAchievements (); i++)
     {
-      const Achievement* achievement =
-                         achievements.list [i];
+      Achievement* achievement =
+                   achievements.list [i];
 
       if (achievement == nullptr || achievement->name_.empty ())
         continue;
+
+      uint32_t crc =
+        crc32c (0, achievement, (uintptr_t)&(achievement->ignored_)
+                              - (uintptr_t)  achievement);
+
+      if  (achievement->crc32c_ == crc) continue;
+      else achievement->crc32c_  = crc;
 
       steam_log->LogEx (false, L"\n [%c] Achievement %03lu......: '%hs'\n",
                         achievement->unlocked_ ? L'X' : L' ',
@@ -3686,6 +3693,8 @@ SK_Steam_LoadOverlayEarly (void)
 int
 SK_Steam_GetLibraries (steam_library_t** ppLibraries)
 {
+  SK_PROFILE_FIRST_CALL
+
 #define MAX_STEAM_LIBRARIES 32
 
   static volatile LONG   scanned_libs = 0L;
@@ -6531,6 +6540,8 @@ SK_SteamAPI_DebugText (int nSeverity, const char *pchDebugText)
 bool
 SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
 {
+  SK_PROFILE_FIRST_CALL
+
   if (SteamAPI_InitSafe == nullptr)
   {
     SteamAPI_InitSafe =
@@ -7694,6 +7705,8 @@ SK::SteamAPI::GetDataDir (void)
 uint64_t
 SK_Steam_GetAppID_NoAPI (void)
 {
+  SK_PROFILE_FIRST_CALL
+
   static constexpr int MAX_APPID_LEN = 32;
 
   DWORD    dwSteamGameIdLen                  =  0 ;

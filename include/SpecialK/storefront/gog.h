@@ -31,7 +31,9 @@
 #include <SpecialK/log.h>
 #include <SpecialK/command.h>
 
+#include <galaxy/IStats.h>
 #include <galaxy/IGalaxy.h>
+#include <galaxy/GalaxyID.h>
 
 class galaxy::api::IUser;
 
@@ -46,11 +48,17 @@ namespace SK
     bool  __stdcall GetOverlayState  (bool real);
     bool  __stdcall IsOverlayAware   (void); // Did the game install a callback?
 
-    std::string&      AppName         (void);
-    std::string_view  PlayerName      (void);
-    std::string_view  PlayerNickname  (void);
+    std::string&          AppName         (void);
+    galaxy::api::GalaxyID UserID          (void);
+    std::string_view      PlayerName      (void);
+    std::string_view      PlayerNickname  (void);
 
-    LONGLONG GetTicksRetired (void);
+    LONGLONG              GetTicksRetired (void);
+
+    bool                  IsSignedIn      (void);
+    bool                  IsLoggedOn      (void);
+
+    uint32_t              MinutesPlayed   (void);
 
     float __stdcall PercentOfAchievementsUnlocked (void);
     int   __stdcall NumberOfAchievementsUnlocked  (void);
@@ -79,8 +87,12 @@ public:
       SK_FreeLibrary (sdk_dll_);
   };
 
-  void PreInit                (HMODULE hGalaxyDLL);
-  void Init                   (galaxy::api::IStats* stats, galaxy::api::IUtils* utils, galaxy::api::IUser* user, galaxy::api::IListenerRegistrar* registrar);
+  void PreInit                ( HMODULE hGalaxyDLL );
+  void Init                   ( galaxy::api::IStats*             stats,
+                                galaxy::api::IUtils*             utils,
+                                galaxy::api::IUser*              user,
+                                galaxy::api::IFriends*           friends,
+                                galaxy::api::IListenerRegistrar* registrar );
   //bool InitEpicOnlineServices (HMODULE hEOSDLL, EOS_HPlatform platform = nullptr);
 
   void Shutdown (bool bGameRequested = false);
@@ -96,6 +108,7 @@ public:
 
   std::string_view       GetDisplayName (void) const { return user_names.display_name; }
   std::string_view       GetNickName    (void) const { return user_names.nickname;     }
+  galaxy::api::GalaxyID  GetGalaxyID    (void) const { return galaxy_id_;              }
 
 //protected:
   struct
@@ -104,8 +117,11 @@ public:
     std::string nickname;
   } user_names;
 
+  galaxy::api::GalaxyID            galaxy_id_ = {     };
+
   enum versions {
     Version_1_121_2,
+    Version_1_151_0,
     Version_1_152_1,
     Version_1_152_10
   } version = Version_1_152_1;
@@ -141,8 +157,6 @@ SK_Galaxy_DrawOSD (void);
 
 SK_AchievementManager* SK_Galaxy_GetAchievementManager (void);
 
-#include <galaxy/GalaxyID.h>
-#include <galaxy/IStats.h>
 uint32_t SK_Galaxy_Stats_GetUserTimePlayed (galaxy::api::IStats *);
 
 void     SK_Galaxy_Stats_GetAchievementNameCopy          (galaxy::api::IStats*, uint32_t index, char* buffer, uint32_t bufferLength);
@@ -154,5 +168,7 @@ void     SK_Galaxy_Stats_RequestUserTimePlayed           (galaxy::api::IStats*, 
 void     SK_Galaxy_Stats_RequestUserStatsAndAchievements (galaxy::api::IStats*, galaxy::api::GalaxyID userID = galaxy::api::GalaxyID(), galaxy::api::IUserStatsAndAchievementsRetrieveListener* const listener = NULL);
 void     SK_Galaxy_Stats_SetAchievement                  (galaxy::api::IStats*, const char* name);
 void     SK_Galaxy_Stats_ClearAchievement                (galaxy::api::IStats*, const char* name);
+
+bool     SK_GalaxyOverlay_GoToURL (const char* szURL, bool bUseWindowsShellIfOverlayFails = false);
 
 #endif /* __SK__GOG_H__ */

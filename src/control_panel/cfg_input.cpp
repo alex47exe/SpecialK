@@ -2360,23 +2360,54 @@ SK::ControlPanel::Input::Draw (void)
             }
           }
 
-#if 0
-          if ( bDualSense &&
-               ImGui::SliderFloat ( "Rumble Motor Power Level",
-                                      &config.input.gamepad.scepad.rumble_power_level,
-                                        12.5f, 100.0f ) )
+          if (bDualSense)
           {
-            if ( config.input.gamepad.scepad.rumble_power_level > 93.75f)
-                 config.input.gamepad.scepad.rumble_power_level = 100.0f;
-            else config.input.gamepad.scepad.rumble_power_level -=
-          fmodf (config.input.gamepad.scepad.rumble_power_level, 12.5f);
-
-            for ( auto& ps_controller : SK_HID_PlayStationControllers )
+            if (ImGui::Checkbox ("Improved DualSense Rumble", &config.input.gamepad.dualsense.improved_rumble))
             {
-              ps_controller.write_output_report ();
             }
+
+            if (ImGui::BeginItemTooltip ())
+            {
+              ImGui::TextUnformatted ("DualSense controllers lack rumble motors, their firmware has code to emulate rumble using haptics...");
+              ImGui::Separator       ();
+              ImGui::BulletText      ("The original attempt by SONY to emulate rumble was quite harsh and required manually adjusting motor strength.");
+              ImGui::BulletText      ("Improved rumble emulation tends to be the sweet spot, it is weaker than the original, but requires less tuning.");
+              ImGui::EndTooltip      ();
+            }
+
+            ImGui::SameLine ();
+
+            if (! config.input.gamepad.dualsense.improved_rumble)
+            {
+              //float orig = config.input.gamepad.dualsense.rumble_strength;
+              if ( ImGui::SliderFloat ( "Rumble Motor Power Level",
+                                          &config.input.gamepad.dualsense.rumble_strength,
+                                            12.5f, 100.0f, "%4.1f%%"))
+              {
+                //if (     config.input.gamepad.dualsense.rumble_strength > 93.75f && config.input.gamepad.dualsense.rumble_strength > orig)
+                //         config.input.gamepad.dualsense.rumble_strength = 100.0f;
+                //else if (config.input.gamepad.dualsense.rumble_strength > 12.5   && config.input.gamepad.dualsense.rumble_strength != 100.0f)
+                //         config.input.gamepad.dualsense.rumble_strength -=
+                //  fmodf (config.input.gamepad.dualsense.rumble_strength, 12.5f);
+
+                for ( auto& ps_controller : SK_HID_PlayStationControllers )
+                {
+                  ps_controller.write_output_report ();
+                }
+              }           
+            }
+
+            else
+            {
+              static float always_37 = 37.5f;
+
+              ImGui::BeginDisabled ();
+              ImGui::SliderFloat   ( "Rumble Motor Power Level",
+                                       &always_37,
+                                         12.5f, 100.0f, "%4.1f%%" );
+              ImGui::EndDisabled   ();
+            }                      
           }
-#endif
           ImGui::TreePop  (  );
         }
         else
@@ -2603,29 +2634,29 @@ SK::ControlPanel::Input::Draw (void)
             bool               selected     = false;
             static std::string mapping_name = "";
             static UINT        mapping_idx  = 0;
-            if (ImGui::Selectable  (SK_FormatString ("%ws###Touchpad_Binding", SK_HID_GetGamepadButtonBinding (13)->c_str ()).c_str (),  &selected))
+            if (ImGui::Selectable (SK_FormatString ("%ws###Touchpad_Binding",    SK_HID_GetGamepadButtonBinding (13)->c_str ()).c_str (), &selected, ImGuiSelectableFlags_DontClosePopups))
             {
               mapping_idx  = 13;
               mapping_name = "Touchpad Click";
             }
             if (bHasDualSenseEdge)
             {
-              if (ImGui::Selectable  (SK_FormatString ("%ws###FnLeft_Binding", SK_HID_GetGamepadButtonBinding (15)->c_str ()).c_str (),  &selected))
+              if (ImGui::Selectable (SK_FormatString ("%ws###FnLeft_Binding",    SK_HID_GetGamepadButtonBinding (15)->c_str ()).c_str (), &selected, ImGuiSelectableFlags_DontClosePopups))
               {
                 mapping_idx  = 15;
                 mapping_name = "Fn Left";
               }
-              if (ImGui::Selectable  (SK_FormatString ("%ws###FnRight_Binding", SK_HID_GetGamepadButtonBinding (16)->c_str ()).c_str (),  &selected))
+              if (ImGui::Selectable (SK_FormatString ("%ws###FnRight_Binding",   SK_HID_GetGamepadButtonBinding (16)->c_str ()).c_str (), &selected, ImGuiSelectableFlags_DontClosePopups))
               {
                 mapping_idx  = 16;
                 mapping_name = "Fn Right";
               }
-              if (ImGui::Selectable  (SK_FormatString ("%ws###BackLeft_Binding", SK_HID_GetGamepadButtonBinding (17)->c_str ()).c_str (),  &selected))
+              if (ImGui::Selectable (SK_FormatString ("%ws###BackLeft_Binding",  SK_HID_GetGamepadButtonBinding (17)->c_str ()).c_str (), &selected, ImGuiSelectableFlags_DontClosePopups))
               {
                 mapping_idx  = 17;
                 mapping_name = "Back Left";
               }
-              if (ImGui::Selectable  (SK_FormatString ("%ws###BackRight_Binding", SK_HID_GetGamepadButtonBinding (18)->c_str ()).c_str (),  &selected))
+              if (ImGui::Selectable (SK_FormatString ("%ws###BackRight_Binding", SK_HID_GetGamepadButtonBinding (18)->c_str ()).c_str (), &selected, ImGuiSelectableFlags_DontClosePopups))
               {
                 mapping_idx  = 18;
                 mapping_name = "Back Right";
@@ -2672,7 +2703,7 @@ SK::ControlPanel::Input::Draw (void)
                 {
                   for ( UINT idx = 8; idx < 255 ; ++idx )
                   {
-                    if (ImGui::GetIO ().KeysDown [idx])
+                    if (ImGui::IsKeyPressed (ImGui_ImplWin32_VirtualKeyToImGuiKey (idx)))
                     {
                       SK_HID_AssignGamepadButtonBinding (
                         mapping_idx,

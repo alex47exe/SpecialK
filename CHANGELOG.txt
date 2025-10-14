@@ -1,4 +1,136 @@
-﻿25.10.4.3
+﻿25.10.12
+========
+ + Added user-configurable options for DualSense rumble strength and improved
+     or legacy mode.
+
+25.10.11.2
+==========
+ + Default Prince of Persia: The Lost Crown to use auto-adjusted fixedDeltaTime
+ + Change the tooltip on fixedDeltaTime from a warning to info.
+ + Changed DualSense controllers to use "enhanced rumble emulation".
+
+25.10.11.1
+==========
+ + Added option to automatically adjust Unity engine's fixedDeltaTime to
+     always match SK's configured framerate limit for a game.
+
+25.10.11
+========
+ + Added Unity Time.fixedDeltaTime setting to run Unity games at display
+     refresh instead of the usual hardcoded (50 Hz) value that stutters.
+
+25.10.10.1
+==========
+ + Fixed rare crash when attempting to zero-out HID input reports for
+     DualSense controllers.
+
+25.10.10
+========
+ + Implemented PlayStation rumble support for Unity games using Rewired.
+
+25.10.9
+=======
+ + Added support for InControl input fixes in Unity engine games using il2cpp
+     (i.e. Tunic).
+ + Added support for older versions of Mono used by Unity engine.
+
+25.10.7.1
+=========
+ + Implement a glyph cache for Unity engine (InControl) buttom prompts.
+
+25.10.7
+=======
+ + Unity engine button prompt preferences are now saved in profile INI.
+
+25.10.6.6
+=========
+ + Added additional error handling to Mono embedding in Unity.
+
+25.10.6.5
+=========
+ + Unity button prompt override now applies in real-time.
+ + Clear cached InControl controller state when blocking input to Unity.
+
+25.10.6.4
+=========
+ + Added experimental button prompt override for Unity engine games.
+    * Setting is not stored in INI at the moment; in order for the button
+        prompts to change, disconnect and reconnect your gamepad.
+
+25.10.6.3
+=========
+ + Added universal fix for missing PlayStation vibration in Unity engine games
+     using the InControl input backend and Mono embedding framework.
+ + Only show XInput Emulation HID warning when a PlayStation controller is
+     connected.
+
+25.10.6.2
+=========
+ + Added warnings if a mod uses winhttp.dll in a GOG game, because that will
+     break Galaxy and prevent achievements; it also breaks some of Special K!
+
+    * In other words, don't install mods using winhttp.dll, find a different
+        DLL name to use (!!)
+
+25.10.6.1
+=========
+ + Rename GOG Galaxy INI otions to Galaxy.System instead of Platform.System.
+ + Prevent initializing GOG Galaxy backend in non-GOG games.
+ + Reduce log spam for achievement updates by only printing achivements with
+     changed states.
+
+25.10.6
+=======
+ + Added more details to SK's control panel in GOG games that use Galaxy;
+     * Total time played, Sign-In (local) and Online (network) status.
+ + Added a passthrough codepath if SK's WriteFile hook is ever accidentally
+     called by SK (HID device files only).
+
+25.10.5.5
+=========
+ + Improved handling of PlayStation special buttons (i.e. Paddle/Macro/Touchpad)
+     in SDL games when binding the buttons to keyboard input.
+ + Adjusted file I/O hooks to passthrough reads for HID devices.
+
+25.10.5.4
+=========
+ + Implement undocumented memory pool (D3DPOOL_MANAGED_EX) for D3D9, to make
+     forcing D3D9Ex more likely to work.
+
+25.10.5.3
+=========
+ + Handle breaking API changes in Galaxy 1.151.0, 1.152.1 and 1.152.10 for the
+     galaxy::api::IUser interface.
+
+25.10.5.2
+=========
+ + Added option to force an online connection to GOG's backend servers when using
+     SpawnGalaxyCommunication (versus the default offline-mode).
+ + Added section to the GOG Enhancements control panel to configure the two things
+     mentioned above.
+
+25.10.5.1
+=========
+ + Added INI option to control whether Special K will start GOG's minimalistic
+     client (GalaxyCommunication.exe) if either it or the full-blown client are
+       not running.
+
+    [Platform.System]
+    SpawnGalaxyCommunication={true|false}  Default: true
+
+      Setting to true allows you to earn achievements even if the Galaxy client
+        is not running (i.e. because you used Special K's 'Instant Play').
+
+25.10.5
+=======
+ + Deactivate Special K's overlay while the GOG overlay is active.
+ + Added secret cheat mode to allow unlocking achievements on Steam/GOG; see
+     the source code if you want to know more about Galaxy Achievement Manager.
+
+    * This mode is disabled for Epic Games Store, because the EOS API has no
+        way to reset an achievement after it has been unlocked :-\
+
+25.10.4.3
 =========
  + Fixed Steam-only crash in Silent Hill f.
 

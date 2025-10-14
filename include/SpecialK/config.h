@@ -538,6 +538,8 @@ struct sk_config_t
   struct galaxy_s {
     float       overlay_luminance     = 4.375F; // 350 nits
     bool        present               = false;  // Is the overlay detected?
+    bool        spawn_mini_client     = true;
+    bool        require_online_mode   = false;
   } galaxy;
 
   struct discord_s {
@@ -1269,14 +1271,16 @@ struct sk_config_t
 
           Invalid
         };
-        float  trigger_strength_r = 1.0f;      // Vibration intensity (can be > 1.0 to strengthen game trigger vibration)
-        float  trigger_strength_l = 1.0f;      // Vibration intensity (can be > 1.0 to strengthen game trigger vibration)
+        float  trigger_strength_r =  1.0f;     // Vibration intensity (can be > 1.0 to strengthen game trigger vibration)
+        float  trigger_strength_l =  1.0f;     // Vibration intensity (can be > 1.0 to strengthen game trigger vibration)
         float  resist_strength_r  = -1.0f;     // Trigger resistance (0.0-1.0) [0.4275f]
         float  resist_strength_l  = -1.0f;     // Trigger resistance (0.0-1.0)
         float  resist_start_l     = -1.0f;     // Ratio (0.0-1.0) of trigger pull before resistance starts [0.18f]
         float  resist_start_r     = -1.0f;     // Ratio (0.0-1.0) of trigger pull before resistance starts
         effect trigger_effect_r   = Vibration; // Effect to apply for Xbox Impulse Triggers
         effect trigger_effect_l   = Vibration; // Effect to apply for Xbox Impulse Triggers
+        bool   improved_rumble    =  true;
+        float  rumble_strength    = 75.0f;
       } dualsense;
 
       bool    blocks_screensaver  =  true;
@@ -1911,6 +1915,7 @@ enum class SK_GAME_ID
   Dishonored2,                  // Dishonored2.exe
   TitanQuest,                   // tq.exe
   Stellaris,                    // stellaris.exe
+  PrinceOfPersia_TheLostCrown,  // TheLostCrown.exe, TheLostCrown_plus.exe
 
   UNKNOWN_GAME               = 0xffff
 };

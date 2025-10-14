@@ -362,6 +362,10 @@ SK_HID_DeviceFile::isInputAllowed (void) const
   if (bDisableDevice)
     return false;
 
+  // Blocking the HID file read/writes is unnecessary because
+  //   we have Unity's InControl code hooked.
+  extern bool SK_Unity_FixablePlayStationRumble;
+
   switch (device_type)
   {
     case sk_input_dev_type::Mouse:
@@ -369,7 +373,7 @@ SK_HID_DeviceFile::isInputAllowed (void) const
     case sk_input_dev_type::Keyboard:
       return (! SK_ImGui_WantKeyboardCapture ());
     case sk_input_dev_type::Gamepad:
-      return (! SK_ImGui_WantGamepadCapture ());
+      return (! SK_ImGui_WantGamepadCapture ()) || (SK_Unity_FixablePlayStationRumble);
     default: // No idea what this is, ignore it...
       break;
   }
@@ -917,8 +921,8 @@ WriteFile_Detour (HANDLE       hFile,
   {
     return
       WriteFile_Original (
-            hFile, lpBuffer, nNumberOfBytesToWrite,
-              lpNumberOfBytesWritten, lpOverlapped
+          hFile, lpBuffer, nNumberOfBytesToWrite,
+            lpNumberOfBytesWritten, lpOverlapped
       );
   }
 
@@ -931,6 +935,16 @@ WriteFile_Detour (HANDLE       hFile,
     {
       case SK_Input_DeviceFileType::HID:
       {
+        // Allow SK to passthrough if it winds up calling the hooked API
+        if (SK_GetCallingDLL () == SK_GetDLL ())
+        {
+          return
+            WriteFile_Original (
+                hFile, lpBuffer, nNumberOfBytesToWrite,
+                  lpNumberOfBytesWritten, lpOverlapped
+            );
+        }
+
         if (config.input.gamepad.disable_hid)
         {
           SetLastError (ERROR_DEVICE_NOT_CONNECTED);
@@ -1015,8 +1029,8 @@ ReadFile_Detour (HANDLE       hFile,
   {
     return
       ReadFile_Original (
-            hFile, lpBuffer, nNumberOfBytesToRead,
-              lpNumberOfBytesRead, lpOverlapped
+         hFile, lpBuffer, nNumberOfBytesToRead,
+           lpNumberOfBytesRead, lpOverlapped
       );
   }
 
@@ -1029,6 +1043,15 @@ ReadFile_Detour (HANDLE       hFile,
     {
       case SK_Input_DeviceFileType::HID:
       {
+        // Allow SK to passthrough if it winds up calling the hooked API
+        if (SK_GetCallingDLL () == SK_GetDLL ())
+        {
+          return
+            ReadFile_Original (
+               hFile, lpBuffer, nNumberOfBytesToRead,
+                 lpNumberOfBytesRead, lpOverlapped );
+        }
+
         if (((SK_HID_DeviceFile *)dev_ptr)->device_vid == SK_HID_VID_SONY)
         {
           config.input.gamepad.scepad.pollig_thread_tid =
@@ -1091,8 +1114,8 @@ ReadFile_Detour (HANDLE       hFile,
 
         BOOL bRet =
           ReadFile_Original (
-            hFile, pBuffer, nNumberOfBytesToRead,
-              lpNumberOfBytesRead, lpOverlapped
+             hFile, pBuffer, nNumberOfBytesToRead,
+               lpNumberOfBytesRead, lpOverlapped
           );
 
         if (lpOverlapped != nullptr && bRet)
@@ -1124,7 +1147,7 @@ ReadFile_Detour (HANDLE       hFile,
             SK_COMPAT_ApplyHIDAttachFixUps ();
 
             const bool harmful =
-              config.input.gamepad.xinput.emulate || SK_XInput_PollController (0);
+              SK_ImGui_HasPlayStationController () && (config.input.gamepad.xinput.emulate || SK_XInput_PollController (0));
 
             if (config.input.gamepad.hid.always_show_attach || harmful)
             {
@@ -1329,8 +1352,44 @@ ReadFile_Detour (HANDLE       hFile,
 
   return
     ReadFile_Original (
-      hFile, lpBuffer, nNumberOfBytesToRead,
-        lpNumberOfBytesRead, lpOverlapped );
+       hFile, lpBuffer, nNumberOfBytesToRead,
+         lpNumberOfBytesRead, lpOverlapped );
+}
+
+struct SK_DetouredOverlap {
+  LPVOID                          lpBuffer;
+  DWORD                           nNumberOfBytesToRead;
+  LPOVERLAPPED                    lpOverlapped;
+  LPOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine;
+  HANDLE                          hOriginalEvent;
+};
+
+concurrency::concurrent_unordered_map <LPOVERLAPPED, SK_DetouredOverlap> SK_OverlapDetours;
+
+void
+WINAPI
+SK_ErasingCompletionRoutine (_In_    DWORD        dwErrorCode,
+                             _In_    DWORD        dwNumberOfBytesTransfered,
+                             _Inout_ LPOVERLAPPED lpOverlapped)
+{
+  SK_LOG_FIRST_CALL
+
+  auto detoured_overlap =
+    SK_OverlapDetours [lpOverlapped];
+
+  // Erase the destination buffer to nullify input
+  memset (detoured_overlap.lpBuffer, 0, dwNumberOfBytesTransfered);
+
+  // Get the jump target and restore the original hEvent.
+  auto trampoline =
+    ((LPOVERLAPPED_COMPLETION_ROUTINE)lpOverlapped->hEvent);
+                                      lpOverlapped->hEvent =
+                           detoured_overlap.hOriginalEvent;
+
+  trampoline (
+    dwErrorCode,
+    dwNumberOfBytesTransfered,
+    detoured_overlap.lpOverlapped );
 }
 
 static
@@ -1344,10 +1403,29 @@ ReadFileEx_Detour (HANDLE                          hFile,
 {
   SK_LOG_FIRST_CALL
 
+  const auto &[ dev_file_type, dev_ptr, dev_allowed ] =
+    SK_Input_GetDeviceFileAndState (hFile);
+
+  //
+  // Detour the completion routine by re-writing the OVERLAPPED's hEvent
+  //   to point to a function that will erase the buffer on completion.
+  //
+  if (dev_file_type == SK_Input_DeviceFileType::HID && dev_allowed == false)
+  {
+    SK_OverlapDetours [lpOverlapped] = {
+      lpBuffer, nNumberOfBytesToRead,
+      lpOverlapped, lpCompletionRoutine,
+      lpOverlapped->hEvent
+    };
+
+    lpOverlapped->hEvent = (HANDLE)lpCompletionRoutine;
+    lpCompletionRoutine  = SK_ErasingCompletionRoutine;
+  }
+
   BOOL bRet =
     ReadFileEx_Original (
-      hFile, lpBuffer, nNumberOfBytesToRead,
-        lpOverlapped, lpCompletionRoutine
+       hFile, lpBuffer, nNumberOfBytesToRead,
+         lpOverlapped, lpCompletionRoutine
     );
 
   // Early-out
@@ -1360,13 +1438,16 @@ ReadFileEx_Detour (HANDLE                          hFile,
       bRet;
   }
 
-  const auto &[ dev_file_type, dev_ptr, dev_allowed ] =
-    SK_Input_GetDeviceFileAndState (hFile);
-
   switch (dev_file_type)
   {
     case SK_Input_DeviceFileType::HID:
     {
+      // Allow SK to passthrough if it winds up calling the hooked API
+      if (SK_GetCallingDLL () == SK_GetDLL ())
+      {
+        return bRet;
+      }
+
       if (config.input.gamepad.disable_hid)
       {
         SetLastError (ERROR_DEVICE_NOT_CONNECTED);
@@ -1378,16 +1459,13 @@ ReadFileEx_Detour (HANDLE                          hFile,
 
       if (! dev_allowed)
       {
-        if (CancelIo (hFile))
-        {
-          SK_HID_HIDE (hid_file->device_type);
+        SK_HID_HIDE (hid_file->device_type);
 
-          SK_RunOnce (
-            SK_LOGi0 (L"ReadFileEx HID IO Cancelled")
-          );
+        SK_RunOnce (
+          SK_LOGi0 (L"ReadFileEx HID IO Queued For Zeroing")
+        );
 
-          return TRUE;
-        }
+        return bRet;
       }
 
       uint8_t report_id = ((uint8_t *)(lpBuffer))[0];
@@ -1399,7 +1477,7 @@ ReadFileEx_Detour (HANDLE                          hFile,
         SK_COMPAT_ApplyHIDAttachFixUps ();
 
         const bool harmful =
-          config.input.gamepad.xinput.emulate || SK_XInput_PollController (0);
+          SK_ImGui_HasPlayStationController () && (config.input.gamepad.xinput.emulate || SK_XInput_PollController (0));
 
         if (config.input.gamepad.hid.always_show_attach || harmful)
         {
@@ -1869,14 +1947,6 @@ GetOverlappedResultEx_Detour (HANDLE       hFile,
                               DWORD        dwMilliseconds,
                               BOOL         bWait)
 {
-  // Allow SK to passthrough if it winds up calling the hooked API
-  if (SK_GetCallingDLL () == SK_GetDLL ())
-  {
-    return
-      GetOverlappedResultEx_Original ( hFile, lpOverlapped,
-        lpNumberOfBytesTransferred, dwMilliseconds, bWait );
-  }
-
   SK_LOG_FIRST_CALL
 
   const auto &[ dev_file_type, dev_ptr, dev_allowed ] =
@@ -1887,6 +1957,14 @@ GetOverlappedResultEx_Detour (HANDLE       hFile,
   {
     case SK_Input_DeviceFileType::HID:
     {
+      // Allow SK to passthrough if it winds up calling the hooked API
+      if (SK_GetCallingDLL () == SK_GetDLL ())
+      {
+        return
+          GetOverlappedResultEx_Original ( hFile, lpOverlapped,
+            lpNumberOfBytesTransferred, dwMilliseconds, bWait );
+      }
+
       if (config.input.gamepad.disable_hid)
       {
         SetLastError (ERROR_DEVICE_NOT_CONNECTED);
@@ -2046,14 +2124,6 @@ GetOverlappedResult_Detour (HANDLE       hFile,
                             LPDWORD      lpNumberOfBytesTransferred,
                             BOOL         bWait)
 {
-  // Allow SK to passthrough if it winds up calling the hooked API
-  if (SK_GetCallingDLL () == SK_GetDLL ())
-  {
-    return
-      GetOverlappedResult_Original ( hFile, lpOverlapped,
-        lpNumberOfBytesTransferred, bWait );
-  }
-
   SK_LOG_FIRST_CALL
 
   const auto &[ dev_file_type, dev_ptr, dev_allowed ] =
@@ -2064,6 +2134,14 @@ GetOverlappedResult_Detour (HANDLE       hFile,
   {
     case SK_Input_DeviceFileType::HID:
     {
+      // Allow SK to passthrough if it winds up calling the hooked API
+      if (SK_GetCallingDLL () == SK_GetDLL ())
+      {
+        return
+          GetOverlappedResult_Original ( hFile, lpOverlapped,
+            lpNumberOfBytesTransferred, bWait );
+      }
+
       if (config.input.gamepad.disable_hid)
       {
         SetLastError (ERROR_DEVICE_NOT_CONNECTED);
@@ -2694,6 +2772,9 @@ SK_Input_EnumOpenHIDFiles (void)
   static HANDLE hDeviceEnumThread =
   SK_Thread_CreateEx ([](LPVOID)->DWORD
   {
+    SK_Thread_ScopedPriority
+              scoped_prio (THREAD_PRIORITY_TIME_CRITICAL);
+
     auto* pTLS =
       SK_TLS_Bottom ();
 
@@ -2922,6 +3003,61 @@ SK_Input_EnumOpenHIDFiles (void)
   }, L"[SK] Existing HID Device Enumerator");
 }
 
+#include <SetupAPI.h>
+#include <initguid.h>
+#include <devpkey.h>
+#include <devpropdef.h>
+
+#pragma comment (lib, "setupapi.lib")
+
+using SetupDiGetDevicePropertyW_pfn = BOOL (WINAPI *)(
+    _In_         HDEVINFO         DeviceInfoSet,
+    _In_         PSP_DEVINFO_DATA DeviceInfoData,
+    _In_   CONST DEVPROPKEY      *PropertyKey,
+    _Out_        DEVPROPTYPE     *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_         DWORD            PropertyBufferSize,
+    _Out_opt_    PDWORD           RequiredSize,
+    _In_         DWORD            Flags);
+
+static SetupDiGetDevicePropertyW_pfn
+       SetupDiGetDevicePropertyW_Original = nullptr;
+
+BOOL
+WINAPI
+SetupDiGetDevicePropertyW_Detour (
+    _In_         HDEVINFO         DeviceInfoSet,
+    _In_         PSP_DEVINFO_DATA DeviceInfoData,
+    _In_   CONST DEVPROPKEY      *PropertyKey,
+    _Out_        DEVPROPTYPE     *PropertyType,
+    _Out_writes_bytes_to_opt_(PropertyBufferSize, *RequiredSize) PBYTE PropertyBuffer,
+    _In_         DWORD            PropertyBufferSize,
+    _Out_opt_    PDWORD           RequiredSize,
+    _In_         DWORD            Flags )
+{
+  SK_LOG_FIRST_CALL
+
+  BOOL bRet =
+    SetupDiGetDevicePropertyW_Original (
+      DeviceInfoSet, DeviceInfoData, PropertyKey, PropertyType,
+        PropertyBuffer, PropertyBufferSize, RequiredSize, Flags );
+
+  if (bRet && *PropertyKey == DEVPKEY_Device_HardwareIds && PropertyBuffer != nullptr)
+  {
+    if (StrStrIW ((const wchar_t *)PropertyBuffer, L"54c&PID_"))
+    {
+      SK_LOGi0 (L"GetDevicePropertyW (%ws)", (const wchar_t *)PropertyBuffer);
+
+      if (config.input.gamepad.scepad.hide_ds_edge_pid)
+      {
+
+      }
+    }
+  }
+
+  return bRet;
+}
+
 void
 SK_Input_HookHID (void)
 {
@@ -3038,6 +3174,11 @@ SK_Input_HookHID (void)
                               "GetOverlappedResultEx",
                                GetOverlappedResultEx_Detour,
       static_cast_p2p <void> (&GetOverlappedResultEx_Original) );
+
+    SK_CreateDLLHook2 (      L"SetupAPI.dll",
+                              "SetupDiGetDevicePropertyW",
+                               SetupDiGetDevicePropertyW_Detour,
+      static_cast_p2p <void> (&SetupDiGetDevicePropertyW_Original) );
 
     SK_CreateFile2           = CreateFile2_Original;
     SK_CreateFileW           = CreateFileW_Original;

@@ -142,11 +142,18 @@ public:
   {
     for (uint32 i = 0; i < SK_EOS_GetNumPossibleAchievements (); i++)
     {
-      const Achievement* achievement =
-                         achievements.list [i];
+      Achievement* achievement =
+                   achievements.list [i];
 
       if (achievement == nullptr || achievement->name_.empty ())
         continue;
+
+      uint32_t crc =
+        crc32c (0, achievement, (uintptr_t)&(achievement->ignored_)
+                              - (uintptr_t)  achievement);
+
+      if  (achievement->crc32c_ == crc) continue;
+      else achievement->crc32c_  = crc;
 
       epic_log->LogEx  (false, L"\n [%c] Achievement %03lu......: '%hs'\n",
                         achievement->unlocked_ ? L'X' : L' ',
@@ -475,6 +482,7 @@ SK_AchievementManager* SK_EOS_GetAchievementManager (void)
 void SK_EOS_IncAchievementStat (int idx) { if (eos_achievements->IngestStat != nullptr) eos_achievements->inc_achievement   (idx); }
 void SK_EOS_DecAchievementStat (int idx) { if (eos_achievements->IngestStat != nullptr) eos_achievements->dec_achievement   (idx); }
 void SK_EOS_ClearAchievement   (int idx) { if (eos_achievements->IngestStat != nullptr) eos_achievements->clear_achievement (idx); }
+void SK_EOS_UnlockAchievement  (int idx) { std::ignore = idx; /* Not Implemented Yet */ }
 
 EOS_UI_AddNotifyDisplaySettingsUpdated_pfn                      SK_EOS_OverlayManager::AddNotifyDisplaySettingsUpdated_Original       = nullptr;
 EOS_UI_RemoveNotifyDisplaySettingsUpdated_pfn                   SK_EOS_OverlayManager::RemoveNotifyDisplaySettingsUpdated_Original    = nullptr;
@@ -1084,6 +1092,8 @@ SK::EOS::Init (bool pre_load)
   if (config.platform.silent)
     return;
 
+  SK_PROFILE_FIRST_CALL
+
   const wchar_t*
     wszEOSDLLName =
       SK_RunLHIfBitness ( 64, L"EOSSDK-Win64-Shipping.dll",
@@ -1095,7 +1105,30 @@ SK::EOS::Init (bool pre_load)
     epic_log->init (L"logs/eos.log", L"wt+,ccs=UTF-8");
     epic_log->silent = config.platform.silent;
 
-    epic_log->Log (L"EOS DLL: %p", SK_LoadLibraryW (wszEOSDLLName));
+    if (! epic_log->silent)
+    {
+       steam_log->close ();
+      *steam_log =
+       *epic_log;
+       steam_log->cloned = true;
+    }
+
+    epic_log->Log (
+      L"EOS DLL.....: %ws",
+      SK_GetModuleFullName (
+        SK_GetModuleHandleW (wszEOSDLLName)
+                           ).c_str () );
+
+    std::wstring ver_str =
+      SK_GetDLLVersionShort (wszEOSDLLName);
+
+    int                                         major,  minor,  build,  rev = 0;
+    swscanf (ver_str.c_str (), L"%d.%d.%d.%d", &major, &minor, &build, &rev);
+
+    if (rev == 0)
+      epic_log->Log (L"EOS Version.: %d.%d.%d",    major, minor, build);
+    else // This is never expected to be non-zero
+      epic_log->Log (L"EOS Version.: %d.%d.%d.%d", major, minor, build, rev);
 
     SK_ICommandProcessor* cmd = nullptr;
 
@@ -1154,6 +1187,9 @@ SK::EOS::Init (bool pre_load)
   auto _SetupEOS =
   [&](void)
   {
+    SK_Thread_ScopedPriority
+              scoped_prio (THREAD_PRIORITY_TIME_CRITICAL);
+
     /* Since we probably missed the opportunity to catch EOS_Platform_Create,
          hook EOS_Platform_Tick and watch for the game's EOS_HPlatform */
 

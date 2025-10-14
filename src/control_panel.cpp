@@ -45,6 +45,7 @@
 #include <SpecialK/control_panel/window.h>
 
 #include <SpecialK/storefront/epic.h>
+#include <SpecialK/storefront/gog.h>
 
 #include <SpecialK/nvapi.h>
 
@@ -4560,7 +4561,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
         {
           if (ImGui::MenuItem ( "Recurring Donation + Perks", "Become a Patron", &selected ))
           {
-            SK_SteamOverlay_GoToURL (
+            SK_PlatformOverlay_GoToURL (
                 "https://www.patreon.com/bePatron?u=33423623", true
             );
           }
@@ -4591,7 +4592,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
 
           if (ImGui::MenuItem ( "One-Time Donation", "Donate with PayPal", &selected ))
           {
-            SK_SteamOverlay_GoToURL (
+            SK_PlatformOverlay_GoToURL (
                 "https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=8A7FSUFJ6KB2U", true
             );
           }
@@ -4601,7 +4602,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
 
         if (ImGui::MenuItem ( "Documentation", "Official Wiki", &selected ))
         {
-          SK_SteamOverlay_GoToURL (
+          SK_PlatformOverlay_GoToURL (
               "https://wiki.special-k.info", true
           );
         }
@@ -4613,7 +4614,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
                              )
            )
         {
-          SK_SteamOverlay_GoToURL ("https://discord.gg/specialk",
+          SK_PlatformOverlay_GoToURL ("https://discord.gg/specialk",
               true
           );
         }
@@ -4642,7 +4643,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
         {
           if (ImGui::MenuItem ( "Check PCGamingWiki for this Game", "Third-Party Site", &selected ))
           {
-            SK_SteamOverlay_GoToURL (
+            SK_PlatformOverlay_GoToURL (
                 ((0 < config.steam.appid && config.steam.appid <= INT32_MAX)
                   ? SK_FormatString (
                       "https://pcgamingwiki.com/api/appid.php?appid=%lu",
@@ -7438,7 +7439,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
     //ImGui::Checkbox ("Disk",         &SK_ImGui_Widgets->disk);
     //ImGui::SameLine ();
 
-    if (ImGui::Checkbox ("Volume Control", &volumecontrol))
+    if (ImGui::Checkbox ("Volume", &volumecontrol))
     {
       SK_ImGui_Widgets->volume_control->setVisible (volumecontrol).
                                         setActive  (volumecontrol);
@@ -7472,7 +7473,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
 
       if ((int)render_api & (int)SK_RenderAPI::D3D11)
       {
-        if (ImGui::Checkbox ("Pipeline Stats###Pipeline11", &pipeline11))
+        if (ImGui::Checkbox ("Pipeline###Pipeline11", &pipeline11))
         {
           SK_ImGui_Widgets->d3d11_pipeline->setVisible (pipeline11).
                                             setActive  (pipeline11);
@@ -7483,7 +7484,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
 
       if (rb.isReflexSupported ())
       {
-        if (ImGui::Checkbox ("Latency Analysis###ReflexLatency", &latency))
+        if (ImGui::Checkbox ("Latency###ReflexLatency", &latency))
         {
           SK_ImGui_Widgets->latency->setVisible (latency).
                                      setActive  (latency);
@@ -7494,7 +7495,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
     if (rb.isHDRCapable () || __SK_HDR_16BitSwap || __SK_HDR_10BitSwap)
     {
       ImGui::SameLine ();
-      if (ImGui::Checkbox ("HDR Display", &hdr))
+      if (ImGui::Checkbox ("HDR", &hdr))
       {
         SK_ImGui_Widgets->hdr_control->setVisible (hdr).
                                        setActive  (hdr);
@@ -7593,7 +7594,8 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
     }
 
     const bool bHasPlatformIntegration =
-      SK::EOS::UserID () != 0 || SK::SteamAPI::UserSteamID ().ConvertToUint64 () != 0;
+      SK::EOS::UserID () != 0 || SK::SteamAPI::UserSteamID ().ConvertToUint64 () != 0 ||
+                                   SK::Galaxy::UserID      ().       ToUint64 () != 0;
 
     if (bHasPlatformIntegration)
     {
@@ -7770,7 +7772,13 @@ SK_Platform_GetUserName (char* pszName, int max_len = 512)
   if (*pszName != L'\0')
     return;
 
-  if (SK::SteamAPI::AppID () != 0)
+  if (! SK::Galaxy::PlayerNickname ().empty ())
+  {
+    strncpy_s (pszName,                               max_len,
+               SK::Galaxy::PlayerNickname ().data (), _TRUNCATE);
+  }
+
+  else if (SK::SteamAPI::AppID () != 0)
   {
     if (SK_SteamAPI_Friends () != nullptr)
     {
