@@ -551,6 +551,18 @@ void SK_FetchBuiltinSounds (void)
   ));
 }
 
+void SK_Unity_PreInit (void)
+{
+  if (SK_GetModuleHandleW (L"mono.dll")           ||
+      SK_GetModuleHandleW (L"mono-2.0-bdwgc.dll") ||
+      SK_GetModuleHandleW (L"UnityPlayer.dll")    ||
+      SK_GetModuleHandleW (L"GameAssembly.dll"))
+  {
+    extern void SK_Unity_InitPlugin (void);
+                SK_Unity_InitPlugin ();
+  }
+}
+
 void
 __stdcall
 SK_InitCore (std::wstring, void* callback)
@@ -1116,6 +1128,8 @@ void BasicInit (void)
   // This installs hooks for COM's CoCreateInstance, used for various old DirectX
   //   features in addition to Special K's WMI monitoring services
   SK_WMI_Init ();
+
+  SK_Unity_PreInit ();
 
   SK::EOS::Init    (false);
   SK::Galaxy::Init (     );
@@ -3017,6 +3031,21 @@ SK_ShutdownCore (const wchar_t* backend)
   if (__SK_bypass)
     return true;
 
+
+  // Reset haptics
+  //
+  for (auto& ps_controller : SK_HID_PlayStationControllers)
+  {
+    if (ps_controller._vibration.last_set > SK::ControlPanel::current_time - 500UL)
+    {
+      ps_controller.setVibration   (0, 0, 0, 0);
+      ps_controller.write_output_report (false);
+      SK_SleepEx (15UL, FALSE);
+    }
+  }
+
+
+
   static bool
       log_unloads = true;
   if (log_unloads)
@@ -4849,6 +4878,12 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
   if (game_window.size_move)
   {
     SK_Window_RepositionIfNeeded ();
+  }
+
+  extern HANDLE SK_Unity_GetFrameStatsWaitEvent;
+  if (          SK_Unity_GetFrameStatsWaitEvent != 0)
+  {
+    SetEvent (SK_Unity_GetFrameStatsWaitEvent);
   }
 
   SK_GetCurrentRenderBackend ().in_present_call = false;

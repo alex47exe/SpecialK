@@ -1103,6 +1103,50 @@ IWrapDXGISwapChain::GetFrameStatistics (DXGI_FRAME_STATISTICS *pStats)
   // SK calls through its own wrapper, ignore those calls...
   SK_LOG_FIRST_EXTERNAL_CALL
 
+  static HMODULE hModUnityPlayer =
+    SK_GetModuleHandleW (L"UnityPlayer.dll");
+
+  if (SK_GetCurrentRenderBackend ().windows.unity && SK_GetCallingDLL () == hModUnityPlayer)
+  {
+    extern HANDLE SK_Unity_GetFrameStatsWaitEvent;
+    extern bool   SK_Unity_PaceGameThread;
+    extern bool   SK_Unity_OneFrameLag;
+
+    if (SK_Unity_PaceGameThread)
+    {
+      SK_RunOnce (
+        SK_Unity_GetFrameStatsWaitEvent =
+          SK_CreateEvent (nullptr, FALSE, TRUE, nullptr)
+      );
+
+      static HANDLE   hTimer     = 0;
+      static LONGLONG next_frame = 0;
+
+      auto *pLimiter =
+        SK::Framerate::GetLimiter (SK_GetCurrentRenderBackend ().swapchain);
+      if (pLimiter != nullptr)
+      {
+        next_frame = pLimiter->get_next_tick () + (SK_Unity_OneFrameLag ? pLimiter->get_ticks_per_frame () : 0);
+      }
+
+      //DWORD dwTimeStart = SK_timeGetTime ();
+
+      void SK_Framerate_WaitUntilQPC (LONGLONG llQPC, HANDLE& hTimer);
+           SK_Framerate_WaitUntilQPC (next_frame, hTimer);
+
+      //SK_LOGi0 (L"Waited %d msecs on Unity Game Thread...", SK_timeGetTime () - dwTimeStart);
+
+      // Unity doesn't need to see this, give it fake data...
+      //   the actual reliability of the frame stats is much lower
+      //     than Unity believes and they are better off with an error :)
+      auto ret = E_ACCESSDENIED;
+      //auto ret =
+      //  pReal->GetFrameStatistics (pStats);
+
+      return ret;
+    }
+  }
+
   return
     pReal->GetFrameStatistics (pStats);
 }
@@ -1412,11 +1456,6 @@ IWrapDXGISwapChain::GetFrameLatencyWaitableObject (void)
       std::clamp (config.render.framerate.pre_render_limit, 1, 14) );
   }
 
-  //auto& rb =
-  //  SK_GetCurrentRenderBackend ();
-  //
-  //// Disable waitable SwapChains when HW Flip Queue is active, they don't work right...
-  //if (rb.windows.unity || rb.windows.unreal)// || rb.displays [rb.active_display].wddm_caps._3_0.HwFlipQueueEnabled)
   if (! config.render.framerate.engine_overrides.allow_latency_wait)
   {
     static HANDLE fake_waitable =

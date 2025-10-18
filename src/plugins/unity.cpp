@@ -81,6 +81,10 @@ float SK_Unity_OriginalFixedDeltaTime   =  0.0f;
 int   SK_Unity_GlyphEnumVal             =    -1;
 bool  SK_Unity_GlyphCacheDirty          = false;
 
+HANDLE SK_Unity_GetFrameStatsWaitEvent = 0;
+bool   SK_Unity_PaceGameThread         = true;
+bool   SK_Unity_OneFrameLag            = false;
+
 bool SK_Unity_HookMonoInit        (void);
 void SK_Unity_SetInputPollingFreq (float PollingHz);
 bool SK_Unity_SetupInputHooks     (void);
@@ -98,6 +102,19 @@ SK_Unity_PlugInCfg (void)
   if (! (SK_ImGui_HasPlayStationController () || SK_XInput_PollController (0)))
     show_controller_cfg = false;
 
+  SK_RunOnce (SK_Unity_SetFixedDeltaTime (0.0f));
+
+  const bool has_fixed_tick  = SK_Unity_OriginalFixedDeltaTime != 0.0f;
+  const bool has_game_pacing = SK_Unity_GetFrameStatsWaitEvent != 0;
+
+  if (! (show_controller_cfg || has_fixed_tick || has_game_pacing))
+  {
+    ImGui::TextColored (ImVec4 (0.999f, 0.5f, 0.25f, 1.f), ICON_FA_INFO_CIRCLE);
+    ImGui::SameLine    ();
+    ImGui::TextUnformatted ("No Unity-specific features are supported in this game.");
+    return true;
+  }
+
   if (ImGui::CollapsingHeader ("Unity Engine", ImGuiTreeNodeFlags_DefaultOpen))
   {
     ImGui::TreePush       ("");
@@ -108,90 +125,115 @@ SK_Unity_PlugInCfg (void)
     float delta_hz =
       (1.0f / SK_Unity_Cfg.time_fixed_delta_time);
 
-    if (SK_Unity_Cfg.fixed_delta_auto_sync) ImGui::BeginDisabled ();
+    if (has_fixed_tick)
     {
-      if (SK_Unity_Cfg.time_fixed_delta_time == SK_Unity_OriginalFixedDeltaTime)
+      if (SK_Unity_Cfg.fixed_delta_auto_sync) ImGui::BeginDisabled ();
       {
-        ImGui::TextColored    (ImVec4 (0.333f, 0.666f, 0.999f, 1.f), ICON_FA_INFO_CIRCLE);
-        ImGui::SameLine       ();
-        ImGui::SetItemTooltip ("Unity games will run smoother if you match Framerate to Fixed Delta Time.");
-        ImGui::SameLine       ();
-      }
-
-      if (ImGui::SliderFloat ("Unity Fixed Delta Time", &delta_hz, 1.0f, 240.0f, "%.3f Hz"))
-      {
-        SK_Unity_Cfg.time_fixed_delta_time = delta_hz > 0.0f ? 1.0f / delta_hz : SK_Unity_OriginalFixedDeltaTime;
-        SK_Unity_Cfg.time_fixed_delta_time.store ();
-
-        config.utility.save_async ();
-
-        SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
-      }
-      
-      if (SK_ImGui_IsItemRightClicked ())
-      {
-        if (__target_fps > 0.0f)
+        if (SK_Unity_Cfg.time_fixed_delta_time == SK_Unity_OriginalFixedDeltaTime)
         {
-          SK_Unity_Cfg.time_fixed_delta_time = 1.0f / __target_fps;
+          ImGui::TextColored    (ImVec4 (0.333f, 0.666f, 0.999f, 1.f), ICON_FA_INFO_CIRCLE);
+          ImGui::SameLine       ();
+          ImGui::SetItemTooltip ("Unity games will run smoother if you match Framerate to Fixed Delta Time.");
+          ImGui::SameLine       ();
+        }
+
+        if (ImGui::SliderFloat ("Unity Fixed Delta Time", &delta_hz, 1.0f, 240.0f, "%.3f Hz"))
+        {
+          SK_Unity_Cfg.time_fixed_delta_time = delta_hz > 0.0f ? 1.0f / delta_hz : SK_Unity_OriginalFixedDeltaTime;
           SK_Unity_Cfg.time_fixed_delta_time.store ();
 
           config.utility.save_async ();
 
           SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
         }
+        
+        if (SK_ImGui_IsItemRightClicked ())
+        {
+          if (__target_fps > 0.0f)
+          {
+            SK_Unity_Cfg.time_fixed_delta_time = 1.0f / __target_fps;
+            SK_Unity_Cfg.time_fixed_delta_time.store ();
+
+            config.utility.save_async ();
+
+            SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
+          }
+        }
+
+        if (ImGui::BeginItemTooltip ())
+        { ImGui::TextUnformatted    ("Set the animation rate for Unity.");
+          ImGui::Separator          ();
+          ImGui::BulletText         ("This may cause physics issues in some games if changed, but can be reset easily.");
+          if (__target_fps > 0.0f)
+          { ImGui::Separator        ();
+            ImGui::TextUnformatted  (" " ICON_FA_MOUSE " Right-click to Match Framerate Limit");
+          } ImGui::EndTooltip       ();
+        }
+        ImGui::SameLine ();
       }
 
-      if (ImGui::BeginItemTooltip ())
-      { ImGui::TextUnformatted    ("Set the animation rate for Unity.");
-        ImGui::Separator          ();
-        ImGui::BulletText         ("This may cause physics issues in some games if changed, but can be reset easily.");
-        if (__target_fps > 0.0f)
-        { ImGui::Separator        ();
-          ImGui::TextUnformatted  (" " ICON_FA_MOUSE " Right-click to Match Framerate Limit");
-        } ImGui::EndTooltip       ();
-      }
-      ImGui::SameLine ();
-    }
-
-    auto _Reset = [&](void)
-    {
-      SK_Unity_Cfg.time_fixed_delta_time = SK_Unity_OriginalFixedDeltaTime;
-      SK_Unity_Cfg.time_fixed_delta_time.store ();
-
-      SK_Unity_Cfg.fixed_delta_auto_sync = false;
-      SK_Unity_Cfg.fixed_delta_auto_sync.store ();
-
-      config.utility.save_async ();
-
-      SK_Unity_SetFixedDeltaTime (SK_Unity_OriginalFixedDeltaTime);
-    };
-
-    if (SK_Unity_Cfg.fixed_delta_auto_sync) ImGui::EndDisabled ();
-
-    if (ImGui::Checkbox ("Match Framerate Limit", &SK_Unity_Cfg.fixed_delta_auto_sync))
-    {
-      if (SK_Unity_Cfg.fixed_delta_auto_sync && __target_fps > 0.0f)
+      auto _Reset = [&](void)
       {
-        SK_Unity_Cfg.time_fixed_delta_time = 1.0f / __target_fps;
+        SK_Unity_Cfg.time_fixed_delta_time = SK_Unity_OriginalFixedDeltaTime;
         SK_Unity_Cfg.time_fixed_delta_time.store ();
+
+        SK_Unity_Cfg.fixed_delta_auto_sync = false;
         SK_Unity_Cfg.fixed_delta_auto_sync.store ();
 
         config.utility.save_async ();
 
-        SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
+        SK_Unity_SetFixedDeltaTime (SK_Unity_OriginalFixedDeltaTime);
+      };
+
+      if (SK_Unity_Cfg.fixed_delta_auto_sync) ImGui::EndDisabled ();
+
+      if (ImGui::Checkbox ("Match Framerate Limit", &SK_Unity_Cfg.fixed_delta_auto_sync))
+      {
+        if (SK_Unity_Cfg.fixed_delta_auto_sync && __target_fps > 0.0f)
+        {
+          SK_Unity_Cfg.time_fixed_delta_time = 1.0f / __target_fps;
+          SK_Unity_Cfg.time_fixed_delta_time.store ();
+          SK_Unity_Cfg.fixed_delta_auto_sync.store ();
+
+          config.utility.save_async ();
+
+          SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
+        }
+
+        else if (! SK_Unity_Cfg.fixed_delta_auto_sync) _Reset ();
       }
 
-      else if (! SK_Unity_Cfg.fixed_delta_auto_sync) _Reset ();
+      ImGui::SetItemTooltip ("Enable for Smoothest Frame Pacing");
+
+      if (SK_Unity_OriginalFixedDeltaTime != SK_Unity_Cfg.time_fixed_delta_time)
+      {
+        ImGui::SameLine   (       );
+        if (ImGui::Button ("Reset"))
+        {
+          _Reset ();
+        }
+      }
     }
 
-    ImGui::SetItemTooltip ("Enable for Smoothest Frame Pacing");
-
-    if (SK_Unity_OriginalFixedDeltaTime != SK_Unity_Cfg.time_fixed_delta_time)
+    if (has_game_pacing)
     {
-      ImGui::SameLine   (       );
-      if (ImGui::Button ("Reset"))
+      ImGui::Checkbox ("Pace Unity Game Thread", &SK_Unity_PaceGameThread);
+
+      if (ImGui::BeginItemTooltip ())
       {
-        _Reset ();
+        ImGui::TextUnformatted ("Experimental game/render thread framerate limiting");
+        ImGui::Separator       ();
+        ImGui::BulletText      ("Normal framerate limiting only limits the render thread.");
+        ImGui::BulletText      ("This mode reduces latency by one frame and should be smoother.");
+        ImGui::Separator       ();
+        ImGui::TextUnformatted ("Latency reduction is not reflected in Reflex timing diagram.");
+        ImGui::EndTooltip ();
+      }
+
+      if (SK_Unity_PaceGameThread)
+      {
+        ImGui::SameLine ();
+        ImGui::Checkbox ("Maximum Lag Reduction", &SK_Unity_OneFrameLag);
       }
     }
 
@@ -427,14 +469,19 @@ SK_Unity_InitPlugin (void)
     );
 
     SK_Unity_Cfg.gamepad_glyphs_utf8 = SK_WideCharToUTF8 (SK_Unity_Cfg.gamepad_glyphs);
-
-    plugin_mgr->config_fns.emplace      (SK_Unity_PlugInCfg);
-    plugin_mgr->first_frame_fns.emplace (SK_Unity_PresentFirstFrame);
-    plugin_mgr->end_frame_fns.emplace   (SK_Unity_EndFrame);
-
-    SK_Unity_HookMonoInit ();
-    SK_Unity_Hookil2cppInit ();
   );
+
+  bool init  = SK_Unity_HookMonoInit   ();
+       init |= SK_Unity_Hookil2cppInit ();
+
+  if (init)
+  {
+    SK_RunOnce (
+      plugin_mgr->config_fns.emplace      (SK_Unity_PlugInCfg);
+      plugin_mgr->first_frame_fns.emplace (SK_Unity_PresentFirstFrame);
+      plugin_mgr->end_frame_fns.emplace   (SK_Unity_EndFrame);
+    );
+  }
 }
 
 #include <mono/metadata/assembly.h>
@@ -619,6 +666,9 @@ MonoThread* AttachThread (void)
 
   SK_LOGi3 (L"Attaching Mono to Thread: %x", GetCurrentThreadId ());
 
+  if (SK_Unity_MonoDomain == nullptr)
+      SK_Unity_MonoDomain = SK_mono_get_root_domain ();
+
   return
     SK_mono_thread_attach (SK_Unity_MonoDomain);
 }
@@ -690,6 +740,11 @@ static constexpr wchar_t* mono_alt_path = LR"(Mono\EmbedRuntime\mono.dll)";
 bool
 SK_Unity_HookMonoInit (void)
 {
+  static bool
+      once = false;
+  if (once)
+    return once;
+
   const wchar_t* loaded_mono_dll = mono_dll;
 
   SK_LoadLibraryW (mono_path);
@@ -711,6 +766,8 @@ SK_Unity_HookMonoInit (void)
 
     loaded_mono_dll = mono_alt_dll;
   }
+
+  once = true;
 
   SK_mono_domain_assembly_open         = reinterpret_cast <mono_domain_assembly_open_pfn>         (SK_GetProcAddress (hMono, "mono_domain_assembly_open"));
   SK_mono_assembly_get_image           = reinterpret_cast <mono_assembly_get_image_pfn>           (SK_GetProcAddress (hMono, "mono_assembly_get_image"));
@@ -825,15 +882,16 @@ struct {
   } InControl;
 } SK_Unity_MonoClasses;
 
-typedef int (*il2cpp_init_pfn)(const char* domain_name);
-typedef int (*il2cpp_init_utf16_pfn)(const wchar_t* domain_name);
-typedef void (*il2cpp_shutdown_pfn)(void);
+typedef int (__fastcall *il2cpp_init_pfn)(const char* domain_name);
+typedef int (__fastcall *il2cpp_init_utf16_pfn)(const wchar_t* domain_name);
+typedef void (__fastcall *il2cpp_shutdown_pfn)(void);
 
 static il2cpp_init_pfn       il2cpp_init_Original       = nullptr;
 static il2cpp_init_utf16_pfn il2cpp_init_utf16_Original = nullptr;
 static il2cpp_shutdown_pfn   il2cpp_shutdown_Original   = nullptr;
 
 int
+__fastcall
 il2cpp_init_Detour (const char* domain_name)
 {
   SK_LOG_FIRST_CALL
@@ -847,6 +905,7 @@ il2cpp_init_Detour (const char* domain_name)
 }
 
 int
+__fastcall
 il2cpp_init_utf16_Detour (const wchar_t* domain_name)
 {
   SK_LOG_FIRST_CALL
@@ -860,6 +919,7 @@ il2cpp_init_utf16_Detour (const wchar_t* domain_name)
 }
 
 void
+__fastcall
 il2cpp_shutdown_Detour (void)
 {
   SK_LOG_FIRST_CALL
@@ -871,11 +931,18 @@ il2cpp_shutdown_Detour (void)
 bool
 SK_Unity_Hookil2cppInit (void)
 {
+  static bool
+      once = false;
+  if (once)
+    return once;
+
   HMODULE hModIl2Cpp =
     GetModuleHandleW (L"GameAssembly.dll");
 
   if (hModIl2Cpp == NULL)
     return false;
+
+  once = true;
 
   Il2cpp::initialize ();
 
@@ -995,7 +1062,14 @@ bool LoadMonoAssembly (const char* assemblyName)
     SK_Unity_MonoDomain;
 
   if (pDomain == nullptr)
-    return false;
+  {
+    pDomain = SK_mono_get_root_domain ();
+
+    if (pDomain == nullptr)
+    {
+      return false;
+    }
+  }
 
   AttachThread ();
  
@@ -1590,19 +1664,30 @@ SK_Unity_SetFixedDeltaTime (float fixed_delta_time)
       AttachThread ();
 
       SK_RunOnce (LoadMonoAssembly ("UnityEngine.CoreModule"));
+      SK_RunOnce (LoadMonoAssembly ("UnityEngine"));
 
-      static MonoMethod* set_fixedDeltaTime = SK_mono_class_get_method_from_name (SK_mono_class_from_name (SK_mono_image_loaded ("UnityEngine.CoreModule"), "UnityEngine", "Time"), "set_fixedDeltaTime", 1);
-      static MonoMethod* get_fixedDeltaTime = SK_mono_class_get_method_from_name (SK_mono_class_from_name (SK_mono_image_loaded ("UnityEngine.CoreModule"), "UnityEngine", "Time"), "get_fixedDeltaTime", 0);
+      auto core_module = SK_mono_image_loaded ("UnityEngine.CoreModule");
+      if (!core_module)
+           core_module = SK_mono_image_loaded ("UnityEngine");
+
+      static auto klass = SK_mono_class_from_name (core_module, "UnityEngine", "Time");
+
+      static MonoMethod* set_fixedDeltaTime = klass != nullptr ? SK_mono_class_get_method_from_name (klass, "set_fixedDeltaTime", 1) : nullptr;
+      static MonoMethod* get_fixedDeltaTime = klass != nullptr ? SK_mono_class_get_method_from_name (klass, "get_fixedDeltaTime", 0) : nullptr;
 
       if (set_fixedDeltaTime != nullptr &&
           get_fixedDeltaTime != nullptr)
       {
         if (SK_Unity_OriginalFixedDeltaTime == 0.0f)
         {
+          MonoObject* exc = nullptr;
           MonoObject* obj =
-            SK_mono_runtime_invoke (get_fixedDeltaTime, nullptr, nullptr, nullptr);
+            SK_mono_runtime_invoke (get_fixedDeltaTime, nullptr, nullptr, &exc);
 
-          SK_Unity_OriginalFixedDeltaTime = *(float *)SK_mono_object_unbox (obj);
+          if (obj != nullptr)
+          {
+            SK_Unity_OriginalFixedDeltaTime = *(float *)SK_mono_object_unbox (obj);
+          }
         }
 
         if (fixed_delta_time_static != 0.0f)
@@ -1625,7 +1710,7 @@ SK_Unity_SetFixedDeltaTime (float fixed_delta_time)
       SK_Thread_CloseSelf ();
 
       return 0;
-    }, L"[SK] SetFixedDeltaTime_il2cpp");
+    }, L"[SK] SetFixedDeltaTime_mono");
   }
 
   else
@@ -1636,7 +1721,9 @@ SK_Unity_SetFixedDeltaTime (float fixed_delta_time)
 
       static il2cpp::Wrapper wrapper;
 
-      static auto image = wrapper.get_image ("UnityEngine.CoreModule.dll");
+      static auto image = wrapper.get_image ("UnityEngine.CoreModule.dll") != nullptr ?
+                          wrapper.get_image ("UnityEngine.CoreModule.dll")            :
+                          wrapper.get_image ("UnityEngine.dll");
       static auto klass = image != nullptr ? image->get_class ("Time", "UnityEngine") : nullptr;
 
       static Method* set_fixedDeltaTime = klass != nullptr ? klass->get_method ("set_fixedDeltaTime", 1) : nullptr;
@@ -1647,9 +1734,13 @@ SK_Unity_SetFixedDeltaTime (float fixed_delta_time)
       {
         if (SK_Unity_OriginalFixedDeltaTime == 0.0f)
         {
-          void* obj = Il2cpp::method_call (get_fixedDeltaTime, nullptr, nullptr, nullptr);
+          void* exc = nullptr;
+          void* obj = Il2cpp::method_call (get_fixedDeltaTime, nullptr, nullptr, &exc);
 
-          SK_Unity_OriginalFixedDeltaTime = *(float *)Il2cpp::object_unbox (obj);
+          if (obj != nullptr)
+          {
+            SK_Unity_OriginalFixedDeltaTime = *(float *)Il2cpp::object_unbox (obj);
+          }
         }
 
         if (fixed_delta_time_static != 0.0f)
@@ -1893,9 +1984,9 @@ static void InControl_NativeInputDevice_Vibrate_Detour (MonoObject* __this, floa
   InControl_NativeInputDevice_Vibrate_Original (__this, leftSpeed, rightSpeed);
 }
 
-using InControl_InputDevice_OnAttached_il2cpp_pfn    = void (*)(void*);
-using InControl_NativeInputDevice_Vibrate_il2cpp_pfn = void (*)(void*, float leftSpeed, float rightSpeed);
-using InControl_NativeInputDevice_Update_il2cpp_pfn  = void (*)(void*, ULONG updateTick, float deltaTime);
+using InControl_InputDevice_OnAttached_il2cpp_pfn    = void (__fastcall *)(void*);
+using InControl_NativeInputDevice_Vibrate_il2cpp_pfn = void (__fastcall *)(void*, float leftSpeed, float rightSpeed);
+using InControl_NativeInputDevice_Update_il2cpp_pfn  = void (__fastcall *)(void*, ULONG updateTick, float deltaTime);
 
 static InControl_InputDevice_OnAttached_il2cpp_pfn    InControl_InputDevice_OnAttached_il2cpp_Original    = nullptr;
 static InControl_NativeInputDevice_Vibrate_il2cpp_pfn InControl_NativeInputDevice_Vibrate_il2cpp_Original = nullptr;
@@ -1927,7 +2018,7 @@ static void SK_Unity_InControl_SetDeviceStyle_il2cpp (void* device)
   method->invoke (device, params);
 }
 
-static void InControl_InputDevice_OnAttached_il2cpp_Detour (void* __this)
+static void __fastcall InControl_InputDevice_OnAttached_il2cpp_Detour (void* __this)
 {
   SK_LOG_FIRST_CALL
 
@@ -1936,7 +2027,7 @@ static void InControl_InputDevice_OnAttached_il2cpp_Detour (void* __this)
   SK_Unity_InControl_SetDeviceStyle_il2cpp (__this);
 }
 
-static void InControl_NativeInputDevice_Update_il2cpp_Detour (void* __this, ULONG updateTick, float deltaTime)
+static void __fastcall InControl_NativeInputDevice_Update_il2cpp_Detour (void* __this, ULONG updateTick, float deltaTime)
 {
   SK_LOG_FIRST_CALL
 
@@ -1975,7 +2066,7 @@ static void InControl_NativeInputDevice_Update_il2cpp_Detour (void* __this, ULON
     SK_Unity_InControl_SetDeviceStyle_il2cpp (__this);
 }
 
-static void InControl_NativeInputDevice_Vibrate_il2cpp_Detour (void* __this, float leftSpeed, float rightSpeed)
+static void __fastcall InControl_NativeInputDevice_Vibrate_il2cpp_Detour (void* __this, float leftSpeed, float rightSpeed)
 {
   SK_LOG_FIRST_CALL
 
@@ -1998,21 +2089,21 @@ struct {
   DWORD until      =    0;
 } static motors_ [2];
 
-using  VibrationController_Rumble_il2cpp_pfn = void(*)(void*,void*,float level, float duration);
+using  VibrationController_Rumble_il2cpp_pfn = void(__fastcall *)(void*,void*,float level, float duration);
 static VibrationController_Rumble_il2cpp_pfn
        VibrationController_Rumble_il2cpp_Original = nullptr;
 
-using  Rewired_Joystick_get_supportsVibration_il2cpp_pfn = bool(*)(void*);
+using  Rewired_Joystick_get_supportsVibration_il2cpp_pfn = bool(__fastcall *)(void*);
 static Rewired_Joystick_get_supportsVibration_il2cpp_pfn
        Rewired_Joystick_get_supportsVibration_il2cpp_Original = nullptr;
 
-using  Rewired_Joystick_get_vibrationMotorCount_il2cpp_pfn = int(*)(void*);
+using  Rewired_Joystick_get_vibrationMotorCount_il2cpp_pfn = int(__fastcall *)(void*);
 static Rewired_Joystick_get_vibrationMotorCount_il2cpp_pfn
        Rewired_Joystick_get_vibrationMotorCount_il2cpp_Original = nullptr;
 
-using Rewired_Joystick_SetVibration4_il2cpp_pfn  = void(*)(void*, float leftMotorLevel, float rightMotorLevel, float leftMotorDuration, float rightMotorDuration);
-using Rewired_Joystick_SetVibration2_il2cpp_pfn  = void(*)(void*, float leftMotorLevel, float rightMotorLevel);
-using Rewired_Joystick_StopVibration_il2cpp_pfn = void(*)(void*);
+using Rewired_Joystick_SetVibration4_il2cpp_pfn  = void(__fastcall *)(void*, float leftMotorLevel, float rightMotorLevel, float leftMotorDuration, float rightMotorDuration);
+using Rewired_Joystick_SetVibration2_il2cpp_pfn  = void(__fastcall *)(void*, float leftMotorLevel, float rightMotorLevel);
+using Rewired_Joystick_StopVibration_il2cpp_pfn  = void(__fastcall *)(void*);
 
 static Rewired_Joystick_SetVibration4_il2cpp_pfn
        Rewired_Joystick_SetVibration4_il2cpp_Original = nullptr;
@@ -2082,6 +2173,7 @@ void Rewired_Joystick_SetVibration_Impl (float leftMotorLevel, float rightMotorL
 
 static
 void
+__fastcall
 VibrationController_Rumble_il2cpp_Detour (void* __this, void* __player, float level, float duration)
 {
   SK_LOG_FIRST_CALL
@@ -2093,6 +2185,7 @@ VibrationController_Rumble_il2cpp_Detour (void* __this, void* __player, float le
 
 static
 void
+__fastcall
 Rewired_Joystick_SetVibration4_il2cpp_Detour (void* __this, float leftMotorLevel, float rightMotorLevel, float leftMotorDuration, float rightMotorDuration)
 {
   SK_LOG_FIRST_CALL
@@ -2104,6 +2197,7 @@ Rewired_Joystick_SetVibration4_il2cpp_Detour (void* __this, float leftMotorLevel
 
 static
 void
+__fastcall
 Rewired_Joystick_SetVibration2_il2cpp_Detour (void* __this, float leftMotorLevel, float rightMotorLevel)
 {
   SK_LOG_FIRST_CALL
@@ -2115,6 +2209,7 @@ Rewired_Joystick_SetVibration2_il2cpp_Detour (void* __this, float leftMotorLevel
 
 static
 void
+__fastcall
 Rewired_Joystick_StopVibration_il2cpp_Detour (void* __this)
 {
   SK_LOG_FIRST_CALL
@@ -2130,6 +2225,7 @@ Rewired_Joystick_StopVibration_il2cpp_Detour (void* __this)
 
 static
 bool
+__fastcall
 Rewired_Joystick_get_supportsVibration_il2cpp_Detour (void* __this)
 {
   SK_LOG_FIRST_CALL
@@ -2155,6 +2251,7 @@ Rewired_Joystick_get_supportsVibration_il2cpp_Detour (void* __this)
 
 static
 int
+__fastcall
 Rewired_Joystick_get_vibrationMotorCount_il2cpp_Detour (void* __this)
 {
   SK_LOG_FIRST_CALL

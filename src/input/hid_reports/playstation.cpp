@@ -971,6 +971,9 @@ SK_HID_PlayStationDevice::setVibration (
       max_val = 255;
   }
 
+  const ULONG last_left  = ReadULongAcquire (&_vibration.left);
+  const ULONG last_right = ReadULongAcquire (&_vibration.right);
+
   WriteULongRelease (&_vibration.left,
     std::min (255UL,
       static_cast <ULONG> (
@@ -982,6 +985,9 @@ SK_HID_PlayStationDevice::setVibration (
       static_cast <ULONG> (
         std::clamp (static_cast <double> (high_freq)/
                     static_cast <double> (max_val), 0.0, 1.0) * 256.0)));
+
+  const ULONG last_trigger_left  = ReadULongAcquire (&_vibration.trigger.left);
+  const ULONG last_trigger_right = ReadULongAcquire (&_vibration.trigger.right);
 
   WriteULongRelease (&_vibration.trigger.left,
     std::min (255UL,
@@ -996,8 +1002,15 @@ SK_HID_PlayStationDevice::setVibration (
                     static_cast <double> (max_val), 0.0, 1.0) * 256.0)));
 
   if (low_freq != 0 || high_freq != 0 || left_trigger != 0 || right_trigger != 0)
-  WriteULongRelease (&_vibration.last_set, SK::ControlPanel::current_time);
-  WriteRelease      (&bNeedOutput, TRUE);
+  {
+    WriteULongRelease (&_vibration.last_set, SK::ControlPanel::current_time);
+  }
+
+  if (last_left  != ReadULongAcquire (&_vibration.left)  || last_trigger_left  != ReadULongAcquire (&_vibration.trigger.left) ||
+      last_right != ReadULongAcquire (&_vibration.right) || last_trigger_right != ReadULongAcquire (&_vibration.trigger.right))
+  {
+    WriteRelease (&bNeedOutput, TRUE);
+  }
 }
 
 void
@@ -1024,6 +1037,9 @@ SK_HID_PlayStationDevice::setVibration (
       max_val = 255;
   }
 
+  const ULONG last_left  = ReadULongAcquire (&_vibration.left);
+  const ULONG last_right = ReadULongAcquire (&_vibration.right);
+
   WriteULongRelease (&_vibration.left,
     std::min (255UL,
       static_cast <ULONG> (
@@ -1040,8 +1056,15 @@ SK_HID_PlayStationDevice::setVibration (
   WriteULongRelease (&_vibration.trigger.right, 0);
 
   if (left != 0 || right != 0)
-  WriteULongRelease (&_vibration.last_set, SK::ControlPanel::current_time);
-  WriteRelease      (&bNeedOutput, TRUE);
+  {
+    WriteULongRelease (&_vibration.last_set, SK::ControlPanel::current_time);
+  }
+
+  if (last_left  != ReadULongAcquire (&_vibration.left) ||
+      last_right != ReadULongAcquire (&_vibration.right))
+  {
+    WriteRelease (&bNeedOutput, TRUE);
+  }
 }
 
 bool
@@ -2936,8 +2959,7 @@ SK_HID_PlayStationDevice::write_output_report (bool force)
 
             if (bRumble || (last_trigger_r != 0 || last_trigger_l != 0))
             {
-              if (! bRumble)
-                WriteULongRelease (&pDevice->_vibration.last_set, SK::ControlPanel::current_time);
+              WriteULongRelease (&pDevice->_vibration.last_set, SK::ControlPanel::current_time);
 
               if (config.input.gamepad.dualsense.improved_rumble)
               {
@@ -2972,11 +2994,11 @@ SK_HID_PlayStationDevice::write_output_report (bool force)
 
             output->RumbleEmulationRight =
               sk::narrow_cast <BYTE> (
-                ReadULongAcquire (&pDevice->_vibration.right)// * (std::max (std::min (config.input.gamepad.dualsense.rumble_strength, 100.0f), 0.0f) / 100.0f)
+                ReadULongAcquire (&pDevice->_vibration.right)
               );
             output->RumbleEmulationLeft  =
               sk::narrow_cast <BYTE> (
-                ReadULongAcquire (&pDevice->_vibration.left)// * (std::max (std::min (config.input.gamepad.dualsense.rumble_strength, 100.0f), 0.0f) / 100.0f)
+                ReadULongAcquire (&pDevice->_vibration.left)
               );
 
             if (dwLeftTrigger != 0 || dwRightTrigger != 0 || last_trigger_r != 0 || last_trigger_l != 0 || bResistChange)
@@ -3111,11 +3133,6 @@ SK_HID_PlayStationDevice::write_output_report (bool force)
               continue;
             }
 
-            else
-            {
-              WriteRelease (&pDevice->bNeedOutput, TRUE);
-            }
-
             InterlockedIncrement (&pDevice->output.writes_retired);
           }
 
@@ -3204,11 +3221,11 @@ SK_HID_PlayStationDevice::write_output_report (bool force)
 
             output->RumbleEmulationRight =
               sk::narrow_cast <BYTE> (
-                ReadULongAcquire (&pDevice->_vibration.right)// * (std::max (std::min (config.input.gamepad.dualsense.rumble_strength, 100.0f), 0.0f) / 100.0f)
+                ReadULongAcquire (&pDevice->_vibration.right)
               );
             output->RumbleEmulationLeft  =
               sk::narrow_cast <BYTE> (
-                ReadULongAcquire (&pDevice->_vibration.left)// * (std::max (std::min (config.input.gamepad.dualsense.rumble_strength, 100.0f), 0.0f) / 100.0f)
+                ReadULongAcquire (&pDevice->_vibration.left)
               );
 
             if (dwLeftTrigger != 0 || dwRightTrigger != 0 || last_trigger_r != 0 || last_trigger_l != 0 || bResistChange)
