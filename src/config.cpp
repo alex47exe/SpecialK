@@ -315,6 +315,11 @@ SK_GetCurrentGameID (void)
           { L"TheLostCrown_plus.exe",                  SK_GAME_ID::PrinceOfPersia_TheLostCrown  },
           { L"NINJAGAIDEN4-Steam.exe",                 SK_GAME_ID::NinjaGaiden4                 }, // Steam Version
           { L"NINJAGAIDEN4-WinGDK.exe",                SK_GAME_ID::NinjaGaiden4                 }, // Microsoft Store Version
+          { L"Fall of Avalon.exe",                     SK_GAME_ID::TaintedGrail_FallOfAvalon    },
+          { L"FEARXP2.exe",                            SK_GAME_ID::FEAR_Perseus_Mandate         },
+          { L"FEARXP.exe",                             SK_GAME_ID::FEAR_Perseus_Mandate         },
+          { L"FEAR.exe",                               SK_GAME_ID::FEAR_Perseus_Mandate         },
+          { L"FEARMP.exe",                             SK_GAME_ID::FEAR_Perseus_Mandate         },
         };
 
     first_check  = false;
@@ -3580,6 +3585,7 @@ auto DeclKeybind =
         config.steam.auto_inject          = true;
         config.steam.auto_pump_callbacks  = true;
         config.platform.silent            = true;
+        config.steam.disable_integration  = true;
       } break;
 
       case SK_GAME_ID::Hello_Kitty_Island_Adventure:
@@ -4345,6 +4351,16 @@ auto DeclKeybind =
         // Force DirectInput 8 hooks off to avoid controller disconnect messages
         config.input.gamepad.hook_dinput8 = false;
         input.gamepad.hook_dinput8->store (config.input.gamepad.hook_dinput8);
+        break;
+
+      case SK_GAME_ID::TaintedGrail_FallOfAvalon:
+        config.steam.disable_integration = true;
+        break;
+
+      case SK_GAME_ID::FEAR_Perseus_Mandate:
+        config.window.dont_hook_wndproc             =  true;
+        config.compatibility.disable_debug_features =  true;
+        config.system.handle_crashes                = false;
         break;
 
       case SK_GAME_ID::SilentHill_f:
@@ -6211,7 +6227,28 @@ auto DeclKeybind =
   static bool do_win_verify_trust =
     (SK_Steam_GetAppID_NoAPI () != 0 && config.system.first_run) || SK_IsAdmin ();
 
-  SK_RunOnce (
+  struct {
+    int          ver     = 0;
+    int          sub_ver = 0;
+    int          build   = 0;
+    int          rev     = 0;
+    std::wstring str     = L"";
+  } static unity_dll;
+
+  SK_RunOnce
+  (
+    if ( SK_GetModuleHandleW (L"UnityPlayer.dll") ||
+             PathFileExistsW (L"UnityPlayer.dll") )
+    {
+      unity_dll.str =
+        SK_GetDLLVersionShort (L"UnityPlayer.dll");
+    }
+
+    if (! unity_dll.str.empty () && unity_dll.ver == 0)
+    {
+      swscanf (unity_dll.str.c_str (), L"%x.%x.%x.%x", &unity_dll.ver, &unity_dll.sub_ver, &unity_dll.build, &unity_dll.rev);
+    }
+
     if (version->load (config.system.version)) {
                        config.system.first_run = false;
                        do_win_verify_trust     = false;
@@ -6219,12 +6256,14 @@ auto DeclKeybind =
 
     else
     {
-      if ( SK_GetModuleHandleW (L"UnityPlayer.dll") ||
-               PathFileExistsW (L"UnityPlayer.dll") )
+      if (! unity_dll.str.empty ())
       {
         // Automatically disable Windows.Gaming.Input, because Unity's
         //   implementation sucks
-        config.input.gamepad.windows_gaming_input.blackout_api = true;
+        if (! GetModuleHandleW (L"Rewired_WindowsGamingInput.dll"))
+        {
+          config.input.gamepad.windows_gaming_input.blackout_api = true;
+        }
       }
     }
   );

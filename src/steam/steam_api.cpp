@@ -538,7 +538,7 @@ bool
 SK_Steam_GetDLLPath ( wchar_t* wszDestBuf,
                       size_t   max_size = MAX_PATH )
 {
-  if (max_size == 0 || config.platform.silent)
+  if (max_size == 0 || config.platform.silent || config.steam.disable_integration)
     return false;
 
   const wchar_t* wszSteamLib =
@@ -704,6 +704,9 @@ WaitForSingleObject_Detour (
 BOOL
 SK_Steam_PreHookCore (const wchar_t* wszTry)
 {
+  if (config.steam.disable_integration)
+    return FALSE;
+
   static volatile LONG             init    =   FALSE;
   if (InterlockedCompareExchange (&init, TRUE, FALSE))
     return TRUE;
@@ -2895,7 +2898,7 @@ SK_Steam_LogAllAchievements (void)
 void
 SK_Steam_UnlockAchievement (uint32_t idx)
 {
-  if (config.platform.silent)
+  if (config.platform.silent || config.steam.disable_integration)
     return;
 
   if (! steam_achievements)
@@ -3298,7 +3301,7 @@ SK::SteamAPI::Init (bool pre_load)
 {
   UNREFERENCED_PARAMETER (pre_load);
 
-  if (config.platform.silent)
+  if (config.platform.silent || config.steam.disable_integration)
     return;
 }
 
@@ -3358,6 +3361,12 @@ SteamAPI_PumpThread (LPVOID user)
 
     return false;
   };
+
+  if (config.steam.disable_integration)
+  {
+    return
+      _Terminate ();
+  }
 
   static auto game_id =
     SK_GetCurrentGameID ();
@@ -3962,7 +3971,7 @@ void
 __stdcall
 SK::SteamAPI::SetOverlayState (bool active)
 {
-  if (config.platform.silent)
+  if (config.platform.silent || config.steam.disable_integration)
     return;
 
   if (__SK_Steam_IgnoreOverlayActivation)
@@ -4591,7 +4600,7 @@ SK_HookSteamAPI (void)
 {
   static int hooks = 0;
 
-  if (config.platform.silent)
+  if (config.platform.silent || config.steam.disable_integration)
     return hooks;
 
   static const wchar_t* wszSteamAPI =
@@ -5997,7 +6006,7 @@ SK_Steam_RunClientCommand (const wchar_t *wszCommand)
 void
 SK_Steam_ForceInputAppId (AppId64_t appid)
 {
-  if (config.platform.silent)
+  if (config.platform.silent || config.steam.disable_integration)
     return;
 
   char                                                  configurator [8] = { };

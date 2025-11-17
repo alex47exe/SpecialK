@@ -1,4 +1,37 @@
-﻿25.10.22
+﻿25.11.17.1
+==========
+ + Apply 25.11.17 changes only to games using ReWired_WindowsGameInput.dll.
+
+25.11.17
+========
+ + Allow Windows.Gaming.Input by default in Unity Engine 2022 and newer games.
+
+25.11.13
+========
+ + Disable Hypnotoad Helper in Zenless Zone Zero and games of a similar
+     persuasion.
+ + Removed broken "Maximum Lag Reduction" option from Unity engine games.
+
+25.11.8.2
+=========
+ + Add 1.5 second GalaxyAPI init delay for compatability with Unity
+     games on GOG.
+ + Disable il2cpp hooks in some games that do not support it.
+
+25.11.8.1
+=========
+ + Fixed SecuROM issues in F.E.A.R. games.
+
+25.11.8
+=======
+ + Disabled SteamAPI integration in Tainted Grail: Fall of Avalon
+     (other Unity cross-store games may need this also).
+
+25.11.7
+=======
+ + Added support for some older idTech (Quake 2 era) games.
+
+25.10.22
 ========
  + Disable DirectInput 8 hooks in Ninja Gaiden 4.
 
