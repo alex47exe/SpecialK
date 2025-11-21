@@ -1,4 +1,102 @@
-﻿25.11.17.1
+﻿25.11.20.2
+==========
+ + Removed no longer supported INI variables:
+
+    [Platform.System]       WarnedEOSIncompat
+    [SpecialK.System]       StrictCompliant
+    [Compatibility.General] AllowFakeStreamline
+    [Window.System]         FixMouseCoords
+    [Render.FrameRate]      StreamlineEnforcementPolicy
+    [Render.DXGI]           SkipSwapChainPresentTest
+
+25.11.20.1
+==========
+ + Added weak initialization synchronization for compatibility with ReShade AddOns
+     like RenoDX; will increase launch time in most games by ~100 ms.
+
+25.11.20
+========
+ + Disabled NVIDIA Streamline debug log and added INI option to turn it back on.
+ + Replaced XInput Latency Tester with simplified XInput Report Rate Tester.
+ + Fixed "Failed to Install Hook for '5' in 'OPENGL32.dll'!" warning > 25.11.7.
+ + Hook win32u!NtUserSetWindowsHookEx instead of user32!SetWindowsHookExA/W, to
+     avoid the elephant in the room undocumented SetWindowsHookExAW function that
+       some old games and weird DRM/anti-debug schemes call directly.
+
+    * All of the documented functions call into user32!SetWindowsHookExAW, which
+        then calls win32u!NtUserSetWindowsHookEx internally on Windows.
+
+25.11.19.4
+==========
+ + Change Ninja Gaiden 4 to use synchronous initialization to prevent DirectInput
+     initialization races (i.e. "Please connect controller screen").
+ + Prevent input icon switching when keyboard is blocked to The Outer Worlds 2.
+
+    Keyboard input had been blocked but the game still knew there was a keyboard
+      event (that didn't actually change keyboard state) and would switch icons
+        without analyzing the input state for actual changes.
+
+25.11.19.3
+==========
+ + Fixed temporary keyboard unblock after triggering a gamepad key binding
+     or opening ReShade's overlay; it was permanently allowing keyboard
+       input even when Disabled to Game was selected.
+
+25.11.19.2
+==========
+ + Correctly identify VK_CANCEL as a key rather than a mouse button :)
+ + Allow polling the state of Virtual Key 0xFF, even though it's unmapped.
+ + Fixed not being able to block keyboard input in some games that call
+     GetKeyState (...).
+
+25.11.19.1
+==========
+ + Made AutoVRR mode configuration more intuitive when changing global policy.
+ + Allow notifications and achievements while ImGui is drawing popups dialogs.
+ + Improved recovery from stalled/dead real-time PresentMon ETW trace sessions.
+ + Decreased maximum concurrent PresentMon ETW trace sessions to 4.
+ + Tweaked handling of Alt-Tab while Background Render mode is enabled;
+
+    - Tab will unconditionally generate a key release event when the game regains
+        keyboard focus, even if the key is technically still held down.
+
+     * Limit the rest of the generated key release events to modifiers
+         (i.e. Alt, Ctrl, Shift) rather than standard keys.
+
+      @ The game window thread's keyboard state is now cleared upon keyboard focus
+          loss when Background Render is enabled.
+
+25.11.19
+========
+ + Added experimental option to upgrade all Waitable Timers created in a game to
+     the new High-Res variant introduced in Windows 10. 99.9% of games do not use
+       Waitable Timers, and the ones that do tend to use the old low-res codepath.
+
+    @ Setting is in "Framerate Limiter | Advanced" next to 'Reduce CPUs'.
+
+    * Please look at SpecialK.log if turning this feature on, let us know about
+        any DLLs that are spamming CreateWaitableTimer* (...) calls.
+
+    - Results generally require a full game restart.
+
+25.11.18.1
+==========
+ + Eliminate redundant Power Policy changes that would spam Windows Event Viewer
+     during game start/exit.
+ + Set DualSense Adaptive Trigger Force Feedback to "Off" instead of "Vibration",
+    when there is no emulated rumble input to process.
+
+25.11.18
+========
+ + Improved reliability of blocking gamepad input to DirectInput games.
+ + Improved detection and auto-disable of SteamAPI hooks in Unity Engine games
+     that use Manual Callback Dispatch (i.e. use Steamworks.NET).
+
+    * SK's Steam functionality can still be used, but certain game overrides do
+        not work because SK must maintain a separate instance of SteamAPI for its
+          use from the one the game is using to prevent SteamAPI callback failures.
+
+25.11.17.1
 ==========
  + Apply 25.11.17 changes only to games using ReWired_WindowsGameInput.dll.
 

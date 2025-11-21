@@ -177,7 +177,7 @@ struct SK_SharedMemory_v1
     } PresentMonEx  [ 8]; // Max Concurrent = 5
 
     static auto constexpr
-      __MaxPresentMonSessions = 5;
+      __MaxPresentMonSessions = 4;
   } EtwSessions;
 };
 #pragma pack (pop)
@@ -202,7 +202,7 @@ SK_Inject_WaitOnUnhook (void);
 
 typedef HHOOK (NTAPI *NtUserSetWindowsHookEx_pfn)(
           HINSTANCE hMod,
-     const wchar_t* UnsafeModuleName,
+ PUNICODE_STRING_SK UnsafeModuleName,
               DWORD ThreadId,
                 int HookId,
            HOOKPROC HookProc,

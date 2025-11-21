@@ -257,6 +257,9 @@ SK_StartPerfMonThreads (void)
 void
 SK_LoadGPUVendorAPIs (void)
 {
+  sk::NVAPI::nvwgf2umx =
+    SK_GetModuleHandleW (L"nvwgf2umx.dll");
+
 #define THREADED_VENDOR_API_INIT
 
 #ifdef THREADED_VENDOR_API_INIT
@@ -779,9 +782,15 @@ void SK_SEH_InitFinishCallback (void)
     }
 
     // Apply a powerscheme override if one is set
-    if (! IsEqualGUID (config.cpu.power_scheme_guid, nil_guid))
+    if (! IsEqualGUID (config.cpu.power_scheme_guid, nil_guid) &&
+        ! IsEqualGUID (config.cpu.power_scheme_guid_orig,
+                       config.cpu.power_scheme_guid))
     {
-      PowerSetActiveScheme (nullptr, &config.cpu.power_scheme_guid);
+      if ( ERROR_SUCCESS !=
+             PowerSetActiveScheme (nullptr, &config.cpu.power_scheme_guid) )
+      {
+        config.cpu.power_scheme_guid = nil_guid;
+      }
     }
   }__except(GetExceptionCode()==EXCEPTION_WINE_STUB      ?
                                 EXCEPTION_EXECUTE_HANDLER:
@@ -1114,6 +1123,11 @@ void BasicInit (void)
              SK_ImGui_Toast::ShowOnce    |
              SK_ImGui_Toast::UseDuration );
 
+  // Prewarm the usermode driver so we can do other initialization that
+  //   depends on knowing whether nvgf2umx is active in the software or not.
+  sk::NVAPI::nvwgf2umx =
+    SK_GetModuleHandleW (L"nvwgf2umx.dll");
+
   // Setup unhooked function pointers
   SK_PreInitLoadLibrary ();
 
@@ -1222,11 +1236,11 @@ void BasicInit (void)
   if (SK_COMPAT_IsFrapsPresent ())
       SK_COMPAT_UnloadFraps ();
 
-  bool bEnable = SK_EnableApplyQueuedHooks  ();
-  {
-    SK_ApplyQueuedHooks ();
-  }
-  if (! bEnable) SK_DisableApplyQueuedHooks ();
+  //bool bEnable = SK_EnableApplyQueuedHooks  ();
+  //{
+  //  SK_ApplyQueuedHooks ();
+  //}
+  //if (! bEnable) SK_DisableApplyQueuedHooks ();
 }
 
 DWORD
@@ -1303,6 +1317,8 @@ DllThread (LPVOID user)
         SK::Diagnostics::CrashHandler::Reinstall ();
     }
   }
+
+  SK_Thread_CloseSelf ();
 
   return 0;
 }
@@ -1881,12 +1897,6 @@ SK_StartupCore (const wchar_t* backend, void* callback)
 
   SK_Thread_ScopedPriority _(THREAD_PRIORITY_TIME_CRITICAL);
 
-  // Not a saved INI setting; use an alternate initialization
-  //   strategy when Streamline is detected...
-  config.compatibility.init_sync_for_streamline =
-    config.compatibility.allow_fake_streamline == false &&
-    (SK_GetModuleHandleW (L"sl.interposer.dll") != 0);
-
  try
  {
   if ( SK_GetProcAddress ( L"NtDll",
@@ -1897,17 +1907,8 @@ SK_StartupCore (const wchar_t* backend, void* callback)
 
   InstructionSet::deferredInit ();
 
-  // .NET Applications might be inside of managed code, so perform
-  //   initialization on a deferred native thread unless WaitForDebugger
-  //     is configured.
-  const static auto
-    _NeedImplicitDelay =
-     [&]()
-      { return (! config.system.wait_for_debugger) &&
-                SK_IsModuleLoaded (L"MSCOREE.dll"); };
-
   // If Global Injection Delay, block initialization thread until the delay period ends
-  if (SK_IsInjected () && (SK_Inject_GetInjectionDelayInSeconds () > 0.0f || _NeedImplicitDelay ()))
+  if (SK_IsInjected () && SK_Inject_GetInjectionDelayInSeconds () > 0.0f)
   {
     struct packaged_params_s {
       std::wstring backend  = L""; // Persistent copy
@@ -2076,6 +2077,7 @@ SK_StartupCore (const wchar_t* backend, void* callback)
       game_debug->init (L"logs/game_output.log", L"w");
       game_debug->lockless = true;
 
+      SK_Display_HookModeChangeAPIs ();
 
       // Apply game netcode killswitch, intended to prevent stuttering in
       //   some games that do weird stuff with network (e.g. telemetry)
@@ -2181,12 +2183,6 @@ SK_StartupCore (const wchar_t* backend, void* callback)
   }
 
   SK_ReShadeAddOn_Init ();
-
-  SK_RunOnce (
-  {
-    SK_Display_HookModeChangeAPIs ();
-    SK_ApplyQueuedHooks           ();
-  });
 
   dll_log->LogEx (false,
     L"----------------------------------------------------------------------"
@@ -2539,17 +2535,21 @@ SK_StartupCore (const wchar_t* backend, void* callback)
     void SK_Streamline_InitBypass (void);
          SK_Streamline_InitBypass ();
 
-    InterlockedExchangePointer (
-      const_cast <void **> (&hInitThread),
-      SK_Thread_CreateEx ( DllThread, nullptr,
-                               &init_ )
-    ); // Avoid the temptation to wait on this thread
-
     if (int32_t hooks_queued = (int32_t)ReadULongAcquire (&SK_MinHook_HooksQueuedButNotApplied);
                 hooks_queued > 0)
     {
-      SK_ApplyQueuedHooks ();
+      bool bEnable = SK_EnableApplyQueuedHooks ();
+      {
+        SK_ApplyQueuedHooks ();
+      }
+      if (! bEnable) SK_DisableApplyQueuedHooks ();
     }
+
+    InterlockedExchangePointer (
+      const_cast <void **> (&hInitThread),
+        SK_Thread_CreateEx ( DllThread, nullptr,
+                               &init_ )
+      ); // Avoid the temptation to wait on this thread
   }
 
   return true;
@@ -3265,10 +3265,18 @@ SK_ShutdownCore (const wchar_t* backend)
   ShutdownWMIThread (pagefile_stats.hShutdownSignal,
                      pagefile_stats.hThread,          L"Pagefile Monitor");
 
-  PowerSetActiveScheme (
-    nullptr,
-      &config.cpu.power_scheme_guid_orig
-  );
+  // Does power scheme need a reset? If not, skip this to avoid Windows Event Viewer spam
+  if (! IsEqualGUID (config.cpu.power_scheme_guid_orig,
+                     config.cpu.power_scheme_guid) &&
+      ! IsEqualGUID (config.cpu.power_scheme_guid, GUID {}))
+  {
+    if ( ERROR_SUCCESS != PowerSetActiveScheme (
+                            nullptr,
+                              &config.cpu.power_scheme_guid_orig ) )
+    {
+      config.cpu.power_scheme_guid = GUID {};
+    }
+  }
 
   if (! SK_Debug_IsCrashing ())
   {
@@ -4101,19 +4109,8 @@ SK_BackgroundRender_EndFrame (void)
         config.nvidia.reflex.enforcement_site = 0; // Reduce stutter
       }
 
-      // Disable SteamAPI integration in newer Unity engine games because of incompatibility
-      if (SK_GetCurrentRenderBackend ().api == SK_RenderAPI::D3D12 && SK_GetModuleHandleW (L"UnityPlayer.dll"))
+      if (SK_GetModuleHandleW (L"UnityPlayer.dll"))
       {
-        if (! std::exchange (config.platform.silent, true))
-        {
-          SK_MessageBox (
-            L"Disabling SteamAPI Integration in D3D12 Unity Game...",
-            L"Special K Compatibility Layer", MB_OK
-          );
-
-          SK_RestartGame ();
-        }
-
         // Unity loads OpenGL but never uses it, disable OpenGL hooks to avoid
         //   unnecessary complications in GOG games.
         config.apis.OpenGL.hook = false;
@@ -5379,7 +5376,7 @@ SK_Platform_EstablishStorefrontOnFirstLoad (void)
 
   bool is_microsoft_game = (! is_steamworks_game) && (! is_epic_game) &&
        ( SK_Path_wcsstr (wszProcessName, LR"(XboxGames\)") != nullptr ||
-         SK_IsModuleLoaded (L"AppXDeploymentClient.dll") );
+         SK_IsModuleLoaded (L"AppXDeploymentClient.dll"));
 
   bool is_ubisoft_game =
     (! is_steamworks_game) && (! is_epic_game) &&

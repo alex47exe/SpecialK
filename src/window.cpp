@@ -1157,16 +1157,27 @@ ActivateWindow ( HWND hWnd,
       }
 
       // Release the AltKin
-      for ( BYTE VKey = 0x8 ; VKey < 255 ; ++VKey )
+      for ( SHORT VKey = VK_CANCEL ; VKey <= 255 ; ++VKey )
       {
+        // Limit to just modifier keys that are the least intuitive
+        //   problem to deal with after alt-tabbing back into a game.
+        if (VKey != VK_TAB   && VKey != VK_MENU &&
+            VKey != VK_LMENU && VKey != VK_RMENU)
+        {
+          continue;
+        }
+
         if (std::exchange (__LastKeyState [VKey], (BYTE)FALSE) != (BYTE)FALSE)
         {
-          if ((SK_GetAsyncKeyState (VKey) & 0x8000) == 0x0/* &&
-               SK_GetKeyState      (VKey)           != 0x0*/)
+          // Always release Alt even if it's still technically down while Alt-Tabbing.
+          if (VKey == VK_TAB || (SK_GetAsyncKeyState (VKey) & 0x8000) == 0x0)
           {
             SK_keybd_event (BYTE (VKey), 0, KEYEVENTF_KEYUP, 0);
           }
         }
+
+        if (VKey == VK_CANCEL)
+            VKey =  VK_BACK-1;
       }
 
       InterlockedCompareExchange (&SK_RenderBackend::flip_skip, 3, 0);
@@ -1174,18 +1185,21 @@ ActivateWindow ( HWND hWnd,
 
     else
     {
-      for ( BYTE VKey = 0x8 ; VKey < 255 ; ++VKey )
+      for ( SHORT VKey = VK_CANCEL ; VKey <= 255 ; ++VKey )
       {
-        if ( SK_GetKeyState      (VKey)           != 0x0 ||
-            (SK_GetAsyncKeyState (VKey) & 0x8000) != 0x0)
+        if ((SK_GetAsyncKeyState (VKey) & 0x8000) != 0x0)
         {
           std::exchange (__LastKeyState [VKey], (BYTE)TRUE);
         }
-      }
-    }
 
-    BYTE              newKeyboardState [256] = { };
-    SetKeyboardState (newKeyboardState);
+        if (VKey == VK_CANCEL)
+            VKey =  VK_BACK-1;
+      }
+
+      // Invalidate keyboard state on focus loss to prevent stuck keys
+      BYTE              newKeyboardState [256] = { };
+      SetKeyboardState (newKeyboardState);
+    }
 
     if (         hWndFocus != 0                &&
                  hWndFocus != game_window.hWnd &&
@@ -5707,15 +5721,30 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
   static bool bIgnoreKeyboardAndMouse =
     (SK_GetCurrentGameID () == SK_GAME_ID::FinalFantasyXVI);
 
-  if (bIgnoreKeyboardAndMouse)
+  // Eliminate late-stage keyboard and mouse messages,
+  //   SK has already neutralized the data.
+  //
+  //  But some games will see these messages and without checking
+  //    for an actual new button press, will switch to alternate glyphs.
+  //
+  if ((uMsg >= WM_KEYFIRST   && uMsg <= WM_KEYLAST) ||
+      (uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST))
   {
-    if ((uMsg >= WM_KEYFIRST   && uMsg <= WM_KEYLAST)   ||
-        (uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST))
+    const bool bIgnoreKeyboard        = bIgnoreKeyboardAndMouse || SK_ImGui_WantKeyboardCapture ();
+    const bool bIgnoreMouse           = bIgnoreKeyboardAndMouse || SK_ImGui_WantMouseCapture    ();
+    const bool bIgnoreKeyboardOrMouse = bIgnoreKeyboard         || bIgnoreMouse;
+
+    if (bIgnoreKeyboardOrMouse)
     {
-      IsWindowUnicode (hWnd)                       ?
-       DefWindowProcW (hWnd, uMsg, wParam, lParam) :
-       DefWindowProcA (hWnd, uMsg, wParam, lParam);
-      return 0;
+      if ((uMsg >= WM_KEYFIRST   && uMsg <= WM_KEYLAST   && bIgnoreKeyboard) ||
+          (uMsg >= WM_MOUSEFIRST && uMsg <= WM_MOUSELAST && bIgnoreMouse))
+      {
+        IsWindowUnicode (hWnd)                       ?
+         DefWindowProcW (hWnd, uMsg, wParam, lParam) :
+         DefWindowProcA (hWnd, uMsg, wParam, lParam);
+
+        return 0;
+      }
     }
   }
 
@@ -10276,7 +10305,7 @@ SK_ImGui_InitDragAndDrop (void)
   if (init && !SK_OLE_GameHasDropHandler && std::exchange (SK_OLE_DragDropChanged, false))
   {
     SK_AutoCOMInit _;
-
+     
     if (SUCCEEDED (OleInitialize (nullptr)))
     {
       static concurrency::concurrent_unordered_map <HWND, SK_DropTarget*> drop_targets;
