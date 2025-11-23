@@ -1095,6 +1095,9 @@ private:
 void
 SK_Input_ClearKeyboardState (void)
 {
+  if (config.input.keyboard.disabled_to_game == SK_InputEnablement::Disabled)
+    return;
+
   if (! IsWindow (game_window.hWnd))
     return;
 
@@ -1120,11 +1123,17 @@ SK_Input_ClearKeyboardState (void)
     {
       SK_LOGi1 (L"Clearing keyboard state via alertable APC callback...");
 
-      // Force SDL to reset its keyboard state
-      if (SK_GetCurrentRenderBackend ().windows.sdl)
+      // Force SDL and Unity to reset its keyboard state
+      if (SK_GetCurrentRenderBackend ().windows.sdl ||
+          SK_GetCurrentRenderBackend ().windows.unity)
       {
-        const bool bReleased = true;
+        // SDL has issues if we try to block keyboard input in the background.
+        if (SK_GetCurrentRenderBackend ().windows.sdl && config.input.keyboard.org_disabled_to_game == SK_InputEnablement::DisabledInBackground)
+                                                         config.input.keyboard.org_disabled_to_game  = SK_InputEnablement::Enabled;
 
+        INPUT inputs [256] = {};
+        int   num_inputs   =  0;
+        
         for ( SHORT VirtualKey  = VK_CANCEL ;
                     VirtualKey <= 0xFF      ;
                   ++VirtualKey )
@@ -1140,31 +1149,39 @@ SK_Input_ClearKeyboardState (void)
             if (! game_window.active)
               continue;
           }
-
-          if (SK_GetKeyState (VirtualKey))
+        
+          if (! game_window.active)
           {
             const UINT bScancode =
-              MapVirtualKey (VirtualKey, MAPVK_VK_TO_VSC);
-            const DWORD dwFlags =
-               ( ( bScancode & 0xE100 ) != 0                  ?
-                  static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY) :
-                  static_cast <DWORD> (0x0) )                 |
-                                       KEYEVENTF_SCANCODE     |
-                         ( bReleased ? KEYEVENTF_KEYUP
-                                     : 0x0 );
-            SK_keybd_event (sk::narrow_cast <BYTE> (VirtualKey),
-                            sk::narrow_cast <BYTE> (bScancode), dwFlags, 0);
+                MapVirtualKey (VirtualKey, MAPVK_VK_TO_VSC);
+              const DWORD dwFlags =
+                 ( ( bScancode & 0xE100 ) != 0                  ?
+                    static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY) :
+                    static_cast <DWORD> (0x0) )                 |
+                                         KEYEVENTF_SCANCODE     |
+                                         KEYEVENTF_KEYUP;
+        
+            inputs [num_inputs++] =
+              INPUT {
+                .type        = INPUT_KEYBOARD,
+                .ki          = KEYBDINPUT {
+                  .wVk         = sk::narrow_cast <WORD> (VirtualKey),
+                  .wScan       = sk::narrow_cast <WORD> (bScancode),
+                  .dwFlags     = dwFlags,
+                  .time        = 0,
+                  .dwExtraInfo = 0
+                }
+              };
           }
         }
 
         if (game_window.WndProc_Original != nullptr)
         {
-          if (config.window.background_render)
-            game_window.WndProc_Original (game_window.hWnd, WM_KILLFOCUS, 0, 0);
-
           if (game_window.active || config.window.background_render)
-            game_window.WndProc_Original (game_window.hWnd, WM_SETFOCUS,  0, 0);
+            game_window.WndProc_Original (game_window.hWnd, WM_SETFOCUS, 0, 0);
         }
+
+        SK_SendInput (num_inputs, inputs, sizeof (INPUT));
       }
 
       //
@@ -1261,29 +1278,46 @@ ActivateWindow ( HWND hWnd,
         }
       }
 
-      // Release the AltKin
-      for ( SHORT VKey = VK_CANCEL ; VKey <= 255 ; ++VKey )
+      if (config.input.keyboard.disabled_to_game != SK_InputEnablement::Disabled)
       {
-        if (std::exchange (__LastKeyState [VKey], (BYTE)FALSE) != (BYTE)FALSE && config.window.background_render)
+        INPUT inputs [256] = {};
+        int   num_inputs   =  0;
+
+        // Release the AltKin
+        for ( SHORT VKey = VK_CANCEL ; VKey <= 255 ; ++VKey )
         {
-          // Always release Tab even if it's still technically down while Alt-Tabbing.
-          if (VKey == VK_TAB || (SK_GetAsyncKeyState (VKey) & 0x8000) == 0x0)
+          if (std::exchange (__LastKeyState [VKey], (BYTE)FALSE) != (BYTE)FALSE && config.window.background_render)
           {
-            const UINT bScancode =
-              MapVirtualKey (VKey, MAPVK_VK_TO_VSC);
-            const DWORD dwFlags =
-               ( ( bScancode & 0xE100 ) != 0                  ?
-                  static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY) :
-                  static_cast <DWORD> (0x0) )                 |
-                                       KEYEVENTF_SCANCODE     |
-                                       KEYEVENTF_KEYUP;
-            SK_keybd_event (sk::narrow_cast <BYTE> (VKey),
-                            sk::narrow_cast <BYTE> (bScancode), dwFlags, 0);
+            if ((SK_GetAsyncKeyState (VKey) & 0x8000) == 0x0)
+            {
+              const UINT bScancode =
+                MapVirtualKey (VKey, MAPVK_VK_TO_VSC);
+              const DWORD dwFlags =
+                 ( ( bScancode & 0xE100 ) != 0                  ?
+                    static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY) :
+                    static_cast <DWORD> (0x0) )                 |
+                                         KEYEVENTF_SCANCODE     |
+                                         KEYEVENTF_KEYUP;
+
+              inputs [num_inputs++] =
+                INPUT {
+                  .type         = INPUT_KEYBOARD,
+                  .ki           = KEYBDINPUT {
+                    .wVk         = sk::narrow_cast <WORD> (VKey),
+                    .wScan       = sk::narrow_cast <WORD> (bScancode),
+                    .dwFlags     = dwFlags,
+                    .time        = 0,
+                    .dwExtraInfo = 0
+                  }
+                };
+            }
           }
+
+          if (VKey == VK_CANCEL)
+              VKey =  VK_BACK-1;
         }
 
-        if (VKey == VK_CANCEL)
-            VKey =  VK_BACK-1;
+        SK_SendInput (num_inputs, inputs, sizeof (INPUT));
       }
 
       InterlockedCompareExchange (&SK_RenderBackend::flip_skip, 3, 0);
