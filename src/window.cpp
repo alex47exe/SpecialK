@@ -1093,6 +1093,111 @@ private:
 };
 
 void
+SK_Input_ClearKeyboardState (void)
+{
+  if (! IsWindow (game_window.hWnd))
+    return;
+
+  static DWORD
+      dwInputTid = 0;
+  if (dwInputTid == 0)
+  {
+    dwInputTid =
+      GetWindowThreadProcessId (game_window.hWnd, nullptr);
+  }
+
+  static SK_AutoHandle
+      hInputThread;
+  if (hInputThread == INVALID_HANDLE_VALUE)
+  {
+    hInputThread.m_h =
+      OpenThread (THREAD_ALL_ACCESS, FALSE, dwInputTid);
+  }
+
+  if (hInputThread != INVALID_HANDLE_VALUE)
+  {
+    static auto ClearKeyboardState_APC = [](ULONG_PTR)->void
+    {
+      SK_LOGi1 (L"Clearing keyboard state via alertable APC callback...");
+
+      // Force SDL to reset its keyboard state
+      if (SK_GetCurrentRenderBackend ().windows.sdl)
+      {
+        const bool bReleased = true;
+
+        for ( SHORT VirtualKey  = VK_CANCEL ;
+                    VirtualKey <= 0xFF      ;
+                  ++VirtualKey )
+        {
+          if (VirtualKey == VK_MENU     || VirtualKey == VK_LWIN     ||
+              VirtualKey == VK_APPS     || VirtualKey == VK_LMENU    ||
+              VirtualKey == VK_RMENU    || VirtualKey == VK_RWIN     ||
+              VirtualKey == VK_TAB      || VirtualKey == VK_CONTROL  ||
+              VirtualKey == VK_RCONTROL || VirtualKey == VK_LCONTROL ||
+              VirtualKey == VK_SHIFT    || VirtualKey == VK_LSHIFT   ||
+              VirtualKey == VK_RSHIFT)
+          {
+            if (! game_window.active)
+              continue;
+          }
+
+          if (SK_GetKeyState (VirtualKey))
+          {
+            const UINT bScancode =
+              MapVirtualKey (VirtualKey, MAPVK_VK_TO_VSC);
+            const DWORD dwFlags =
+               ( ( bScancode & 0xE100 ) != 0                  ?
+                  static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY) :
+                  static_cast <DWORD> (0x0) )                 |
+                                       KEYEVENTF_SCANCODE     |
+                         ( bReleased ? KEYEVENTF_KEYUP
+                                     : 0x0 );
+            SK_keybd_event (sk::narrow_cast <BYTE> (VirtualKey),
+                            sk::narrow_cast <BYTE> (bScancode), dwFlags, 0);
+          }
+        }
+
+        if (game_window.WndProc_Original != nullptr)
+        {
+          if (config.window.background_render)
+            game_window.WndProc_Original (game_window.hWnd, WM_KILLFOCUS, 0, 0);
+
+          if (game_window.active || config.window.background_render)
+            game_window.WndProc_Original (game_window.hWnd, WM_SETFOCUS,  0, 0);
+        }
+      }
+
+      //
+      // For Unreal Engine and potentially other games
+      //
+      BYTE                 currentKeyboardState [256] = { };
+      SK_GetKeyboardState (currentKeyboardState);
+
+      // Clear key states by sending fake messages to the game's window procedure
+      if (game_window.WndProc_Original != nullptr)
+      {
+        for ( int i = VK_CANCEL ; i < 256 ; ++i )
+        {
+          if (currentKeyboardState [i])
+          {
+            game_window.WndProc_Original (game_window.hWnd, WM_KEYUP,    i, 0);
+            game_window.WndProc_Original (game_window.hWnd, WM_SYSKEYUP, i, 0);
+          }
+
+          if (i == VK_CANCEL)
+              i =  VK_BACK-1;
+        }
+      }
+
+      BYTE              newKeyboardState [256] = { };
+      SetKeyboardState (newKeyboardState);
+    };
+
+    QueueUserAPC (ClearKeyboardState_APC, hInputThread, 0);
+  }
+}
+
+void
 ActivateWindow ( HWND hWnd,
                  bool active,
                  HWND hWndDeactivated )
@@ -1159,20 +1264,21 @@ ActivateWindow ( HWND hWnd,
       // Release the AltKin
       for ( SHORT VKey = VK_CANCEL ; VKey <= 255 ; ++VKey )
       {
-        // Limit to just modifier keys that are the least intuitive
-        //   problem to deal with after alt-tabbing back into a game.
-        if (VKey != VK_TAB   && VKey != VK_MENU &&
-            VKey != VK_LMENU && VKey != VK_RMENU)
+        if (std::exchange (__LastKeyState [VKey], (BYTE)FALSE) != (BYTE)FALSE && config.window.background_render)
         {
-          continue;
-        }
-
-        if (std::exchange (__LastKeyState [VKey], (BYTE)FALSE) != (BYTE)FALSE)
-        {
-          // Always release Alt even if it's still technically down while Alt-Tabbing.
+          // Always release Tab even if it's still technically down while Alt-Tabbing.
           if (VKey == VK_TAB || (SK_GetAsyncKeyState (VKey) & 0x8000) == 0x0)
           {
-            SK_keybd_event (BYTE (VKey), 0, KEYEVENTF_KEYUP, 0);
+            const UINT bScancode =
+              MapVirtualKey (VKey, MAPVK_VK_TO_VSC);
+            const DWORD dwFlags =
+               ( ( bScancode & 0xE100 ) != 0                  ?
+                  static_cast <DWORD> (KEYEVENTF_EXTENDEDKEY) :
+                  static_cast <DWORD> (0x0) )                 |
+                                       KEYEVENTF_SCANCODE     |
+                                       KEYEVENTF_KEYUP;
+            SK_keybd_event (sk::narrow_cast <BYTE> (VKey),
+                            sk::narrow_cast <BYTE> (bScancode), dwFlags, 0);
           }
         }
 
@@ -1195,11 +1301,10 @@ ActivateWindow ( HWND hWnd,
         if (VKey == VK_CANCEL)
             VKey =  VK_BACK-1;
       }
-
-      // Invalidate keyboard state on focus loss to prevent stuck keys
-      BYTE              newKeyboardState [256] = { };
-      SetKeyboardState (newKeyboardState);
     }
+
+    if (config.window.background_render)
+      SK_Input_ClearKeyboardState ();
 
     if (         hWndFocus != 0                &&
                  hWndFocus != game_window.hWnd &&
@@ -1359,13 +1464,8 @@ ActivateWindow ( HWND hWnd,
         SK_LOG4 ( ( L"Confining Mouse Cursor" ),
                     L"Window Mgr" );
 
-      //if (! wm_dispatch->moving_windows.count (game_window.hWnd))
-        {
-          ////// XXX: Is this really necessary? State should be consistent unless we missed
-          //////        an event --- Write unit test?
-          SK_GetWindowRect (game_window.hWnd, &game_window.actual.window);
-          SK_ClipCursor    (&game_window.actual.window);
-        }
+        SK_GetWindowRect (game_window.hWnd, &game_window.actual.window);
+        SK_ClipCursor    (&game_window.actual.window);
       }
 
       else
@@ -5400,19 +5500,24 @@ GetForegroundWindow_Detour (void)
 {
   SK_LOG_FIRST_CALL
 
-  const SK_RenderBackend_V2& rb =
-    SK_GetCurrentRenderBackend ();
-
   // This function is hooked before we actually know the game's HWND,
   //   this would be catastrophic.
   if (game_window.hWnd != 0 && IsWindow (game_window.hWnd))
   {
+    const SK_RenderBackend_V2& rb =
+      SK_GetCurrentRenderBackend ();
+
     if (! rb.isTrueFullscreen ())
     {
       if ( game_window.wantBackgroundRender () || config.window.always_on_top == SmartAlwaysOnTop ||
            config.window.treat_fg_as_active )
       {
-        return game_window.hWnd;
+        // Do not lie to SDL about this state, it will not handle window focus messages correctly
+        //   if we spoof this.
+        if (! rb.windows.sdl)
+        {
+          return game_window.hWnd;
+        }
       }
     }
   }
@@ -5715,6 +5820,12 @@ SK_DetourWindowProc ( _In_  HWND   hWnd,
   {
     void SK_ImGui_InitDragAndDrop (void);
          SK_ImGui_InitDragAndDrop ();
+
+    if (config.window.background_render)
+    {
+      // Run queued APCs for things like clearing the keyboard state on the window thread.
+      MsgWaitForMultipleObjectsEx (0, nullptr, 0, QS_ALLINPUT, MWMO_ALERTABLE);
+    }
   }
 
   // @TODO: Allow PlugIns to install callbacks for window proc
