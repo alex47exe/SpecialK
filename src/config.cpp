@@ -320,6 +320,7 @@ SK_GetCurrentGameID (void)
           { L"FEARXP.exe",                             SK_GAME_ID::FEAR_Perseus_Mandate         },
           { L"FEAR.exe",                               SK_GAME_ID::FEAR_Perseus_Mandate         },
           { L"FEARMP.exe",                             SK_GAME_ID::FEAR_Perseus_Mandate         },
+          { L"PWAAT.exe",                              SK_GAME_ID::PhoenixWright_Trilogy        },
         };
 
     first_check  = false;
@@ -2762,9 +2763,6 @@ auto DeclKeybind =
         config.textures.d3d11.cache            = false; // Fix grass artifacts
         // Hacks for HDR in KCD2 due to messed up window management
         config.window.background_render        = true;
-        // Fake it, otherwise once per-frame the game's going to try to
-        //   ReSizeBuffers (...)
-        config.render.dxgi.fake_swapchain_desc = DXGI_FORMAT_R8G8B8A8_UNORM;
 
         config.render.d3d12.force_anisotropic  = false;
         config.input.ui.use_hw_cursor          =  true;
@@ -4343,6 +4341,23 @@ auto DeclKeybind =
         config.window.dont_hook_wndproc             =  true;
         config.compatibility.disable_debug_features =  true;
         config.system.handle_crashes                = false;
+        break;
+
+      // Game has an older version of InControl that does not understand DualSense (at all),
+      //   game will not recognize input at all if a DualSense controller is connected and
+      //     HID is not blocked.   So just emulate XInput and forcefully block DirectInput.
+      case SK_GAME_ID::PhoenixWright_Trilogy:
+        config.input.gamepad.xinput.emulate          =  true;
+        config.input.gamepad.hook_dinput8            = false;
+        config.input.gamepad.disable_hid             =  true;
+        input.gamepad.hook_dinput8->store (config.input.gamepad.hook_dinput8);
+        // Game behaves this way with or without this setting, and background_render
+        //   only creates the potential for stuck arrow keys.
+        config.window.background_render              = false;
+        config.render.dxgi.fake_fullscreen_mode      = false;
+        //     * Fake Fullscreen implicitly enables the above
+        window.background_render->store         (config.window.background_render);
+        render.dxgi.fake_fullscreen_mode->store (config.render.dxgi.fake_fullscreen_mode);
         break;
 
       case SK_GAME_ID::SilentHill_f:

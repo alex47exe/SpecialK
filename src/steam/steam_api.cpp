@@ -702,7 +702,7 @@ WaitForSingleObject_Detour (
                                 L"GameOverlayRenderer.dll" )
       );
 
-      if (SK_GetCallingDLL () == hModSteam)
+      if (hModSteam != 0 && SK_GetCallingDLL () == hModSteam)
       {
         SK_RunOnce (return 0);
         return WAIT_TIMEOUT;
@@ -1770,8 +1770,10 @@ SK_Steam_PopupOriginWStrToEnum (const wchar_t* str)
     return 2;
   if (name == L"DontCare")
     return 4;
-  /*if (name == L"TopLeft")*/
+  if (name == L"BottomRight")
     return 3;
+
+  return 3;
 
   // TODO: TopCenter, BottomCenter, CenterLeft, CenterRight
 }
@@ -1789,8 +1791,10 @@ SK_Steam_PopupOriginStrToEnum (const char* str)
     return 2;
   if (name == "DontCare")
     return 4;
-  /*if (name == L"TopLeft")*/
+  if (name == "BottomRight")
     return 3;
+
+  return 3;
 }
 
 void SK_Steam_SetNotifyCorner (void);
@@ -3584,6 +3588,14 @@ SK::SteamAPI::GetCallbacksRun (void)
 AppId64_t
 SK::SteamAPI::AppID (void)
 {
+  static bool
+      has_appid = false;
+  if (has_appid)
+  {
+    // This allows changing the AppID at runtime if it is determined incorrect
+    return config.steam.appid;
+  }
+
   ISteamUtils* utils =
     steam_ctx.Utils ();
 
@@ -3636,6 +3648,9 @@ SK::SteamAPI::AppID (void)
     {
       config.steam.appid = id;
     }
+
+    if (config.steam.appid != 0)
+      has_appid = true;
 
     return id;
   }

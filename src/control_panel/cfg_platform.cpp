@@ -44,11 +44,38 @@ SK::ControlPanel::Platform::Draw (void)
 
   if (SK::SteamAPI::AppID () != 0 || SK::EOS::GetTicksRetired () > 0 || SK::Galaxy::GetTicksRetired () > 0)
   {
-    // Steam AppID never changes, but EOS tick count might...
-    //   also some Steam games use EOS but aren't themselves an Epic game
-    static bool bSteam =  (SK::SteamAPI::AppID         () != 0);
-           bool bEpic  = ((SK::EOS::GetTicksRetired    () >  0) && (! bSteam));
-           bool bGOG   = ((SK::Galaxy::GetTicksRetired () >  0) && (! bSteam) && (! bEpic));
+    // Some Steam games use EOS but aren't themselves an Epic game
+    bool bSteam =  (SK::SteamAPI::AppID         () != 0);
+    bool bEpic  = ((SK::EOS::GetTicksRetired    () >  0) && (! bSteam));
+    bool bGOG   =  (SK::Galaxy::GetTicksRetired () >  0);
+
+    // Some games falsely report themselves as Steam, if SteamAPI callbacks are not running,
+    //   but one of the other storefronts APIs are, we can assume the game is not actually a Steam game.
+    if (SK::SteamAPI::AppID () != 0 && SK::SteamAPI::GetCallbacksRun () == 0)
+    {
+      if (SK::Galaxy::GetTicksRetired () > 0 ||
+             SK::EOS::GetTicksRetired () > 0)
+      {
+        bSteam = false;
+
+        // Clear any bad Steam config from the INI, which may happen if the game
+        //   is owned on multiple storefronts by the user and the user has switched versions.
+        if (config.steam.appid != 0)
+        {
+          config.steam.force_load_steamapi = false;
+          config.steam.auto_inject         = false;
+          config.steam.dll_path.clear ();
+
+          wchar_t      wszPathToAppIdFile [MAX_PATH] = L"";
+          wcsncpy_s   (wszPathToAppIdFile, MAX_PATH, SK_GetHostPath (), _TRUNCATE);
+          PathAppendW (wszPathToAppIdFile, L"steam_appid.txt");
+                                      config.steam.appid = 0;
+                                      config.utility.save_async ();
+          DeleteFileW (wszPathToAppIdFile);
+          DeleteFileW (L"steam_appid.txt");
+        }
+      }
+    }
 
     static const std::string header_label =
       SK_FormatString ( "%s Enhancements###Platform_Enhancements",
@@ -73,16 +100,15 @@ SK::ControlPanel::Platform::Draw (void)
         //   we need to not make these API calls if it does or NVIDIA
         //     Streamline will cause games to crash!
         SK_SteamAPI_GetNumPlayers ();
-
-        bool bSteamWorks =
-          (! config.platform.steam_is_b0rked);
-
-        bHasAchievements =
-            ( bSteamWorks && SK_SteamAPI_GetNumPossibleAchievements () > 0 ) ||
-            ( bEpic       &&      SK_EOS_GetNumPossibleAchievements () > 0 ) ||
-            ( bGOG        &&   SK_Galaxy_GetNumPossibleAchievements () > 0 );
       });
 
+      const bool bSteamWorks =
+        bSteam && (! config.platform.steam_is_b0rked);
+
+      bHasAchievements =
+        ( bSteamWorks && SK_SteamAPI_GetNumPossibleAchievements () > 0 ) ||
+        ( bEpic       &&      SK_EOS_GetNumPossibleAchievements () > 0 ) ||
+        ( bGOG        &&   SK_Galaxy_GetNumPossibleAchievements () > 0 );
 
       if (bHasAchievements)
       {

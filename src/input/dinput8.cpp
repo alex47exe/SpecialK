@@ -166,6 +166,13 @@ DirectInput8Create ( HINSTANCE hinst,
   HRESULT hr =
     E_NOINTERFACE;
 
+  static std::mutex hookMutex;
+
+  std::scoped_lock <std::mutex>
+         hook_lock (hookMutex);
+
+  std::vector <void *> fns_to_hook;
+
   if (DirectInput8Create_Import != nullptr)
   {
     if (riidltf == IID_IDirectInput8W)
@@ -178,30 +185,28 @@ DirectInput8Create ( HINSTANCE hinst,
            ) && ppvOut != nullptr
          )
       {
-        if ((! IDirectInput8A_CreateDevice_Original) &&
-            (! IDirectInput8W_CreateDevice_Original))
+        if (! IDirectInput8W_CreateDevice_Original)
         {
           void** vftable = *(void***)*ppvOut;
 
-          SK_CreateFuncHook (       L"IDirectInput8W::CreateDevice",
-                                     vftable [3],
-                                     IDirectInput8W_CreateDevice_Detour,
-            static_cast_p2p <void> (&IDirectInput8W_CreateDevice_Original) );
-
-          SK_EnableHook (vftable [3]);
+          if ( MH_OK ==
+            SK_CreateFuncHook (       L"IDirectInput8W::CreateDevice",
+                                       vftable [3],
+                                       IDirectInput8W_CreateDevice_Detour,
+              static_cast_p2p <void> (&IDirectInput8W_CreateDevice_Original) ) )
+                fns_to_hook.push_back (vftable [3]);
         }
 
-        if ((! IDirectInput8A_EnumDevices_Original) &&
-            (! IDirectInput8W_EnumDevices_Original))
+        if (! IDirectInput8W_EnumDevices_Original)
         {
           void** vftable = *(void***)*ppvOut;
 
-          SK_CreateFuncHook (       L"IDirectInput8W::EnumDevices",
-                                     vftable [4],
-                                     IDirectInput8W_EnumDevices_Detour,
-            static_cast_p2p <void> (&IDirectInput8W_EnumDevices_Original) );
-
-          SK_EnableHook (vftable [4]);
+          if ( MH_OK ==
+            SK_CreateFuncHook (       L"IDirectInput8W::EnumDevices",
+                                       vftable [4],
+                                       IDirectInput8W_EnumDevices_Detour,
+              static_cast_p2p <void> (&IDirectInput8W_EnumDevices_Original) ) )
+                fns_to_hook.push_back (vftable [4]);
         }
       }
     }
@@ -216,33 +221,41 @@ DirectInput8Create ( HINSTANCE hinst,
            ) && ppvOut != nullptr
          )
       {
-        if ((! IDirectInput8W_CreateDevice_Original) &&
-            (! IDirectInput8A_CreateDevice_Original))
+        if (! IDirectInput8A_CreateDevice_Original)
         {
           void** vftable = *(void***)*ppvOut;
 
-          SK_CreateFuncHook (       L"IDirectInput8A::CreateDevice",
+          if ( MH_OK ==
+            SK_CreateFuncHook (    L"IDirectInput8A::CreateDevice",
                                      vftable [3],
                                      IDirectInput8A_CreateDevice_Detour,
-            static_cast_p2p <void> (&IDirectInput8A_CreateDevice_Original) );
-
-          SK_EnableHook (vftable [3]);
+            static_cast_p2p <void> (&IDirectInput8A_CreateDevice_Original) ) )
+              fns_to_hook.push_back (vftable [3]);
         }
 
-        if ((! IDirectInput8W_EnumDevices_Original) &&
-            (! IDirectInput8A_EnumDevices_Original))
+        if (! IDirectInput8A_EnumDevices_Original)
         {
           void** vftable = *(void***)*ppvOut;
 
-          SK_CreateFuncHook (       L"IDirectInput8A::EnumDevices",
+          if ( MH_OK ==
+            SK_CreateFuncHook (    L"IDirectInput8A::EnumDevices",
                                      vftable [4],
                                      IDirectInput8A_EnumDevices_Detour,
-            static_cast_p2p <void> (&IDirectInput8A_EnumDevices_Original) );
-
-          SK_EnableHook (vftable [4]);
+            static_cast_p2p <void> (&IDirectInput8A_EnumDevices_Original) ) )
+              fns_to_hook.push_back (vftable [4]);
         }
       }
     }
+  }
+
+  if (! fns_to_hook.empty ())
+  {
+    for (auto fn : fns_to_hook)
+    {
+      SK_QueueEnableHook (fn);
+    }
+
+    SK_ApplyQueuedHooks ();
   }
 
   return hr;
@@ -425,6 +438,12 @@ CoCreateInstance_DI8 (
   HRESULT hr =
     E_NOINTERFACE;
 
+  static std::mutex hookMutex;
+
+  std::scoped_lock <std::mutex>
+         hook_lock (hookMutex);
+
+  std::vector <void *> fns_to_hook;
 
   if (riid == IID_IDirectInput8A)
   {
@@ -445,11 +464,7 @@ CoCreateInstance_DI8 (
                                    IDirectInput8A_CreateDevice_Detour,
           static_cast_p2p <void> (&IDirectInput8A_CreateDevice_Original) );
 
-        //
-        // Hook queuing drags in other input APIs we're not ready to hook yet,
-        //   do this immediately instead.
-        //
-        SK_EnableHook (vftable [3]);
+        fns_to_hook.push_back (vftable [3]);
       }
 
       if (! IDirectInput8A_EnumDevices_Original)
@@ -461,7 +476,7 @@ CoCreateInstance_DI8 (
                                    IDirectInput8A_EnumDevices_Detour,
           static_cast_p2p <void> (&IDirectInput8A_EnumDevices_Original) );
 
-        SK_EnableHook (vftable [4]);
+        fns_to_hook.push_back (vftable [4]);
       }
     }
   }
@@ -480,26 +495,36 @@ CoCreateInstance_DI8 (
       {
         void** vftable = *(void***)*ppv;
 
-        SK_CreateFuncHook (       L"IDirectInput8W::CreateDevice",
-                                   vftable [3],
-                                   IDirectInput8W_CreateDevice_Detour,
-          static_cast_p2p <void> (&IDirectInput8W_CreateDevice_Original) );
-
-        SK_EnableHook (vftable [3]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (       L"IDirectInput8W::CreateDevice",
+                                     vftable [3],
+                                     IDirectInput8W_CreateDevice_Detour,
+            static_cast_p2p <void> (&IDirectInput8W_CreateDevice_Original) ) )
+              fns_to_hook.push_back (vftable [3]);
       }
 
       if (! IDirectInput8W_EnumDevices_Original)
       {
         void** vftable = *(void***)*ppv;
 
-        SK_CreateFuncHook (       L"IDirectInput8W::EnumDevices",
-                                   vftable [4],
-                                   IDirectInput8W_EnumDevices_Detour,
-          static_cast_p2p <void> (&IDirectInput8W_EnumDevices_Original) );
-
-        SK_EnableHook (vftable [4]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (       L"IDirectInput8W::EnumDevices",
+                                     vftable [4],
+                                     IDirectInput8W_EnumDevices_Detour,
+            static_cast_p2p <void> (&IDirectInput8W_EnumDevices_Original) ) )
+              fns_to_hook.push_back (vftable [4]);
       }
     }
+  }
+
+  if (! fns_to_hook.empty ())
+  {
+    for (auto fn : fns_to_hook)
+    {
+      SK_QueueEnableHook (fn);
+    }
+
+    SK_ApplyQueuedHooks ();
   }
 
   return hr;
@@ -531,6 +556,13 @@ CoCreateInstanceEx_DI8 (
                      (uintptr_t)pResults->pItf,
                        SK_SummarizeCaller (pCallerAddr).c_str () );
 
+  static std::mutex hookMutex;
+
+  std::scoped_lock <std::mutex>
+         hook_lock (hookMutex);
+
+  std::vector <void *> fns_to_hook;
+
   HRESULT hr =
     E_NOINTERFACE;
 
@@ -552,24 +584,24 @@ CoCreateInstanceEx_DI8 (
           {
             void** vftable = *(void***)*&pResults->pItf;
 
-            SK_CreateFuncHook (       L"IDirectInput8A::CreateDevice",
-                                       vftable [3],
-                                       IDirectInput8A_CreateDevice_Detour,
-              static_cast_p2p <void> (&IDirectInput8A_CreateDevice_Original) );
-
-            SK_EnableHook (vftable [3]);
+            if ( MH_OK ==
+              SK_CreateFuncHook (       L"IDirectInput8A::CreateDevice",
+                                         vftable [3],
+                                         IDirectInput8A_CreateDevice_Detour,
+                static_cast_p2p <void> (&IDirectInput8A_CreateDevice_Original) ) )
+                  fns_to_hook.push_back (vftable [3]);
           }
 
           if (! IDirectInput8A_EnumDevices_Original)
           {
             void** vftable = *(void***)*&pResults->pItf;
 
-            SK_CreateFuncHook (       L"IDirectInput8A::EnumDevices",
-                                       vftable [4],
-                                       IDirectInput8A_EnumDevices_Detour,
-              static_cast_p2p <void> (&IDirectInput8A_EnumDevices_Original) );
-
-            SK_EnableHook (vftable [4]);
+            if ( MH_OK ==
+              SK_CreateFuncHook (       L"IDirectInput8A::EnumDevices",
+                                         vftable [4],
+                                         IDirectInput8A_EnumDevices_Detour,
+                static_cast_p2p <void> (&IDirectInput8A_EnumDevices_Original) ) )
+                  fns_to_hook.push_back (vftable[4]);
           }
         }
 
@@ -579,28 +611,38 @@ CoCreateInstanceEx_DI8 (
           {
             void** vftable = *(void***)*&pResults->pItf;
 
-            SK_CreateFuncHook (       L"IDirectInput8W::CreateDevice",
-                                       vftable [3],
-                                       IDirectInput8W_CreateDevice_Detour,
-              static_cast_p2p <void> (&IDirectInput8W_CreateDevice_Original) );
-
-            SK_EnableHook (vftable [3]);
+            if ( MH_OK ==
+              SK_CreateFuncHook (       L"IDirectInput8W::CreateDevice",
+                                         vftable [3],
+                                         IDirectInput8W_CreateDevice_Detour,
+                static_cast_p2p <void> (&IDirectInput8W_CreateDevice_Original) ) )
+                  fns_to_hook.push_back (vftable [3]);
           }
 
           if (! IDirectInput8W_EnumDevices_Original)
           {
             void** vftable = *(void***)*&pResults->pItf;
 
-            SK_CreateFuncHook (       L"IDirectInput8W::EnumDevices",
-                                       vftable [4],
-                                       IDirectInput8W_EnumDevices_Detour,
-              static_cast_p2p <void> (&IDirectInput8W_EnumDevices_Original) );
-
-            SK_EnableHook (vftable [4]);
+            if ( MH_OK ==
+              SK_CreateFuncHook (       L"IDirectInput8W::EnumDevices",
+                                         vftable [4],
+                                         IDirectInput8W_EnumDevices_Detour,
+                static_cast_p2p <void> (&IDirectInput8W_EnumDevices_Original) ) )
+                  fns_to_hook.push_back (vftable [4]);
           }
         }
       }
     }
+  }
+
+  if (! fns_to_hook.empty ())
+  {
+    for (auto fn : fns_to_hook)
+    {
+      SK_QueueEnableHook (fn);
+    }
+
+    SK_ApplyQueuedHooks ();
   }
 
   return hr;
@@ -1673,6 +1715,13 @@ IDirectInput8W_CreateDevice_Detour ( IDirectInput8W        *This,
                                                            lplpDirectInputDevice,
                                                             pUnkOuter ) );
 
+  static std::mutex hookMutex;
+
+  std::scoped_lock <std::mutex>
+         hook_lock (hookMutex);
+
+  std::vector <void *> fns_to_hook;
+
   if (SUCCEEDED (hr) &&  lplpDirectInputDevice != nullptr &&
                         *lplpDirectInputDevice != nullptr)
   {
@@ -1683,32 +1732,32 @@ IDirectInput8W_CreateDevice_Detour ( IDirectInput8W        *This,
     {
       if (IDirectInputDevice8W_GetDeviceState_Original == nullptr)
       {
-        SK_CreateFuncHook (      L"IDirectInputDevice8W::GetDeviceState",
-                                   vftable [9],
-                                   IDirectInputDevice8W_GetDeviceState_Detour,
-          static_cast_p2p <void> (&IDirectInputDevice8W_GetDeviceState_Original) );
-
-        SK_EnableHook (vftable [9]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (      L"IDirectInputDevice8W::GetDeviceState",
+                                     vftable [9],
+                                     IDirectInputDevice8W_GetDeviceState_Detour,
+            static_cast_p2p <void> (&IDirectInputDevice8W_GetDeviceState_Original) ) )
+              fns_to_hook.push_back (vftable [9]);
       }
 
       if (! IDirectInputDevice8W_SetCooperativeLevel_Original)
       {
-        SK_CreateFuncHook (      L"IDirectInputDevice8W::SetCooperativeLevel",
-                                   vftable [13],
-                                   IDirectInputDevice8W_SetCooperativeLevel_Detour,
-          static_cast_p2p <void> (&IDirectInputDevice8W_SetCooperativeLevel_Original) );
-
-        SK_EnableHook (vftable [13]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (      L"IDirectInputDevice8W::SetCooperativeLevel",
+                                     vftable [13],
+                                     IDirectInputDevice8W_SetCooperativeLevel_Detour,
+            static_cast_p2p <void> (&IDirectInputDevice8W_SetCooperativeLevel_Original) ) )
+              fns_to_hook.push_back (vftable [13]);
       }
 
       if (! IDirectInputDevice8W_Poll_Original)
       {
-        SK_CreateFuncHook (      L"IDirectInputDevice8W::Poll",
-                                   vftable [25],
-                                   IDirectInputDevice8W_Poll_Detour,
-          static_cast_p2p <void> (&IDirectInputDevice8W_Poll_Original) );
-
-        SK_EnableHook (vftable [25]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (      L"IDirectInputDevice8W::Poll",
+                                     vftable [25],
+                                     IDirectInputDevice8W_Poll_Detour,
+            static_cast_p2p <void> (&IDirectInputDevice8W_Poll_Original) ) )
+              fns_to_hook.push_back (vftable [25]);
       }
 
       if (rguid == GUID_SysMouse)
@@ -1734,6 +1783,16 @@ IDirectInput8W_CreateDevice_Detour ( IDirectInput8W        *This,
     (*lplpDirectInputDevice)->SetCooperativeLevel (SK_GetGameWindow (), dwFlag);
   }
 #endif
+
+  if (! fns_to_hook.empty ())
+  {
+    for (auto fn : fns_to_hook)
+    {
+      SK_QueueEnableHook (fn);
+    }
+
+    SK_ApplyQueuedHooks ();
+  }
 
   return hr;
 }
@@ -1801,6 +1860,13 @@ IDirectInput8A_CreateDevice_Detour ( IDirectInput8A        *This,
                                                            lplpDirectInputDevice,
                                                             pUnkOuter ) );
 
+  static std::mutex hookMutex;
+
+  std::scoped_lock <std::mutex>
+         hook_lock (hookMutex);
+
+  std::vector <void *> fns_to_hook;
+
   if (SUCCEEDED (hr) &&  lplpDirectInputDevice != nullptr &&
                         *lplpDirectInputDevice != nullptr)
   {
@@ -1811,32 +1877,32 @@ IDirectInput8A_CreateDevice_Detour ( IDirectInput8A        *This,
     {
       if (IDirectInputDevice8A_GetDeviceState_Original == nullptr)
       {
-        SK_CreateFuncHook (      L"IDirectInputDevice8A::GetDeviceState",
-                                   vftable [9],
-                                   IDirectInputDevice8A_GetDeviceState_Detour,
-          static_cast_p2p <void> (&IDirectInputDevice8A_GetDeviceState_Original) );
-
-        SK_EnableHook (vftable [9]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (      L"IDirectInputDevice8A::GetDeviceState",
+                                     vftable [9],
+                                     IDirectInputDevice8A_GetDeviceState_Detour,
+            static_cast_p2p <void> (&IDirectInputDevice8A_GetDeviceState_Original) ) )
+              fns_to_hook.push_back (vftable [9]);
       }
 
       if (! IDirectInputDevice8A_SetCooperativeLevel_Original)
       {
-        SK_CreateFuncHook (      L"IDirectInputDevice8A::SetCooperativeLevel",
-                                   vftable [13],
-                                   IDirectInputDevice8A_SetCooperativeLevel_Detour,
-          static_cast_p2p <void> (&IDirectInputDevice8A_SetCooperativeLevel_Original) );
-
-        SK_EnableHook (vftable [13]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (      L"IDirectInputDevice8A::SetCooperativeLevel",
+                                     vftable [13],
+                                     IDirectInputDevice8A_SetCooperativeLevel_Detour,
+            static_cast_p2p <void> (&IDirectInputDevice8A_SetCooperativeLevel_Original) ) )
+              fns_to_hook.push_back (vftable [13]);
       }
 
       if (! IDirectInputDevice8A_Poll_Original)
       {
-        SK_CreateFuncHook (      L"IDirectInputDevice8A::Poll",
-                                   vftable [25],
-                                   IDirectInputDevice8A_Poll_Detour,
-          static_cast_p2p <void> (&IDirectInputDevice8A_Poll_Original) );
-
-        SK_EnableHook (vftable [25]);
+        if ( MH_OK ==
+          SK_CreateFuncHook (      L"IDirectInputDevice8A::Poll",
+                                     vftable [25],
+                                     IDirectInputDevice8A_Poll_Detour,
+            static_cast_p2p <void> (&IDirectInputDevice8A_Poll_Original) ) )
+              fns_to_hook.push_back (vftable [25]);
       }
 
       if (rguid == GUID_SysMouse)
@@ -1864,6 +1930,16 @@ IDirectInput8A_CreateDevice_Detour ( IDirectInput8A        *This,
     );
   }
 #endif
+
+  if (! fns_to_hook.empty ())
+  {
+    for (auto fn : fns_to_hook)
+    {
+      SK_QueueEnableHook (fn);
+    }
+
+    SK_ApplyQueuedHooks ();
+  }
 
   return hr;
 }

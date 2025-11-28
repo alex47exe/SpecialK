@@ -57,6 +57,36 @@
   }                                                                           \
 }
 
+galaxy::api::ListenerType
+SK_Galaxy_RemapListenerType (galaxy::api::ListenerType type)
+{
+  if (gog->version < SK_GalaxyContext::Version_1_148_1)
+  {
+    // 0-9 are unchanged
+
+    // 10 (SERVER_NETWORKING)       is deprecated, but not removed from this version
+    // 22 (OVERLAY_STATE_CHANGE)    is deprecated, but not removed from this version
+    // 35 (STORAGE_SYNCHRONIZATION) is deprecated, but not removed from this version
+
+    if ((int)type <= 9)
+      return type;
+
+    type = (galaxy::api::ListenerType)((int)type + 1);
+
+    if ((int)type <= (22 + 1))
+      return type;
+
+    type = (galaxy::api::ListenerType)((int)type + 1);
+
+    if ((int)type <= (35 + 2))
+      return type;
+
+    type = (galaxy::api::ListenerType)((int)type + 1);
+  }
+
+  return type;
+}
+
 class SK_Galaxy_OverlayManager : public galaxy::api::IOverlayStateChangeListener
 {
 public:
@@ -558,8 +588,8 @@ public:
       loadSound (config.platform.achievements.sound_file.c_str ());
 
       gog->Registrar ()->Register (
-         galaxy::api::ACHIEVEMENT_CHANGE,
-        (galaxy::api::IAchievementChangeListener *)this
+        SK_Galaxy_RemapListenerType (galaxy::api::ACHIEVEMENT_CHANGE),
+                                    (galaxy::api::IAchievementChangeListener *)this
       );
     }
 
@@ -871,6 +901,7 @@ namespace galaxy
 
       if (This == nullptr && gog->Stats () == nullptr)
       {
+#ifdef _M_AMD64
         const auto Stats     = (IStats*             (__cdecl *)(void))
           SK_GetProcAddress (gog->GetGalaxyDLL (), "?Stats@api@galaxy@@YAPEAVIStats@12@XZ");
         const auto Utils     = (IUtils*             (__cdecl *)(void))
@@ -881,6 +912,18 @@ namespace galaxy
           SK_GetProcAddress (gog->GetGalaxyDLL (), "?Friends@api@galaxy@@YAPEAVIFriends@12@XZ");
         const auto Registrar = (IListenerRegistrar* (__cdecl *)(void))
           SK_GetProcAddress (gog->GetGalaxyDLL (), "?ListenerRegistrar@api@galaxy@@YAPEAVIListenerRegistrar@12@XZ");
+#else
+        const auto Stats     = (IStats*             (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?Stats@api@galaxy@@YAPAVIStats@12@XZ");
+        const auto Utils     = (IUtils*             (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?Utils@api@galaxy@@YAPAVIUtils@12@XZ");
+        const auto User      = (IUser*              (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?User@api@galaxy@@YAPAVIUser@12@XZ");
+        const auto Friends   = (IFriends*           (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?Friends@api@galaxy@@YAPAVIFriends@12@XZ");
+        const auto Registrar = (IListenerRegistrar* (__cdecl *)(void))
+          SK_GetProcAddress (gog->GetGalaxyDLL (), "?ListenerRegistrar@api@galaxy@@YAPAVIListenerRegistrar@12@XZ");
+#endif
 
         IStats*             pStats     = Stats     != nullptr ? Stats     () : nullptr;
         IUtils*             pUtils     = Utils     != nullptr ? Utils     () : nullptr;
@@ -908,9 +951,10 @@ namespace galaxy
         gog->Registrar ();
 
       SK_RunOnce (
-        //registrar->Register (            USER_TIME_PLAYED_RETRIEVE,
+        //registrar->Register ( SK_Galaxy_RemapListenerType (USER_TIME_PLAYED_RETRIEVE),
         //  (galaxy::api::IUserTimePlayedRetrieveListener           *)galaxy_achievements.getPtr () );
-        registrar->Register ( USER_STATS_AND_ACHIEVEMENTS_RETRIEVE, dynamic_cast <
+        registrar->Register ( SK_Galaxy_RemapListenerType (USER_STATS_AND_ACHIEVEMENTS_RETRIEVE),
+                                                                    dynamic_cast <
                          galaxy::api::IUserStatsAndAchievementsRetrieveListener *> (
                          galaxy_achievements.getPtr ()                             )
         );
@@ -961,7 +1005,8 @@ namespace galaxy
     __cdecl
     ProcessData_Detour (void)
     {
-      InterlockedIncrement64 (&ticks);
+      const auto successful_ticks =
+        InterlockedIncrement64 (&ticks);
 
       static bool
             crashed = false;
@@ -993,13 +1038,31 @@ namespace galaxy
           L"Structured Exception encountered during ProcessData (...)"
         );
       }
+
+      if (successful_ticks > 5 && config.steam.appid != 0)
+      {
+        // This is a true blue GOG game, so remove any steam_appid.txt
+        SK_RunOnce (
+          if (SK::SteamAPI::GetCallbacksRun () == 0)
+          {
+            wchar_t      wszPathToAppIdFile [MAX_PATH] = L"";
+            wcsncpy_s   (wszPathToAppIdFile, MAX_PATH, SK_GetHostPath (), _TRUNCATE);
+            PathAppendW (wszPathToAppIdFile, L"steam_appid.txt");
+                                        config.steam.appid = 0;
+                                        config.utility.save_async ();
+            DeleteFileW (wszPathToAppIdFile);
+            DeleteFileW (L"steam_appid.txt");
+          }
+        );
+      }
     }
 
     void
     __cdecl
     ProcessData_IGalaxy_Detour (IGalaxy* This)
     {
-      InterlockedIncrement64 (&ticks);
+      const auto successful_ticks =
+        InterlockedIncrement64 (&ticks);
 
       static bool
             crashed = false;
@@ -1029,6 +1092,23 @@ namespace galaxy
       {
         gog_log->Log (
           L"Structured Exception encountered during ProcessData (...)"
+        );
+      }
+
+      if (successful_ticks > 5 && config.steam.appid != 0)
+      {
+        // This is a true blue GOG game, so remove any steam_appid.txt
+        SK_RunOnce (
+          if (SK::SteamAPI::GetCallbacksRun () == 0)
+          {
+            wchar_t      wszPathToAppIdFile [MAX_PATH] = L"";
+            wcsncpy_s   (wszPathToAppIdFile, MAX_PATH, SK_GetHostPath (), _TRUNCATE);
+            PathAppendW (wszPathToAppIdFile, L"steam_appid.txt");
+                                        config.steam.appid = 0;
+                                        config.utility.save_async ();
+            DeleteFileW (wszPathToAppIdFile);
+            DeleteFileW (L"steam_appid.txt");
+          }
         );
       }
     }
@@ -1112,16 +1192,29 @@ namespace galaxy
 
       Init_Original (initOptions);
 
+#ifdef _M_AMD64
       const auto Stats     = (IStats*             (__cdecl *)(void))
-        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Stats@api@galaxy@@YAPEAVIStats@12@XZ"); // 64-bit
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Stats@api@galaxy@@YAPEAVIStats@12@XZ");
       const auto Utils     = (IUtils*             (__cdecl *)(void))
-        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Utils@api@galaxy@@YAPEAVIUtils@12@XZ"); // 64-bit
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Utils@api@galaxy@@YAPEAVIUtils@12@XZ");
       const auto User      = (IUser*              (__cdecl *)(void))
-        SK_GetProcAddress (gog->GetGalaxyDLL (), "?User@api@galaxy@@YAPEAVIUser@12@XZ"); // 64-bit
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?User@api@galaxy@@YAPEAVIUser@12@XZ");
       const auto Friends   = (IFriends*           (__cdecl *)(void))
-        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Friends@api@galaxy@@YAPEAVIFriends@12@XZ"); // 64-bit
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Friends@api@galaxy@@YAPEAVIFriends@12@XZ");
       const auto Registrar = (IListenerRegistrar* (__cdecl *)(void))
-        SK_GetProcAddress (gog->GetGalaxyDLL (), "?ListenerRegistrar@api@galaxy@@YAPEAVIListenerRegistrar@12@XZ"); // 64-bit
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?ListenerRegistrar@api@galaxy@@YAPEAVIListenerRegistrar@12@XZ");
+#else
+      const auto Stats     = (IStats*             (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Stats@api@galaxy@@YAPAVIStats@12@XZ");
+      const auto Utils     = (IUtils*             (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Utils@api@galaxy@@YAPAVIUtils@12@XZ");
+      const auto User      = (IUser*              (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?User@api@galaxy@@YAPAVIUser@12@XZ");
+      const auto Friends   = (IFriends*           (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?Friends@api@galaxy@@YAPAVIFriends@12@XZ");
+      const auto Registrar = (IListenerRegistrar* (__cdecl *)(void))
+        SK_GetProcAddress (gog->GetGalaxyDLL (), "?ListenerRegistrar@api@galaxy@@YAPAVIListenerRegistrar@12@XZ");
+#endif
 
       IStats*             pStats     = Stats     != nullptr ? Stats     () : nullptr;
       IUtils*             pUtils     = Utils     != nullptr ? Utils     () : nullptr;
@@ -1394,6 +1487,8 @@ SK::Galaxy::Init (void)
       gog->version = SK_GalaxyContext::Version_1_152_1;
     else if ((major == 1 && (minor > 151 || (minor == 151 && build >= 0))))
       gog->version = SK_GalaxyContext::Version_1_151_0;
+    else if ((major == 1 && (minor > 148 || (minor == 148 && build >= 1))))
+      gog->version = SK_GalaxyContext::Version_1_148_1;
     else if ((major == 1 && (minor > 121 || (minor == 121 && build >= 2))))
       gog->version = SK_GalaxyContext::Version_1_121_2;
 
@@ -1438,10 +1533,10 @@ SK::Galaxy::Init (void)
   auto _SetupGalaxy =
   [&](void)
   {
-    // Hook code here (i.e. Listener registrar Register/Unregister and IGalaxy::ProcessData (...))
-#ifdef _M_AMD64
     void* Init_Addr = nullptr;
 
+    // Hook code here (i.e. Listener registrar Register/Unregister and IGalaxy::ProcessData (...))
+#ifdef _M_AMD64
     SK_Thread_ScopedPriority
               scoped_prio (THREAD_PRIORITY_TIME_CRITICAL);
 
@@ -1460,44 +1555,19 @@ SK::Galaxy::Init (void)
       static_cast_p2p <void> (&galaxy::api::Shutdown_Original) );
 
 #else
-    //SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Init@api@galaxy@@YAXAEBUInitOptions@12@@Z", //64-bit name
-    //                           galaxy::api::Init_Detour,
-    //  static_cast_p2p <void> (&galaxy::api::Init_Original) );
-    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?CreateInstance@GalaxyFactory@api@galaxy@@SAPAVIGalaxy@23@XZ",
-                               galaxy::api::CreateInstance_Detour,
-      static_cast_p2p <void> (&galaxy::api::CreateInstance_Original) );
-    //SK_CreateDLLHook2 (     wszGalaxyDLLName, "?ProcessData@api@galaxy@@YAXXZ", // 64-bit name
-    //                           galaxy::api::ProcessData_Detour,
-    //  static_cast_p2p <void> (&galaxy::api::ProcessData_Original) );
-    //SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Shutdown@api@galaxy@@YAXXZ", // 64-bit name
-    //                           galaxy::api::Shutdown_Detour,
-    //  static_cast_p2p <void> (&galaxy::api::Shutdown_Original) );
+    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Init@api@galaxy@@YAXABUInitOptions@12@@Z",
+                               galaxy::api::Init_Detour,
+      static_cast_p2p <void> (&galaxy::api::Init_Original),
+                                           &Init_Addr );
+    SK_EnableHook     (                     Init_Addr );
 
-    galaxy::api::IGalaxy** ppInstance =
-      (galaxy::api::IGalaxy **)SK_GetProcAddress (wszGalaxyDLLName, "?instance@GalaxyFactory@api@galaxy@@0PAVIGalaxy@23@A");
-
-    if (ppInstance != nullptr && *ppInstance != nullptr)
-    {
-      galaxy::api::IStats*             pStats     = (*ppInstance)->GetStats             ();
-      galaxy::api::IUtils*             pUtils     = (*ppInstance)->GetUtils             ();
-      galaxy::api::IUser*              pUser      = (*ppInstance)->GetUser              ();
-      galaxy::api::IFriends*           pFriends   = (*ppInstance)->GetFriends           ();
-      galaxy::api::IListenerRegistrar* pRegistrar = (*ppInstance)->GetListenerRegistrar ();
-
-      gog->Init (pStats, pUtils, pUser, pFriends, pRegistrar);
-
-      GALAXY_VIRTUAL_HOOK ( ppInstance,      3,
-                          "IGalaxy::Shutdown",
-                           galaxy::api::Shutdown_IGalaxy_Detour,
-                           galaxy::api::Shutdown_IGalaxy_Original,
-                                        Shutdown_IGalaxy_pfn );
-
-      GALAXY_VIRTUAL_HOOK ( ppInstance,     16,
-                          "IGalaxy::ProcessData",
-                           galaxy::api::ProcessData_IGalaxy_Detour,
-                           galaxy::api::ProcessData_IGalaxy_Original,
-                                        ProcessData_IGalaxy_pfn );
-    }
+    // Queue these ones, we don't need it immediately
+    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?ProcessData@api@galaxy@@YAXXZ",
+                               galaxy::api::ProcessData_Detour,
+      static_cast_p2p <void> (&galaxy::api::ProcessData_Original) );
+    SK_CreateDLLHook2 (     wszGalaxyDLLName, "?Shutdown@api@galaxy@@YAXXZ",
+                               galaxy::api::Shutdown_Detour,
+      static_cast_p2p <void> (&galaxy::api::Shutdown_Original) );
 #endif
 
     SK_ApplyQueuedHooks ();
@@ -1565,10 +1635,12 @@ SK_GalaxyContext::Init ( galaxy::api::IStats*             stats,
 
   if (registrar_ != nullptr)
   {
-    registrar_->Register ( persona_data_change.GetListenerType (),
-                          &persona_data_change );
-    registrar_->Register ( galaxy_overlay->GetListenerType (),
-                           galaxy_overlay.getPtr           () );
+    registrar_->Register (
+      SK_Galaxy_RemapListenerType (persona_data_change.GetListenerType ()),
+                                  &persona_data_change );
+    registrar_->Register (
+      SK_Galaxy_RemapListenerType (galaxy_overlay->GetListenerType ()),
+                                   galaxy_overlay.getPtr           () );
   }
 
   static bool logged_on = false;
@@ -1678,10 +1750,12 @@ SK_GalaxyContext::Shutdown (bool bGameRequested)
   std::ignore = bGameRequested;
 
   if (registrar_ != nullptr) {
-      registrar_->Unregister ( persona_data_change.GetListenerType (),
-                              &persona_data_change );
-      registrar_->Unregister ( galaxy_overlay->GetListenerType (),
-                               galaxy_overlay.getPtr           () );
+      registrar_->Unregister (
+        SK_Galaxy_RemapListenerType (persona_data_change.GetListenerType ()),
+                                    &persona_data_change );
+      registrar_->Unregister (
+        SK_Galaxy_RemapListenerType (galaxy_overlay->GetListenerType ()),
+                                     galaxy_overlay.getPtr           () );
   }
 
   stats_     = nullptr;
