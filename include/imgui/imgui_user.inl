@@ -499,7 +499,7 @@ SK_ImGui_ProcessRawInput ( _In_      HRAWINPUT hRawInput,
             gamepad = true;
 
             // TODO: Determine which controller the input is from
-            if (config.input.gamepad.disable_hid || SK_ImGui_WantGamepadCapture ())
+            if (config.input.gamepad.disable_hid || SK_ImGui_WantGamepadCapture () || config.input.gamepad.raw_input.blackout_api)
               filter = true;
 
             if ( (! already_processed) && uiCommand == RID_INPUT )
@@ -1753,6 +1753,8 @@ SK_XInput_ValidateStatePointer (XINPUT_STATE *pState)
 
 XINPUT_STATE SK_ImGui_XInputState = {};
 
+bool SK_ImGui_ProcessGamepadInput = true;
+
 bool
 SK_ImGui_PollGamepad_EndFrame (XINPUT_STATE* pState)
 {
@@ -2002,10 +2004,11 @@ SK_ImGui_PollGamepad_EndFrame (XINPUT_STATE* pState)
     //extern void SK_ScePad_PaceMaker (void);
     //            SK_ScePad_PaceMaker ();
 
+
     SK_ImGui_XInputState = state;
 
-    if ( bHasPlayStation ||
-         bHasRealXInputOnUISlot )
+    if ( SK_ImGui_ProcessGamepadInput && ( bHasPlayStation ||
+                                           bHasRealXInputOnUISlot ) )
     {
       //
       // Do not do in the background unless bg input is enabled
@@ -3776,6 +3779,127 @@ SK_ImGui_Util_TrackFgProcessChange (void)
 }
 
 void
+SK_ImGui_UpdateGamepadProcessingEligibility (void)
+{
+  SK_PROFILE_SCOPED_TASK (SK_ImGui_UpdateGamepadProcessingEligibility)
+
+  if (SK_IsGameWindowActive ())
+  {
+    SK_ImGui_ProcessGamepadInput = true;
+  }
+
+  //
+  // Check for another window covering the game window, if the user cannot
+  //   see the game then allowing background gamepad input would be very dangerous...
+  //
+  else if (config.input.gamepad.disabled_to_game == SK_InputEnablement::Enabled && config.window.background_render)
+  {
+    bool process_input = true;
+
+    auto GetWindowsAbove = [&](HWND targetHwnd) -> std::vector <HWND>
+    {
+      std::vector <HWND> windowsAbove;
+                         windowsAbove.reserve (32);
+
+      HWND hwnd =
+        GetTopWindow (nullptr);
+
+      while (hwnd && hwnd != targetHwnd)
+      {
+        if (IsWindowVisible (hwnd))
+          windowsAbove.push_back (hwnd);
+
+        hwnd = GetNextWindow
+          (hwnd, GW_HWNDNEXT);
+      }
+
+      return windowsAbove;
+    };
+
+    auto IsWindowOverlapping = [&](HWND hWndContainer, const RECT& rectContained)
+    {
+      RECT                                 rectContainer = {};
+      if (! GetWindowRect (hWndContainer, &rectContainer))
+        return false;
+
+      RECT              rcIntersect = {};
+      return
+        IntersectRect (&rcIntersect, &rectContainer, &rectContained) != FALSE;
+    };
+
+    auto windows_above =
+      GetWindowsAbove (game_window.hWnd);
+
+    if (process_input)
+    {
+      static std::unordered_map <HWND, BOOL> injected_pid_cache;
+
+      bool any_injected = false;
+
+      for ( auto& window : windows_above )
+      {
+        if (injected_pid_cache.find (window) == injected_pid_cache.end ())
+        {
+          DWORD                                 dwPid = 0x0;
+          SK_GetWindowThreadProcessId (window, &dwPid);
+
+          wchar_t     wszInjectionSignature [33] = {};
+          _snwprintf (wszInjectionSignature, 32, LR"(Local\SK_InjectedPid_%d)", dwPid);
+
+          SK_AutoHandle hInjectionSignature (
+            OpenEventW (EVENT_ALL_ACCESS, FALSE, wszInjectionSignature)
+          );
+
+          injected_pid_cache [window] =
+            hInjectionSignature.isValid ();
+        }
+
+        if (! any_injected)
+              any_injected = injected_pid_cache [window];
+      }
+
+      if (any_injected)
+      {
+        HMONITOR hMonGame =
+          MonitorFromWindow (game_window.hWnd, MONITOR_DEFAULTTONEAREST);
+
+        MONITORINFO minfo        = {                  };
+                    minfo.cbSize = sizeof (MONITORINFO);
+
+        if (GetMonitorInfoW (hMonGame, &minfo))
+        {
+          RECT rcVisibleWindow = {};
+
+          // Use the work area to avoid the region occupied by the taskbar when testing occlusion
+          rcVisibleWindow.left   = std::max (minfo.rcWork.left,   game_window.actual.window.left);
+          rcVisibleWindow.right  = std::min (minfo.rcWork.right,  game_window.actual.window.right);
+          rcVisibleWindow.top    = std::max (minfo.rcWork.top,    game_window.actual.window.top);
+          rcVisibleWindow.bottom = std::min (minfo.rcWork.bottom, game_window.actual.window.bottom);
+
+          for ( auto& window : windows_above )
+          {
+            if (IsWindowOverlapping (window, rcVisibleWindow))
+            {
+              if (injected_pid_cache [window])
+              {
+                process_input = false;
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    SK_ImGui_ProcessGamepadInput = process_input;
+  }
+
+  else
+    SK_ImGui_ProcessGamepadInput = false;
+}
+
+
+void
 SK_ImGui_User_NewFrame (void)
 {
   SK_PROFILE_SCOPED_TASK (SK_ImGui_User_NewFrame)
@@ -4355,6 +4479,7 @@ SK_ImGui_User_NewFrame (void)
 
   // Warn on low gamepad battery
   SK_Battery_UpdateRemainingPowerForAllDevices ();
+  SK_ImGui_UpdateGamepadProcessingEligibility  ();
 
   // Update blocking status before proceeding to draw the next frame
   SK_ImGui_IsMouseRelevant     (true);

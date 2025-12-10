@@ -1,4 +1,58 @@
-﻿25.11.30
+﻿25.12.3
+=======
+ + Added new INI setting to prevent software from seeing input on gamepads
+     using the RawInput API.
+
+    [Input.Gamepad]
+    HideRawInput={true|false}  Default: false
+
+25.12.2.5
+=========
+ + Fixed errant %s in scanf format string during dumped texture enumeration
+     that could cause stack overflows when used with DumpOnFirstLoad.
+
+25.12.2.4
+=========
+ + Disable il2cpp support in 32-bit Unity games because not all of them use
+     fastcall calling convention for il2cpp exports, which causes crashes.
+
+25.12.2.3
+=========
+ + Allow audio device selection in the control panel using a gamepad.
+ + Update the audio widget in real-time if the active audio device changes.
+
+25.12.2.2
+=========
+ + Added proper keyboard scancode and extended flags to lParam for synthesized
+     WM_KEYUP and WM_SYSKEYUP messages when background rendering is enabled.
+
+25.12.2.1
+=========
+ + Change opaque window coverage test introduced in 25.12.2 to only test
+     against other processes with Special K injected.
+ + Added Local\SK_InjectedPid_<pid> named event to indicate which pids have
+     Special K injected.
+
+   * This is necessary for 32-bit/64-bit mixed injection scenarios where one
+       process architecture cannot read the other's memory space to determine
+         SK is injected; a named object is used instead of DLL shared memory.
+
+25.12.2
+=======
+ + Blacklist UnityCrashHandler{32|64}.exe from injection
+ + Do not attempt to manage already-open HID device files when HID is being
+     blocked to games or it may cause some Unity plug-ins to fail.
+ + Ignore gamepad input when background render mode is enabled and an opaque
+     window covers the game window while the game is out of focus.
+
+25.12.1
+=======
+ + Added "Reset Achievements" button to the Achievements control panel
+     to allow resetting all achievements for the current game.
+
+   * This is only supported for Steam and GOG; EGS lacks the needed APIs :-\
+
+25.11.30
 ========
  + Enable D3D11 Deferred Context Isolation mode for eFootball PES 2021, because
      of a change made in 24.12.26.1.
@@ -233,7 +287,7 @@
 
 25.11.8.1
 =========
- + Fixed SecuROM issues in F.E.A.R. games.
+ + Fixed SecxuROM issues in F.E.A.R. games.
 
 25.11.8
 =======
