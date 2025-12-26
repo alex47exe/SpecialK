@@ -321,7 +321,8 @@ SK_GetCurrentGameID (void)
           { L"FEAR.exe",                               SK_GAME_ID::FEAR_Perseus_Mandate         },
           { L"FEARMP.exe",                             SK_GAME_ID::FEAR_Perseus_Mandate         },
           { L"PWAAT.exe",                              SK_GAME_ID::PhoenixWright_Trilogy        },
-          { L"PES2021.exe",                            SK_GAME_ID::eFootball_PES_2021           }
+          { L"PES2021.exe",                            SK_GAME_ID::eFootball_PES_2021           },
+          { L"RelicCardinal.exe",                      SK_GAME_ID::AgeOfEmpires4                },
         };
 
     first_check  = false;
@@ -3251,8 +3252,11 @@ auto DeclKeybind =
         config.apis.d3d9.hook            = false;
         config.apis.d3d9ex.hook          = false;
 
-        // Game now has native PlayStation support
-        config.input.gamepad.xinput.emulate = false;
+        // Game has native PlayStation support through libScePad and
+        //   haptics will not work if the PID is spoofed.
+        config.input.gamepad.scepad.hide_ds_edge_pid = SK_Disabled;
+        config.input.gamepad.xinput.emulate          = false;
+        input.gamepad.scepad.hide_ds_edge_pid->store (config.input.gamepad.scepad.hide_ds_edge_pid);
       } break;
 
       case SK_GAME_ID::PathOfExile:
@@ -4051,18 +4055,26 @@ auto DeclKeybind =
 
       case SK_GAME_ID::ZenlessZoneZero:
         // Work-around anti-cheat
-        config.window.dont_hook_wndproc             =  true;
-        config.compatibility.disable_debug_features =  true;
-        config.system.handle_crashes                = false;
+        config.window.dont_hook_wndproc              =  true;
+        config.compatibility.disable_debug_features  =  true;
+        config.system.handle_crashes                 = false;
+        // Game has native PlayStation support through libScePad and
+        //   haptics will not work if the PID is spoofed.
+        config.input.gamepad.scepad.hide_ds_edge_pid = SK_Disabled;
+        config.input.gamepad.xinput.emulate          = false;
+        input.gamepad.scepad.hide_ds_edge_pid->store (config.input.gamepad.scepad.hide_ds_edge_pid);
         break;
 
       case SK_GAME_ID::HonkaiStarRail:
         // Work-around anti-cheat
-        config.window.dont_hook_wndproc             =  true;
-        config.compatibility.disable_debug_features =  true;
-        config.system.handle_crashes                = false;
-        // Game has native PlayStation support
-        config.input.gamepad.xinput.emulate         = false;
+        config.window.dont_hook_wndproc              =  true;
+        config.compatibility.disable_debug_features  =  true;
+        config.system.handle_crashes                 = false;
+        // Game has native PlayStation support through libScePad and
+        //   haptics will not work if the PID is spoofed.
+        config.input.gamepad.scepad.hide_ds_edge_pid = SK_Disabled;
+        config.input.gamepad.xinput.emulate          = false;
+        input.gamepad.scepad.hide_ds_edge_pid->store (config.input.gamepad.scepad.hide_ds_edge_pid);
         break;
 
       case SK_GAME_ID::FinalFantasyXIV:
@@ -4345,6 +4357,12 @@ auto DeclKeybind =
         config.window.dont_hook_wndproc             =  true;
         config.compatibility.disable_debug_features =  true;
         config.system.handle_crashes                = false;
+        break;
+
+      case SK_GAME_ID::AgeOfEmpires4:
+        // Needs this to avoid anti-debug issues
+        config.window.dont_hook_wndproc             = true;
+        config.compatibility.disable_debug_features = true;
         break;
 
       case SK_GAME_ID::eFootball_PES_2021:

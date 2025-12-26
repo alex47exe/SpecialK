@@ -1,4 +1,33 @@
-﻿25.12.3
+﻿25.12.24
+========
+ + Added updated Assassin's Creed: Shadows 1.1.7 exception memory addresses.
+ + Disable Haptic Lowpass Filter and Set Speaker Volume on DualSense controllers
+     to maximum on controller initialization, to fix missing or weak haptics in
+       DualSense-enhanced games.
+
+25.12.23
+========
+ + Disable DualSense Edge -> DualSense PID spoofing for Unity Engine games from
+     Hoyoverse (Genshin Impact, Honkai Star Rail, etc) because those games use
+       libScePad for haptics and the PID spoofing breaks haptics in libScePad.
+
+  * Default policy is still to downcast DualSense Edge to DualSense for all
+      other Unity games since Unity native as well as InControl and ReWired
+        input plug-ins do not recognize the DSE as a PlayStation controller.
+
+25.12.13
+========
+ + Added support for UnityEngine.Time.fixedDeltaTime management in Unity games
+     that use il2cpp.
+
+   * This will not work in all games, but will at least indicate the game's
+       hard-coded fixed timestep in the control panel's slider.
+
+25.12.6
+=======
+ + Disable features that anger Age of Empire 4's anti-cheat system.
+
+25.12.3
 =======
  + Added new INI setting to prevent software from seeing input on gamepads
      using the RawInput API.
