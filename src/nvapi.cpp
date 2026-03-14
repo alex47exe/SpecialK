@@ -3211,7 +3211,7 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
           SK_FormatStringW (
             L"rundll32.exe \"%ws\", RunDLL_NvAPI_SetDWORD %x %x %ws",
               SK_GetModuleFullName (SK_GetDLL ()).c_str (),
-                OGL_DX_PRESENT_DEBUG_ID, ogl_dx_present_debug_val.u32CurrentValue | uiOptimalInteropFlags,
+                OGL_DX_PRESENT_DEBUG_ID, /*ogl_dx_present_debug_val.u32CurrentValue |*/ uiOptimalInteropFlags,
                   app_name.c_str ()
                   
           );
@@ -3244,7 +3244,7 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
           SK_FormatStringW (
             L"rundll32.exe \"%ws\", RunDLL_NvAPI_SetDWORD %x %x %ws",
               SK_GetModuleFullName (SK_GetDLL ()).c_str (),
-                OGL_DX_PRESENT_DEBUG_ID, ogl_dx_present_debug_val.u32CurrentValue & ~ENABLE_DXVK,
+                OGL_DX_PRESENT_DEBUG_ID, 0x0/*ogl_dx_present_debug_val.u32CurrentValue & ~ENABLE_DXVK*/,
                   app_name.c_str ()
                   
           );
@@ -3267,11 +3267,11 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
   // Highly unlikely that we'll ever reach this point... don't run games as admin! :P
   if (SK_IsAdmin ())
   {
-    auto new_val =
-      bEnable ? ogl_dx_present_debug_val.u32CurrentValue |
+    NvU32 new_val =
+      bEnable ? /*ogl_dx_present_debug_val.u32CurrentValue |*/
                  uiOptimalInteropFlags
-              : ogl_dx_present_debug_val.u32CurrentValue &
-               (~ENABLE_DXVK);
+              :  0x0/*ogl_dx_present_debug_val.u32CurrentValue &
+               (~ENABLE_DXVK)*/;
       
     NVAPI_SET_DWORD (ogl_dx_present_debug_val,    OGL_DX_PRESENT_DEBUG_ID, new_val);
     NVAPI_CALL      (DRS_SetSetting (hSession, hProfile, &ogl_dx_present_debug_val));

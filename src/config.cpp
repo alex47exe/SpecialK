@@ -174,10 +174,15 @@ SK_GetCurrentGameID (void)
           { L"ys8.exe",                                SK_GAME_ID::Ys_Eight                     },
           { L"PillarsOfEternityII.exe",                SK_GAME_ID::PillarsOfEternity2           },
           { L"Yakuza0.exe",                            SK_GAME_ID::Yakuza0                      },
+          { L"yakuza0_dc.exe",                         SK_GAME_ID::Yakuza0DirectorsCut          },
           { L"YakuzaKiwami.exe",                       SK_GAME_ID::YakuzaKiwami                 },
+          { L"yakuzakiwami_r.exe",                     SK_GAME_ID::YakuzaKiwamiR                },
           { L"YakuzaKiwami2.exe",                      SK_GAME_ID::YakuzaKiwami2                },
+          { L"yakuzakiwami2_r.exe",                    SK_GAME_ID::YakuzaKiwami2R               },
+          { L"YakuzaKiwami3.exe",                      SK_GAME_ID::YakuzaKiwami3                },
           { L"LikeADragonGaiden.exe",                  SK_GAME_ID::YakuzaLikeADragonGaiden      },
           { L"likeadragon8.exe",                       SK_GAME_ID::YakuzaInfiniteWealth         },
+          { L"LikeADragonPirates.exe",                 SK_GAME_ID::YakuzaLikeADragonGaiden      },
           { L"MonsterHunterWorld.exe",                 SK_GAME_ID::MonsterHunterWorld           },
           { L"MonsterHunterRise.exe",                  SK_GAME_ID::MonsterHunterRise            },
           { L"Shenmue.exe",                            SK_GAME_ID::Shenmue                      },
@@ -235,6 +240,8 @@ SK_GetCurrentGameID (void)
           { L"Diablo IV.exe",                          SK_GAME_ID::DiabloIV                     },
           { L"CoDSP.exe",                              SK_GAME_ID::CallOfDuty                   },
           { L"CoDMP.exe",                              SK_GAME_ID::CallOfDuty                   },
+          { L"CoDUOSP.exe",                            SK_GAME_ID::CallOfDuty                   },
+          { L"CoDUOMP.exe",                            SK_GAME_ID::CallOfDuty                   },
           { L"RiftApart.exe",                          SK_GAME_ID::RatchetAndClank_RiftApart    },
           { L"Sam2017.exe",                            SK_GAME_ID::SeriousSamFusion2017         },
           { L"Sam2017_Unrestricted.exe",               SK_GAME_ID::SeriousSamFusion2017         },
@@ -323,6 +330,8 @@ SK_GetCurrentGameID (void)
           { L"PWAAT.exe",                              SK_GAME_ID::PhoenixWright_Trilogy        },
           { L"PES2021.exe",                            SK_GAME_ID::eFootball_PES_2021           },
           { L"RelicCardinal.exe",                      SK_GAME_ID::AgeOfEmpires4                },
+          { L"Endfield.exe",                           SK_GAME_ID::ArknightsEndfield            },
+          { L"PlatformProcess.exe",                    SK_GAME_ID::ArknightsEndfield            },
         };
 
     first_check  = false;
@@ -382,6 +391,11 @@ SK_GetCurrentGameID (void)
       else if ( StrStrIW ( SK_GetHostApp (), L"Yakuza" ) )
       {
         current_game = SK_GAME_ID::YakuzaUnderflow;
+      }
+      else if ( _wcsicmp ( SK_GetHostApp (), L"Games.exe" ) == 0 &&
+        StrStrIW ( SK_VerifyTrust_GetCodeSignature ( SK_GetHostApp () ).subject.c_str (), L"GRYPH FRONTIER"))
+      {
+        current_game = SK_GAME_ID::ArknightsEndfield;
       }
 
       else if ( StrStrIW ( SK_GetHostApp  (), L"game"           ) )
@@ -936,6 +950,8 @@ struct {
     sk::ParameterInt*     present_interval        = nullptr;
     sk::ParameterInt*     sync_interval_clamp     = nullptr;
     sk::ParameterInt*     tearing_mode            = nullptr;
+    sk::ParameterInt*     latency_mode            = nullptr;
+    sk::ParameterInt*     render_queue            = nullptr;
     sk::ParameterInt*     buffer_count            = nullptr;
     sk::ParameterInt*     max_delta_time          = nullptr;
     sk::ParameterBool*    flip_discard            = nullptr;
@@ -984,6 +1000,7 @@ struct {
       sk::ParameterBool*    auto_bias             = nullptr;
       sk::ParameterFloat*   max_auto_bias         = nullptr;
       sk::ParameterStringW* auto_bias_target      = nullptr;
+      sk::ParameterBool*    skip_frames           = nullptr;
     } latent_sync;
   } framerate;
 
@@ -2080,6 +2097,8 @@ auto DeclKeybind =
     ConfigEntry (render.framerate.present_interval,      L"Presentation Interval (VSYNC)",                             dll_ini,         L"Render.FrameRate",      L"PresentationInterval"),
     ConfigEntry (render.framerate.sync_interval_clamp,   L"Maximum Sync Interval (Clamp VSYNC)",                       dll_ini,         L"Render.FrameRate",      L"SyncIntervalClamp"),
     ConfigEntry (render.framerate.tearing_mode,          L"Tearing Mode (Always On/Off or Adaptive)",                  dll_ini,         L"Render.FrameRate",      L"TearingMode"),
+    ConfigEntry (render.framerate.latency_mode,          L"Latency reduction behavior (Smooth or Aggressive)",         dll_ini,         L"Render.FrameRate",      L"LatencyMode"),
+    ConfigEntry (render.framerate.render_queue,          L"Max Render Latency for LowLatency/Adaptive Tearing Mode",   dll_ini,         L"Render.FrameRate",      L"RenderQueue"),
     ConfigEntry (render.framerate.prerender_limit,       L"Maximum Frames to Render-Ahead",                            dll_ini,         L"Render.FrameRate",      L"PreRenderLimit"),
     ConfigEntry (render.framerate.sleepless_render,      L"Sleep Free Render Thread",                                  dll_ini,         L"Render.FrameRate",      L"SleeplessRenderThread"),
     ConfigEntry (render.framerate.sleepless_window,      L"Sleep Free Window Thread",                                  dll_ini,         L"Render.FrameRate",      L"SleeplessWindowThread"),
@@ -2109,6 +2128,8 @@ auto DeclKeybind =
                                        auto_bias_target, L"Target input latency (in milliseconds or %) for auto-bias", dll_ini,         L"FrameRate.LatentSync",  L"AutoBiasTarget"),
     ConfigEntry (render.framerate.latent_sync.
                                           max_auto_bias, L"Maximum percentage to bias towards low input latency",      dll_ini,         L"FrameRate.LatentSync",  L"MaxAutoBias"),
+    ConfigEntry (render.framerate.latent_sync.
+                                            skip_frames, L"Enable __SK_LatentSyncSkip in 2x.. mode",                   dll_ini,         L"FrameRate.LatentSync",  L"SkipFrames"),
 
     ConfigEntry (render.framerate.force_vk_mailbox,      L"Force Vulkan to use Mailbox Presentation Mode",             dll_ini,         L"Render.Vulkan",         L"ForceMailboxPresent"),
     ConfigEntry (render.framerate.force_vk_adaptive,     L"Force Vulkan to use FIFO Relaxed Presentation Mode",        dll_ini,         L"Render.Vulkan",         L"ForceAdaptiveVSYNC"),
@@ -2808,8 +2829,12 @@ auto DeclKeybind =
 
 
       case SK_GAME_ID::EverQuest:
-        // Fix-up rare issues during Server Select -> Game
-        //config.compatibility.d3d9.rehook_reset = true;
+        // Avoid corruption after new D3D11 update to engine
+        config.textures.d3d11.cache                 = false;
+        config.window.dont_hook_wndproc             =  true;
+        config.compatibility.disable_debug_features =  true;
+        config.apis.d3d9.hook                       = false;
+        config.apis.d3d9ex.hook                     = false;
         break;
 
 
@@ -3370,17 +3395,6 @@ auto DeclKeybind =
 
       case SK_GAME_ID::Yakuza0:
       {
-        if (! IsProcessDPIAware ())
-        {
-          SK_Display_ForceDPIAwarenessUsingAppCompat (true);
-          SK_Display_SetMonitorDPIAwareness          (false);
-
-          // Only do this for Steam games, the Microsoft Store Yakuza games
-          //   are chronically DPI unaware and broken
-          if (StrStrIW (SK_GetHostPath (), L"SteamApps"))
-            SK_RestartGame ();
-        }
-
         ///// Engine has a problem with its texture management that
         /////   makes texture caching / modding impossible.
         config.textures.d3d11.cache               = false;
@@ -3401,15 +3415,6 @@ auto DeclKeybind =
         config.apis.d3d9.hook                     =  false;
         config.apis.d3d9ex.hook                   =  false;
 
-        SK_Display_ForceDPIAwarenessUsingAppCompat (true);
-        SK_Display_SetMonitorDPIAwareness          (false);
-
-        dll_ini->import (L"[Import.ReShade64_Custom]\n"
-                         L"Architecture=x64\n"
-                         L"Role=Unofficial\n"
-                         L"When=PlugIn\n"
-                         L"Filename=ReShade64.dll\n");
-
         SK_D3D11_DeclHUDShader_Vtx (0x062173ec);
         SK_D3D11_DeclHUDShader_Vtx (0x48dd4bc3);
         SK_D3D11_DeclHUDShader_Vtx (0x54c0d366);
@@ -3420,14 +3425,6 @@ auto DeclKeybind =
       case SK_GAME_ID::YakuzaUnderflow:
       {
         config.render.dxgi.fake_fullscreen_mode   = true;
-
-        if (! IsProcessDPIAware ())
-        {
-          // Oly do this for Steam games, the Microsoft Store Yakuza games
-          //   are chronically DPI unaware and broken
-          if (StrStrIW (SK_GetHostPath (), L"SteamApps"))
-            SK_RestartGame ();
-        }
 
         config.textures.d3d11.cache               =  false;
         config.window.background_render           =   true;
@@ -3440,13 +3437,16 @@ auto DeclKeybind =
       }
       break;
 
-      case SK_GAME_ID::YakuzaInfiniteWealth:
-      case SK_GAME_ID::YakuzaLikeADragonGaiden:
+      case SK_GAME_ID::YakuzaInfiniteWealth:      [[fallthrough]];
+      case SK_GAME_ID::YakuzaLikeADragonGaiden:   [[fallthrough]];
+      case SK_GAME_ID::Yakuza0DirectorsCut:       [[fallthrough]];
+      case SK_GAME_ID::YakuzaKiwamiR:             [[fallthrough]];
+      case SK_GAME_ID::YakuzaKiwami2R:            [[fallthrough]];
+      case SK_GAME_ID::YakuzaKiwami3:             [[fallthrough]];
+      case SK_GAME_ID::YakuzaLikeADragonPirates:
       {
         config.render.dxgi.fake_fullscreen_mode   = true;
         config.window.background_render           = true;
-        config.render.dxgi.hooks.
-                            create_swapchain4hwnd = false;
       }
       break;
 
@@ -4547,6 +4547,101 @@ auto DeclKeybind =
       {
         SK_EnderLilies_InitPlugIn ();
       } break;
+      case SK_GAME_ID::ArknightsEndfield:
+      {
+        // Hook Arknights: Endfield Launcher to set up SpecialK before the game starts
+        if (_wcsicmp (SK_GetHostApp (), L"Games.exe") == 0) {
+          SK_AKEF_InitFromLauncher ();
+          break;
+        }
+        // Work-around anti-cheat
+        config.window.dont_hook_wndproc = true;
+        window.dont_hook_wndproc->store (config.window.dont_hook_wndproc);
+        config.compatibility.disable_debug_features = true;
+
+        config.textures.d3d11.cache = false;          // cause UI or 2D texture issues
+        config.textures.cache.ignore_nonmipped = true;
+        config.apis.dxgi.d3d12.hook = false;
+        config.apis.d3d9.hook = false;
+        config.apis.d3d9ex.hook = false;
+
+        config.apis.Vulkan.translate = 1;
+        config.apis.NvAPI.vulkan_bridge = 1;
+
+        // Game has native PlayStation support through libScePad and
+         //   haptics will not work if the PID is spoofed.
+        config.input.gamepad.scepad.hide_ds_edge_pid = SK_Disabled;
+        config.input.gamepad.xinput.emulate = false;
+        input.gamepad.scepad.hide_ds_edge_pid->store (config.input.gamepad.scepad.hide_ds_edge_pid);
+
+        plugin_mgr->exit_game_fns.emplace (SK_AKEF_ExitGame);
+        extern bool SK_AKEF_TryGetPid (DWORD * outPid);
+        extern void SK_AKEF_ResetPid ();
+        extern std::vector<DWORD> SK_AKEF_GetExistingEndfieldPids (void);
+
+        // By default, endfield somehow create a window too late for SpecialK to hook properly.
+        //  So we manually re-create endfield process and inject specialK early
+        const bool isPlatformProcess = _wcsicmp (SK_GetHostApp (), L"PlatformProcess.exe") == 0;
+        const bool isGlobalInjector = SK_GetModuleHandleW (L"SpecialK64.dll") != nullptr;
+        std::wstring wszDllFullName (MAX_PATH + 2, L'\0');
+        GetModuleFileName (skModuleRegistry::Self(), wszDllFullName.data(), MAX_PATH);
+
+        std::vector<DWORD> existingPids = SK_AKEF_GetExistingEndfieldPids ();
+        auto TerminateRemainingPid = [&existingPids](DWORD excludePid)
+          {
+            const DWORD currentPid = GetCurrentProcessId ();
+            for (const DWORD pid : existingPids)
+            {
+              if (pid == excludePid || pid == currentPid)
+                continue;
+
+              HANDLE hProcess = OpenProcess (PROCESS_TERMINATE, FALSE, pid);
+              if (hProcess)
+              {
+                SK_LOGi1(L"Terminating extra Endfield.exe process with PID %u\n", pid);
+                TerminateProcess (hProcess, 0);
+                CloseHandle (hProcess);
+              }
+            }
+          };
+
+        DWORD injectedPid = 0;
+        bool injectedTargetExist = false;
+
+        if (SK_AKEF_TryGetPid (&injectedPid))
+          injectedTargetExist =
+            std::find (existingPids.begin (), existingPids.end (), injectedPid) != existingPids.end ();
+
+        if (!injectedTargetExist)
+        {
+          SK_AKEF_ResetPid ();
+          if (existingPids.size () > 2)
+            SK_LOGi1("Multiple Endfield.exe processes found (%zu). Probably something is broken.\n", existingPids.size());
+
+          if (isPlatformProcess && (isGlobalInjector || (StrStrIW (wszDllFullName.data (), L"SpecialK64.dll") != nullptr)))
+          {
+            if (existingPids.size () <= 2) {
+              SK_LaunchArknightsEndfield (L"Endfield.exe");
+            }
+          }
+          else
+          {
+            if (_wcsicmp (SK_GetHostApp (), L"Endfield.exe") == 0) {
+              SK_RunOnce (plugin_mgr->init_fns.insert (SK_AKEF_InitPlugin));
+            }
+          }
+        }
+        else
+        {
+          SK_LOGi1 ("Existing Endfield.exe process found with PID %u\n", injectedPid);
+          TerminateRemainingPid (injectedPid);
+          
+          if (_wcsicmp (SK_GetHostApp (), L"Endfield.exe") == 0)
+            SK_RunOnce (plugin_mgr->init_fns.insert (SK_AKEF_InitPlugin));
+          else
+            SK_TerminateProcess (0);
+        }
+      } break;
 #endif
     }
   }
@@ -4865,6 +4960,9 @@ auto DeclKeybind =
     }
   }
 
+  render.framerate.latent_sync.skip_frames
+                                      ->load (config.render.framerate.latent_sync.skip_frames);
+
   render.osd.draw_in_vidcap->load            (config.render.osd. draw_in_vidcap);
 
   if (render.osd.hdr_luminance->load         (config.render.osd.hdr_luminance))
@@ -4923,6 +5021,8 @@ auto DeclKeybind =
   render.framerate.present_interval->load    (config.render.framerate.present_interval);
   render.framerate.sync_interval_clamp->load (config.render.framerate.sync_interval_clamp);
   render.framerate.tearing_mode->load        (config.render.framerate.tearing_mode);
+  render.framerate.latency_mode->load        (config.render.framerate.latency_mode);
+  render.framerate.render_queue->load        (config.render.framerate.render_queue);
 
   if (render.framerate.refresh_rate)
   {
@@ -6390,7 +6490,8 @@ auto DeclKeybind =
       SK_VerifyTrust_GetCodeSignature (SK_GetFullyQualifiedApp ());
 
     if (StrStrIW (code_sig.subject.c_str (), L"COGNOSPHERE") ||
-        StrStrIW (code_sig.subject.c_str (), L"KURO TECHNOLOGY"))
+        StrStrIW (code_sig.subject.c_str (), L"KURO TECHNOLOGY") ||
+        StrStrIW (code_sig.subject.c_str (), L"GRYPH FRONTIER"))
     {
       config.compatibility.disable_debug_features = true;
     }
@@ -7257,6 +7358,8 @@ SK_SaveConfig ( std::wstring name,
     render.framerate.present_interval->store      (config.render.framerate.present_interval);
     render.framerate.sync_interval_clamp->store   (config.render.framerate.sync_interval_clamp);
     render.framerate.tearing_mode->store          (config.render.framerate.tearing_mode);
+    render.framerate.latency_mode->store          (config.render.framerate.latency_mode);
+    render.framerate.render_queue->store          (config.render.framerate.render_queue);
     render.framerate.enforcement_policy->store    (config.render.framerate.enforcement_policy);
     render.framerate.enable_etw_tracing->store    (config.render.framerate.enable_etw_tracing);
 
@@ -7285,7 +7388,9 @@ SK_SaveConfig ( std::wstring name,
       render.framerate.latent_sync.auto_bias_target->store (wszPercent);
     }
 
-    texture.d3d9.clamp_lod_bias->store            (config.textures.clamp_lod_bias);
+    render.framerate.latent_sync.skip_frames->store (config.render.framerate.latent_sync.skip_frames);
+
+    texture.d3d9.clamp_lod_bias->store              (config.textures.clamp_lod_bias);
 
     // SLI only works in Direct3D
     //  + Keep these out of the INI on non-SLI systems for simplicity
@@ -8184,7 +8289,7 @@ SK_AppCache_Manager::loadAppCacheForExe (const wchar_t* wszExe)
         std::filesystem::path (wszExe).lexically_normal ();
 
       while (! std::filesystem::equivalent ( path.parent_path    (),
-                                             path.root_directory () ) )
+                                             path.root_name() / path.root_directory () ) )
       {
         if (found_manifest)
           break;
@@ -8356,7 +8461,7 @@ SK_AppCache_Manager::getAppNameFromPath (const wchar_t* wszPath) const
       wchar_t wszProfileName [MAX_PATH + 2] = { };
 
       while (! std::filesystem::equivalent ( path.parent_path    (),
-                                             path.root_directory () ) )
+                                             path.root_name() / path.root_directory () ) )
       {
         *wszProfileName = L'\0';
 
@@ -8530,7 +8635,7 @@ SK_AppCache_Manager::getConfigPathFromAppPath (const wchar_t* wszPath) const
   try
   {
     while (! std::filesystem::equivalent ( path.parent_path    (),
-                                           path.root_directory () ) )
+                                           path.root_name() / path.root_directory () ) )
     {
       if (std::filesystem::is_directory (path / L".egstore"))
       {
@@ -8591,7 +8696,7 @@ SK_AppCache_Manager::getConfigPathFromAppPath (const wchar_t* wszPath) const
       wchar_t wszProfileName [MAX_PATH + 2] = { };
 
       while (! std::filesystem::equivalent ( path.parent_path    (),
-                                             path.root_directory () ) )
+                                             path.root_name() / path.root_directory () ) )
       {
         *wszProfileName = L'\0';
 

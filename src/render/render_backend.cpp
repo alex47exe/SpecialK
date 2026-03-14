@@ -923,6 +923,11 @@ SK_VK_CreateSwapchainKHR (
 
       vkCreateSemaphore_SK (device, &create_info, nullptr, &SK_Reflex_VkSemaphore);
     }
+
+    if (SK_VK_HasLowLatency2)
+    {
+      config.nvidia.reflex.vulkan_supported = true;
+    }
   }
 
   else
@@ -1069,7 +1074,7 @@ void
 SK_Reflex_WaitOnSemaphore (VkDevice device, VkSemaphore semaphore, uint64_t value)
 {
   // Reflex implementation is no longer broken, we should not be waiting on the game's semaphore.
-  if (SK_IsCurrentGame (SK_GAME_ID::DOOMTheDarkAges))
+  if (SK_IsCurrentGame (SK_GAME_ID::DOOMTheDarkAges) || SK_IsCurrentGame (SK_GAME_ID::ArknightsEndfield))
   {
     return;
   }

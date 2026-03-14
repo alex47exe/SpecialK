@@ -884,7 +884,9 @@ SK_ImGui_DrawGraph_Latency (bool predraw)
        ReadULong64Acquire (&SK_RenderBackend::frames_drawn) - 2 )
   {
     static bool bRTSS64 =
-      SK_GetModuleHandle (L"RTSSHooks64.dll") != 0;
+      SK_GetModuleHandle (
+        SK_RunLHIfBitness (32, L"RTSSHooks.dll",
+                               L"RTSSHooks64.dll") ) != 0;
 
     ImGui::TextColored ( ImColor::HSV (0.1f, 1.f, 1.f),
                            bRTSS64 ? "RivaTuner Statistics Server detected, "
@@ -905,6 +907,13 @@ SK_ImGui_DrawConfig_Latency ()
 
   if (! (sk::NVAPI::nv_hardware && SK_API_IsDXGIBased (rb.api)))
     return;
+
+  bool bPartialReflexSupport =
+    sk::NVAPI::nv_hardware && SK_API_IsDXGIBased (rb.api)       &&
+    SK_Render_GetVulkanInteropSwapChainType      (rb.swapchain) != SK_DXGI_VK_INTEROP_TYPE_AMD;
+
+  if (bPartialReflexSupport)
+      bPartialReflexSupport = !bFullReflexSupport && !(SK_API_IsDXGIBased (rb.api) && SK_GL_OnD3D11);
 
   ImGui::BeginGroup ();
 
@@ -961,6 +970,16 @@ SK_ImGui_DrawConfig_Latency ()
 
   if (show_mode_select)
   {
+    if (bPartialReflexSupport && config.nvidia.reflex.vulkan_supported != true)
+    {
+      ImGui::BeginGroup  ();
+      ImGui::TextColored (ImVec4 (0.95f, .1f, .1f, 1.f),
+        "Reflex Low Latency Mode is Unavilable");
+      ImGui::BulletText  (
+        "Game is not using vkCreateSwapchainKHR and/or lacks support for VK_NV_low_latency2");
+      ImGui::EndGroup    ();
+    }
+
     // We can actually use "Nothing But Boost" in
     //   situations where Reflex doesn't normally work
     //     such as DXGI/Vulkan Interop SwapChains.

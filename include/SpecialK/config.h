@@ -128,6 +128,13 @@ enum SK_TearingMode
   AppControlled        = SK_NoPreference
 };
 
+// Latency reduction behavior for SK_TearingMode::AlwaysOff_LowLatency
+enum SK_LatencyMode
+{
+  Smooth     = 0,
+  Aggressive = 1
+};
+
 struct sk_config_t
 {
   sk_config_t (void)
@@ -758,6 +765,8 @@ struct sk_config_t
       int     refresh_denom       =     1;
       int     pin_render_thread   = SK_NoPreference;
       int     tearing_mode        = SK_TearingMode::AppControlled;
+      int     latency_mode        = SK_LatencyMode::Smooth;
+      int     render_queue        =     1; // Max Render Latency for SK_TearingMode::AlwaysOff_LowLatency/AdaptiveOff
       bool    turn_vsync_off      = false; // Turns VSync Off in Adaptive VSync mode
       bool    flip_discard        =  true; // Enabled by default (7/6/21)
       bool    flip_sequential     = false;
@@ -819,6 +828,7 @@ struct sk_config_t
           float ms                 =  0.0f;
           float percent            =  0.5f;
         } auto_bias_target;
+        bool  skip_frames          =   true;
         bool  show_fcat_bars       =  false; // Not INI-persistent
 
         bool  flush_before_present  =  true;
@@ -1093,6 +1103,7 @@ struct sk_config_t
       bool    enable              =  false;
       bool    native              =  false; // Status, not settings
       bool    vulkan              =  false; // Status, not settings
+      bool    vulkan_supported    =  false; // Status, not settings
       bool    override            =  false;
       bool    combined_limiter    =  false;
       bool    disable_native      =  false;
@@ -1797,11 +1808,16 @@ enum class SK_GAME_ID
   Ys_Eight,                     // ys8.exe
   PillarsOfEternity2,           // PillarsOfEternityII.exe
   Yakuza0,                      // Yakuza0.exe
+  Yakuza0DirectorsCut,          // Yakuza0_DC.exe
   YakuzaKiwami,                 // YakuzaKiwami.exe
+  YakuzaKiwamiR,                // yakuzakiwami_r.exe
   YakuzaKiwami2,                // YakuzaKiwami2.exe
+  YakuzaKiwami2R,               // yakuzakiwami2_r.exe
+  YakuzaKiwami3,                // YakuzaKiwami3.exe
   YakuzaUnderflow,              // Yakuza*.exe
   YakuzaLikeADragonGaiden,      // LikeADragonGaiden.exe
   YakuzaInfiniteWealth,         // likeadragon8.exe
+  YakuzaLikeADragonPirates,     // LikeADragonPirates.exe
   MonsterHunterWorld,           // MonsterHunterWorld.exe
   MonsterHunterStories2,        // game.exe (fantastic!)
   MonsterHunterRise,            // MonsterHunterRise.exe
@@ -1859,7 +1875,7 @@ enum class SK_GAME_ID
   HonkaiStarRail,               // StarRail.exe
   NoMansSky,                    // NMS.exe
   DiabloIV,                     // Diablo IV.exe
-  CallOfDuty,                   // CoDSP.exe, CoDMP.exe (???)
+  CallOfDuty,                   // CoDSP.exe, CoDMP.exe (2003); CoDUOSP.exe, CoDUOMP.exe (2004)
   RatchetAndClank_RiftApart,    // RiftApart.exe
   SeriousSamFusion2017,         // Sam2017.exe / Sam2017_Unrestricted.exe
   Starfield,                    // Starfield.exe
@@ -1927,6 +1943,7 @@ enum class SK_GAME_ID
   PhoenixWright_Trilogy,        // PWAAT.exe
   eFootball_PES_2021,           // PES2021.exe
   AgeOfEmpires4,                // RelicCardinal.exe
+  ArknightsEndfield,             // Endfield.exe, PlatformProcess.exe (if injected too late)
 
   UNKNOWN_GAME               = 0xffff
 };
