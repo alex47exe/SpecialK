@@ -2634,6 +2634,8 @@ _InstallDeviceHooksImpl (ID3D12Device* pDevice12)
     else pDev12 = pDevice12;
   } else pDev12 = pDevice12;
 
+  reshade::UnwrapObject (&pDev12);
+
   SK_CreateVFTableHook2 ( L"ID3D12Device::CreateCommandQueue",
                             *(void ***)*(&pDev12), 8,
                              D3D12Device_CreateCommandQueue_Detour,

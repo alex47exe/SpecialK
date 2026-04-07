@@ -66,6 +66,7 @@ struct SK_ImGui_D3D12Ctx
   SK_ComPtr <ID3D12Device>        pLastDevice;
   SK_ComPtr <ID3D12RootSignature> pRootSignature;
   SK_ComPtr <ID3D12PipelineState> pPipelineState;
+  SK_ComPtr <ID3D12Fence>         pFence;
 
   DXGI_FORMAT                     RTVFormat             = DXGI_FORMAT_UNKNOWN;
 
@@ -85,6 +86,24 @@ struct SK_ImGui_D3D12Ctx
 
 // A few ImGui pipeline states must never be disabled during render mod
 extern concurrency::concurrent_unordered_set <ID3D12PipelineState *> _criticalVertexShaders;
+
+bool
+SK_ImGui_D3D12_IsLastFrameComplete (void)
+{
+ if (! _d3d12_rbk->_pSwapChain.p || ! _d3d12_rbk->_pDevice.p)
+    return false;
+
+  INT iLastFrame = _d3d12_rbk->getCurrentBackBufferIndex () - 1;
+  if (iLastFrame < 0)
+      iLastFrame = (INT)_d3d12_rbk->frames_.size () - 1;
+
+  if (_d3d12_rbk->frames_ [iLastFrame].fence->GetCompletedValue () < _d3d12_rbk->frames_ [iLastFrame].fence.value)
+  {
+    return false;
+  }
+
+  return true;
+}
 
 HRESULT
 WINAPI
@@ -2265,6 +2284,44 @@ SK_D3D12_HDR_CopyBuffer ( ID3D12GraphicsCommandList *pCommandList,
   ++stagingFrame.hdr.format_conversions;
 }
 
+bool SK_D3D12_RenderCtx_IsHDRCompatible (ID3D12GraphicsCommandList* pCommandList, SK_D3D12_RenderCtx* This)
+{
+  static BOOL bSupported = -1;
+
+  if (     bSupported != -1)
+    return bSupported != FALSE;
+
+  // Unsafe to use HDR + ReShade + Streamline
+  if (SK_GetModuleHandleW (L"sl.dlss_g.dll") && config.reshade.is_addon)
+  {
+    if (config.reshade.draw_first)
+    {
+      SK_LOGi0 (L"ReShade + HDR + Streamline Detected - ReShade DrawFirst Disabled");
+      config.reshade.draw_first = false;
+    }
+  }
+
+  // This may crash in some combinations of ReShade + Streamline + SK + Agility and debugging it
+  //   is currently impractical, so we'll just catch the exception and disable HDR support if it happens.
+  __try {
+    pCommandList->SetGraphicsRootSignature ( This->pHDRSignature );
+    pCommandList->SetPipelineState         ( This->pHDRPipeline  );
+
+    bSupported = TRUE;
+  }
+
+  __except (EXCEPTION_EXECUTE_HANDLER)
+  {
+    SK_LOGi0 (L"DEBUGME: D3D12 RenderCtx HDR Compatibility Test Crashed - HDR Undefined!");
+
+    bSupported = FALSE;
+
+    return false;
+  }
+
+  return true;
+}
+
 void
 SK_D3D12_RenderCtx::present (IDXGISwapChain3 *pSwapChain)
 {
@@ -2417,7 +2474,7 @@ SK_D3D12_RenderCtx::present (IDXGISwapChain3 *pSwapChain)
     stagingFrame.hdr.skip_copy;
 
   auto _DrawAllReShadeEffects = [&](bool draw_first)
-  {
+  {  
     if ( config.reshade.is_addon                 &&
          config.reshade.draw_first == draw_first && _pReShadeRuntime != nullptr )
     {
@@ -2497,10 +2554,10 @@ SK_D3D12_RenderCtx::present (IDXGISwapChain3 *pSwapChain)
         //
         // Pulling the rug out from underneath things is a bad idea in DLSS3
         //   games, so stall all queued frames before proceeding.
-        // 
+        //
         // Streamline has a second queue on its fake SwapChain, that SK cannot
         //   properly synchronize other than draining the entire queue.
-        //  
+        //
         drain_queue ();
       }
 
@@ -2522,7 +2579,7 @@ SK_D3D12_RenderCtx::present (IDXGISwapChain3 *pSwapChain)
     }
   };
 
-  if (bHDR)
+  if (bHDR && SK_D3D12_RenderCtx_IsHDRCompatible (pCommandList, this))
   {
     SK_RunOnce (
       _InitCopyTextureRegionHook (pCommandList)
@@ -2832,11 +2889,15 @@ SK_D3D12_RenderCtx::FrameCtx::exec_cmd_list (void)
   SK_ComPtr <IDXGISwapChain>                                 pRealSwapChain;
   if (SK_slGetNativeInterface (pRoot->_pSwapChain, (void **)&pRealSwapChain.p) == sl::Result::eOk)
   {   _ExchangeProxyForNative (pRoot->_pSwapChain,           pRealSwapChain);
+      reshade::UnwrapObject  (&pRoot->_pSwapChain);
     pRealSwapChain->GetBuffer (BufferIdx, IID_ID3D12Resource, (void **)&pBackbuffer.p);
   }
 
   else if (pRoot->_pSwapChain != nullptr)
+  {
+    reshade::UnwrapObject (&pRoot->_pSwapChain);
     pRoot->_pSwapChain->GetBuffer (BufferIdx, IID_ID3D12Resource, (void **)&pBackbuffer.p);
+  }
 
   if (pRoot->getCurrentBackBufferIndex () == BufferIdx   &&
                             pParentBuffer == pBackbuffer &&
@@ -3149,6 +3210,9 @@ SK_D3D12_RenderCtx::init (IDXGISwapChain3 *pSwapChain, ID3D12CommandQueue *pComm
     else                       _pCommandQueue         = pNativeQueue;
   }
 
+  reshade::UnwrapObject (&pSwapChain);
+  reshade::UnwrapObject (&_pCommandQueue);
+
   // Turn HDR off in dgVoodoo2 so it does not crash
 #ifdef _M_IX86
   if ( (! config.render.dxgi.allow_d3d12_footguns ) &&
@@ -3189,6 +3253,8 @@ SK_D3D12_RenderCtx::init (IDXGISwapChain3 *pSwapChain, ID3D12CommandQueue *pComm
 
     if (SK_slGetNativeInterface (_pDevice.p, (void **)&pNativeDev12.p) == sl::Result::eOk)
         _ExchangeProxyForNative (_pDevice,             pNativeDev12);
+
+    reshade::UnwrapObject (&_pDevice);
   }
 
   if (_pDevice.p != nullptr)
@@ -3228,6 +3294,8 @@ SK_D3D12_RenderCtx::init (IDXGISwapChain3 *pSwapChain, ID3D12CommandQueue *pComm
             SK_ComPtr <ID3D12Device>                         pNativeDev12;
             if (SK_slGetNativeInterface (_pDevice, (void **)&pNativeDev12.p) == sl::Result::eOk)
                 _ExchangeProxyForNative (_pDevice,           pNativeDev12);
+
+            reshade::UnwrapObject (&_pDevice);
           }
         }
 #endif

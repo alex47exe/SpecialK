@@ -2469,20 +2469,26 @@ SK_D3D11_TexMgr::getTexture2D ( uint32_t               tag,
 bool
 SK_D3D11_SafeGetTexDesc (ID3D11Texture2D* pTex, D3D11_TEXTURE2D_DESC* desc)
 {
-  __try
+  if ( pTex != nullptr &&
+       desc != nullptr )
   {
-    if (pTex != nullptr)
+    __try
     {
-      pTex->GetDesc (desc);
+      ID3D11Texture2D*                                        pTex2D = nullptr;
+      if (SUCCEEDED (pTex->QueryInterface <ID3D11Texture2D> (&pTex2D)))
+      {
+        pTex2D->GetDesc (desc);
+        pTex2D->Release ();
 
-      return true;
+        return true;
+      }
     }
-  }
 
-  __except ( GetExceptionCode () == EXCEPTION_ACCESS_VIOLATION ?
-                                    EXCEPTION_EXECUTE_HANDLER  :
-                                    EXCEPTION_CONTINUE_SEARCH  )
-  { };
+    __except ( GetExceptionCode () == EXCEPTION_ACCESS_VIOLATION ?
+                                      EXCEPTION_EXECUTE_HANDLER  :
+                                      EXCEPTION_CONTINUE_SEARCH  )
+    { };
+  }
 
   return false;
 }
@@ -2508,10 +2514,8 @@ SK_D3D11_TextureIsCachedEx (ID3D11Texture2D* pTex, bool touch = false)
       config.textures.d3d11.use_l3_hash;
 
     if (( use_l3 && (size_t)tex_desc.Format    < textures->HashMap_Fmt.size () &&
-                            tex_desc.MipLevels < textures->HashMap_Fmt [tex_desc.Format].map.size () &&
                                                  textures->HashMap_Fmt [tex_desc.Format].map [tex_desc.MipLevels].contains (pTex)) ||
-        (!use_l3 &&         tex_desc.MipLevels < textures->HashMap_2D.size ()  &&
-                                                 textures->HashMap_2D [tex_desc.MipLevels].contains (pTex)))
+        (!use_l3 &&                              textures->HashMap_2D                        [tex_desc.MipLevels].contains (pTex)))
     {
       if (touch && (! SK_D3D11_IsTexInjectThread ()))
       {

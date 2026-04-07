@@ -73,6 +73,7 @@ volatile LONG     __SK_Init       = FALSE;
   extern bool     __SK_RunDLL_Bypass;
 
   extern float    __target_fps;
+  extern float    __target_fps_now;
 
          BOOL     __SK_DisableQuickHook = FALSE;
 
@@ -274,19 +275,6 @@ SK_LoadGPUVendorAPIs (void)
     dll_log->LogEx (false, L"================================================"
                            L"===========================================\n" );
 
-    // None of the GPU vendor-specific APIs work in WINE.
-    //
-    if (config.compatibility.using_wine)
-    {
-#ifdef THREADED_VENDOR_API_INIT
-      SK_Thread_CloseSelf ();
-
-      return 0;
-#else
-      return;
-#endif
-    }
-
     dll_log->Log (L"[  NvAPI   ] Initializing NVIDIA API           (NvAPI)...");
 
     SK_NvAPI_SetAppName         (       SK_GetFullyQualifiedApp () );
@@ -303,7 +291,7 @@ SK_LoadGPUVendorAPIs (void)
 
     if (nvapi_init)
     {
-      if (config.apis.NvAPI.vulkan_bridge != SK_NoPreference)
+      if (config.apis.NvAPI.vulkan_bridge != SK_NoPreference && !config.compatibility.using_wine)
       {
         SK_NvAPI_EnableVulkanBridge (config.apis.NvAPI.vulkan_bridge);
       }
@@ -1872,21 +1860,46 @@ SK_EstablishRootPath (void)
 }
 
 bool
+SK_ShouldAbortStartupForLaunchers (void)
+{
+  if (SK_GetCurrentGameID () == SK_GAME_ID::Launcher)
+  {
+    if (! SK_IsInjected ())
+    {
+      // We have no choice but to allow injection if using local injection
+      if (StrStrIW (SK_GetHostApp (), L"crs-video"))
+      {
+        // ...
+      }
+
+      else
+      {
+        SK_MessageBox (
+          L"Local Injection is not supported for this game because it uses a launcher",
+          L"Please switch to Global Injection", MB_ICONHAND | MB_OK
+        );
+
+        return true;
+      }
+    }
+
+    else
+    {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool
 __stdcall
 SK_StartupCore (const wchar_t* backend, void* callback)
 {
   // Early-out for launchers
   //
-  if (SK_GetCurrentGameID () == SK_GAME_ID::Launcher)
+  if (SK_ShouldAbortStartupForLaunchers ())
   {
-    if (! SK_IsInjected ())
-    {
-      SK_MessageBox (
-        L"Local Injection is not supported for this game because it uses a launcher",
-        L"Please switch to Global Injection", MB_ICONHAND | MB_OK
-      );
-    }
-
     return false;
   }
 
@@ -2182,7 +2195,10 @@ SK_StartupCore (const wchar_t* backend, void* callback)
     dll_log->LogEx (false, L"done!\n");
   }
 
-  SK_ReShadeAddOn_Init ();
+  // As of ReShade 6.6.0, ReShade will poop the bed if it is dxgi.dll and not loaded before SK is,
+  //   so explicitly pre-load it now.
+  if (SK_ReShade_IsLocalDLLPresent ())
+      SK_ReShade_LoadIfPresent     ();
 
   dll_log->LogEx (false,
     L"----------------------------------------------------------------------"
@@ -3443,7 +3459,8 @@ SK_FrameCallback ( SK_RenderBackend& rb,
       if (config.system.handle_crashes)
         SK::Diagnostics::CrashHandler::Reinstall ();
 
-      __target_fps = config.render.framerate.target_fps;
+      __target_fps     = config.render.framerate.target_fps;
+      __target_fps_now = __target_fps;
     } break;
 
 
@@ -3892,6 +3909,12 @@ SK_BeginBufferSwapEx (BOOL bWaitOnFail)
 {
   SK_PROFILE_SCOPED_TASK (SK_BeginBufferSwapEx)
 
+  // Update the active framerate limit for window state agnostic functions.
+  __target_fps_now =
+    (SK_IsGameWindowActive () || __target_fps_bg <= 0.0f) ?
+                                 __target_fps             :
+                                 __target_fps_bg;
+
   void SK_Render_CountVBlanks (void);
        SK_Render_CountVBlanks ();
 
@@ -3918,12 +3941,15 @@ SK_BeginBufferSwapEx (BOOL bWaitOnFail)
     SK_D3D12_BeginFrame ();
   }
 
+  const bool should_wait = 
+    !(__SK_IsDLSSGActive && config.render.framerate.streamline.wantNativePacing ());
+
   rb.driverSleepNV      (0);
   rb.setLatencyMarkerNV (RENDERSUBMIT_END);
 
   if (config.render.framerate.enforcement_policy == 0 && rb.swapchain.p != nullptr)
   {
-    SK::Framerate::Tick ( bWaitOnFail, 0.0, { 0,0 }, rb.swapchain.p );
+    SK::Framerate::Tick ( bWaitOnFail && should_wait, 0.0, { 0,0 }, rb.swapchain.p );
   }
 
   rb.present_staging.begin_overlays.time.QuadPart =
@@ -3941,7 +3967,7 @@ SK_BeginBufferSwapEx (BOOL bWaitOnFail)
 
   if (config.render.framerate.enforcement_policy == 1 && rb.swapchain.p != nullptr)
   {
-    SK::Framerate::Tick ( bWaitOnFail, 0.0, { 0,0 }, rb.swapchain.p );
+    SK::Framerate::Tick ( bWaitOnFail && should_wait, 0.0, { 0,0 }, rb.swapchain.p );
   }
 
   if (SK_Steam_PiratesAhoy () && (! SK_ImGui_Active ()))
@@ -3961,7 +3987,7 @@ SK_BeginBufferSwapEx (BOOL bWaitOnFail)
        config.render.framerate.enforcement_policy <  0 )
   {
     if (rb.swapchain.p != nullptr)
-      SK::Framerate::Tick ( bWaitOnFail, 0.0, { 0,0 }, rb.swapchain.p );
+      SK::Framerate::Tick ( bWaitOnFail && should_wait, 0.0, { 0,0 }, rb.swapchain.p );
   }
 }
 
@@ -4579,11 +4605,8 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
   }
 
 
-  auto _FrameTick = [&](void) -> void
+  auto _FrameTick = [&](bool bWait = true) -> void
   {
-    bool bWait =
-      SUCCEEDED (hr);
-
     // Only implement waiting on successful Presents,
     //   unsuccessful Presents must return immediately
     SK::Framerate::Tick ( bWait, 0.0,
@@ -4593,7 +4616,7 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
 
   if (config.render.framerate.enforcement_policy == 3 && rb.swapchain.p != nullptr)
   {
-    _FrameTick ();
+    _FrameTick (SUCCEEDED (hr));
   }
 
   // Various required actions at the end of every frame in order to
@@ -4622,6 +4645,9 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
 
     SK_D3D12_EndFrame (pTLS);
   }
+  
+  void SK_Reflex_SetSleepModeOverrides (void);
+       SK_Reflex_SetSleepModeOverrides ();
 
   SK_RandomCrapThatShouldBeInPlugIns ();
 
@@ -4634,8 +4660,13 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
 
   if ((config.render.framerate.enforcement_policy == 2 && !rb.vulkan_reflex.isPacingEligible ()) || rb.vulkan_reflex.needsFallbackSleep ())
   {
+    extern NvU32 SK_Reflex_LastNativeSleepTime;
+
+    bool should_wait = 
+      !(__SK_IsDLSSGActive && config.render.framerate.streamline.wantNativePacing ()) && (SK_Reflex_LastNativeSleepTime == 0 || SK_Reflex_LastNativeSleepTime < SK_timeGetTime () - 250) && !config.nvidia.reflex.use_limiter;
+
     if (rb.swapchain.p != nullptr)
-      _FrameTick ();
+      _FrameTick (should_wait);
 
     if (config.system.log_level > 0)
       SK_ReleaseAssert (rb.swapchain.p != nullptr);
@@ -4659,6 +4690,11 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
   InterlockedIncrementAcquire (
     &SK_RenderBackend::frames_drawn
   );
+
+  __SK_FramerateScale =
+    (__SK_IsDLSSGActive && (config.render.framerate.streamline.enable_native_limit || config.nvidia.reflex.vulkan) &&
+                                                          (__target_fps_now > 0.0f || config.nvidia.reflex.vulkan)) ?
+                                                                  std::max (2.0f, __SK_DLSSGMultiFrameCount + 1.0f) : 1.0f;
 
   SK_StartPerfMonThreads ();
 
@@ -5316,7 +5352,7 @@ SK_GetStoreOverlayState (bool bReal)
 }
 
 std::wstring
-SK_Platform_RemoveTrademarkSymbols (std::wstring name)
+SK_Platform_RemoveTrademarkSymbols (const std::wstring& name)
 {
   std::wstring out;
 

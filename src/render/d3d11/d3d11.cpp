@@ -635,7 +635,7 @@ SK_D3D11_GetDeviceContextHandle ( ID3D11DeviceContext *pDevCtx )
   LONG new_handle =
            handle;
 
-  if ( TRUE != SK_D3D11_SetDeviceContextHandle (pDevCtx, new_handle) )
+  if ( FALSE == SK_D3D11_SetDeviceContextHandle (pDevCtx, new_handle) )
   {
     new_handle = 0;
   }
@@ -5116,31 +5116,20 @@ _In_opt_ ID3D11DepthStencilView        *pDepthStencilView,
   auto _Finish = [&](void) ->
   void
   {
-    // This SEH translator hack is necessary for Yakuza's crazy engine, it
-    //   can recover from what will effectively be no render target bound,
-    //     and SK is capable of purging the memory it incorrectly deleted
-    //       from its caches after the first exception is raised.
-    auto orig_se =
-      SK_SEH_ApplyTranslator (
-        SK_FilteringStructuredExceptionTranslator (
-          EXCEPTION_ACCESS_VIOLATION
-        )
-      );
-    try
-    {
+    __try {
       bWrapped ?
         pDevCtx->OMSetRenderTargets ( NumViews, ppRenderTargetViews, pDSV )
                :
         D3D11_OMSetRenderTargets_Original (
           pDevCtx, NumViews, ppRenderTargetViews,
             pDSV );
-    }
-    catch (const SK_SEH_IgnoredException&) {
+    } __except (GetExceptionCode () == EXCEPTION_ACCESS_VIOLATION ?
+                                       EXCEPTION_EXECUTE_HANDLER  :
+                                       EXCEPTION_CONTINUE_SEARCH) {
       SK_LOGi0 (
         L"Caught Access Violation during call to OMSetRenderTargets (...)!"
       );
     };
-    SK_SEH_RemoveTranslator (orig_se);
   };
 
   if (! (SK::ControlPanel::D3D11::show_shader_mod_dlg && (! SK_D3D11_ApplyingStateBlock)))
@@ -5349,14 +5338,14 @@ SK_REMASTER_DESTROY_UAV_CALLBACK (10);
 SK_REMASTER_DESTROY_RT_CALLBACK  (11);
 SK_REMASTER_DESTROY_UAV_CALLBACK (11);
 
-#define SK_GET_REMASTER_DESTROY_UAV_CALLBACK(bits)         \
-        bits == 8  ? SK_D3D11_Remastered8BitUAVDestroyed  :\
-        bits == 10 ? SK_D3D11_Remastered10BitUAVDestroyed :\
-        bits == 11 ? SK_D3D11_Remastered11BitUAVDestroyed : nullptr
-#define SK_GET_REMASTER_DESTROY_RT_CALLBACK(bits)         \
-        bits == 8  ? SK_D3D11_Remastered8BitRTDestroyed  :\
-        bits == 10 ? SK_D3D11_Remastered10BitRTDestroyed :\
-        bits == 11 ? SK_D3D11_Remastered11BitRTDestroyed : nullptr
+#define SK_GET_REMASTER_DESTROY_UAV_CALLBACK(bits)           \
+        (bits) == 8  ? SK_D3D11_Remastered8BitUAVDestroyed  :\
+        (bits) == 10 ? SK_D3D11_Remastered10BitUAVDestroyed :\
+        (bits) == 11 ? SK_D3D11_Remastered11BitUAVDestroyed : nullptr
+#define SK_GET_REMASTER_DESTROY_RT_CALLBACK(bits)           \
+        (bits) == 8  ? SK_D3D11_Remastered8BitRTDestroyed  :\
+        (bits) == 10 ? SK_D3D11_Remastered10BitRTDestroyed :\
+        (bits) == 11 ? SK_D3D11_Remastered11BitRTDestroyed : nullptr
 
 HRESULT
 WINAPI
@@ -8241,10 +8230,25 @@ D3D11CreateDeviceAndSwapChain_Detour (IDXGIAdapter          *pAdapter,
   if (SK_COMPAT_IgnoreNvCameraCall ())
     return E_NOTIMPL;
 
+  DXGI_ADAPTER_DESC adapter_desc {};
+
+  const bool bUndesirableDriver =
+    (DriverType == D3D_DRIVER_TYPE_WARP || DriverType == D3D_DRIVER_TYPE_REFERENCE) ||
+      (pAdapter != nullptr &&
+        SUCCEEDED (pAdapter->GetDesc (&adapter_desc))               &&
+                    adapter_desc.VendorId == 0x1414 /* Microsoft */ &&
+                    adapter_desc.DeviceId == 0x008C /* Microsoft Basic Render Driver */);
+
   if (! config.render.dxgi.debug_layer)
   {
-    if (bD3D10 || bEOSOverlay || (pSwapChainDesc != nullptr && !SK_DXGI_IsSwapChainReal (*pSwapChainDesc)))
+    if (bUndesirableDriver || bD3D10 || bEOSOverlay || (pSwapChainDesc != nullptr && !SK_DXGI_IsSwapChainReal (*pSwapChainDesc)))
     {
+      if (bUndesirableDriver)
+      {
+        SK_LOGi0 ( L"==> D3D11CreateDeviceAndSwapChain: Ignoring D3D11 device with an undesirable"
+                   L" driver(WARP, Reference, or Microsoft Basic Render Driver)" );
+      }
+
       return
         D3D11CreateDeviceAndSwapChain_Import ( pAdapter,
                                                  pAdapter == nullptr ? D3D_DRIVER_TYPE_HARDWARE

@@ -1040,6 +1040,15 @@ SleepEx_Detour (DWORD dwMilliseconds, BOOL bAlertable)
     return 0;
   }
 
+  if (dwMilliseconds == (DWORD)-1)
+  {
+    // If this assertion fails, this sleep is irreversible!
+    SK_ReleaseAssert (dwMilliseconds != (DWORD)-1 || bAlertable != FALSE);
+
+    return
+      SK_SleepEx (dwMilliseconds, bAlertable);
+  }
+
   // For sleeps longer than 1 second, let's do some consistency checks
   const bool bLongSleep = 
     (dwMilliseconds > 1000UL);

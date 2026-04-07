@@ -69,7 +69,10 @@ SK::Framerate::EventCounter SK::Framerate::events;
 
 float __target_fps      = 0.0;
 float __target_fps_bg   = 0.0;
+float __target_fps_now  = 0.0;
 float __target_fps_temp = 0.0;
+
+float __SK_FramerateScale = 1.0f;
 
 enum class SK_LimitApplicationSite {
   BeforeBufferSwap,
@@ -572,6 +575,9 @@ CreateWaitableTimerExW_Detour ( _In_opt_ LPSECURITY_ATTRIBUTES lpTimerAttributes
 void
 SK_ImGui_LatentSyncConfig (void)
 {
+  // nb: This does not work correctly for background framerate limiting,
+  //       because it uses __target_fps...
+
   const SK_RenderBackend& rb =
     SK_GetCurrentRenderBackend ();
 
@@ -2127,7 +2133,7 @@ SK::Framerate::Limiter::try_wait (void)
 
   if (tracks_window)
   {
-    if (SK_IsGameWindowActive () || __target_fps_bg == 0.0f)
+    if (SK_IsGameWindowActive () || __target_fps_bg <= 0.0f)
     {
       if (fps <= 0.0f) {
         return false;
@@ -2487,7 +2493,17 @@ SK::Framerate::Limiter::wait (void)
     // Flush batched commands before zonking this thread off
     if (tracks_window && rb.d3d11.immediate_ctx != nullptr)
     {
-      rb.d3d11.immediate_ctx->Flush ();
+      if (ReadULongAcquire (&rb.thread) == SK_Thread_GetCurrentId ())
+      {
+        rb.d3d11.immediate_ctx->Flush ();
+      }
+
+      else
+      {
+        SK_RunOnce (
+          SK_LOGi0 (L"Framerate limiter is running on a different thread than the D3D11 Immediate Context!")
+        );
+      }
     }
 
     SK_Framerate_SanitizeTimerResolution ();
@@ -3055,7 +3071,7 @@ SK::Framerate::Limiter::wait (void)
                 bIgnoreHighVariation |=
                   config.render.framerate.enforcement_policy == 2 ||
                   config.nvidia.reflex.use_limiter                ||
-                  config.fps.timing_method ==
+                  config.fps.getTimingMethod () ==
                     SK_FrametimeMeasures_NewFrameBegin;
               }
 
@@ -4282,22 +4298,23 @@ SK::Framerate::Limiter::wait (void)
 
 double SK_Framerate_GetLimitEnvVar (double target)
 {
+  if (config.render.framerate.ignore_env_vars)
+    return target;
+
   static double dEnvVarFPS = 0.0;
 
   SK_RunOnce (
   {
-    wchar_t                                              wszEnvVarFPS [32] = { };
-    if (GetEnvironmentVariableW (L"SUNSHINE_CLIENT_FPS", wszEnvVarFPS, 31))
+    wchar_t                                       wszEnvVarFPS [32] = { };
+    if (GetEnvironmentVariableW (L"SK_FPS_LIMIT", wszEnvVarFPS, 31))
     {
       dEnvVarFPS = _wtof (wszEnvVarFPS);
     }
-
+    else if (GetEnvironmentVariableW (L"SUNSHINE_CLIENT_FPS", wszEnvVarFPS, 31))
+    {
+      dEnvVarFPS = _wtof (wszEnvVarFPS);
+    }
     else if (GetEnvironmentVariableW (L"APOLLO_CLIENT_FPS", wszEnvVarFPS, 31))
-    {
-      dEnvVarFPS = _wtof (wszEnvVarFPS);
-    }
-
-    else if (GetEnvironmentVariableW (L"SK_FPS_LIMIT", wszEnvVarFPS, 31))
     {
       dEnvVarFPS = _wtof (wszEnvVarFPS);
     }
@@ -4456,6 +4473,9 @@ SK::Framerate::TickEx ( bool     /*wait*/,
                         LARGE_INTEGER now,
                         IUnknown*     swapchain )
 {
+  if (__SK_IsDLSSGActive && config.nvidia.reflex.vulkan && dt != -1.0)
+    return;
+
   auto *pLimiter =
     SK::Framerate::GetLimiter (swapchain);
 
@@ -4499,24 +4519,8 @@ SK::Framerate::TickEx ( bool     /*wait*/,
         now
     );
 
-    static ULONG64 last_frame         = 0;
-    bool           skip_frame_history = false;
-
-    if (last_frame < SK_GetFramesDrawn () - 1)
-    {
-      if (! (__SK_IsDLSSGActive && config.render.framerate.streamline.enable_native_limit && __target_fps > 0.0f))
-      {
-        skip_frame_history = true;
-      }
-    }
-
-    if (std::exchange (last_frame, SK_GetFramesDrawn ())
-                                != SK_GetFramesDrawn () || (__SK_IsDLSSGActive && config.render.framerate.streamline.enable_native_limit && __target_fps > 0.0f))
-    {
-      if (!   (reset_frame_history ||
-                skip_frame_history) ) SK_ImGui_Frames->timeFrame (dt);
-      else if (reset_frame_history)   SK_ImGui_Frames->reset     (  );
-    }
+    if (! reset_frame_history) SK_ImGui_Frames->timeFrame (dt);
+    else                       SK_ImGui_Frames->reset     (  );
   }
 
   static constexpr int _NUM_STATS = 5;
@@ -4609,6 +4613,44 @@ SK::Framerate::TickEx ( bool     /*wait*/,
   pLimiter->amortization._last_frame = now;
 }
 
+int sk_config_t::fps_osd_s::getTimingMethod (void)
+{
+  if (__SK_IsDLSSGActive)
+  {      
+    if (config.render.framerate.streamline.enable_native_limit)
+    {
+      if (__target_fps_now <= 0.0f && timing_method == SK_FrametimeMeasures_LimiterPacing)
+      {
+        return SK_FrametimeMeasures_NewFrameBegin;
+      }
+    }
+
+    else if (__target_fps_now > 0.0f && timing_method == SK_FrametimeMeasures_LimiterPacing)
+    {
+      return SK_FrametimeMeasures_PresentSubmit;
+    }
+  }
+
+  else if (__target_fps_now <= 0.0f && timing_method == SK_FrametimeMeasures_LimiterPacing)
+  {
+    return SK_FrametimeMeasures_NewFrameBegin;
+  }
+
+  return timing_method;
+}
+
+bool sk_config_t::render_s::framerate_s::streamline_s::wantNativePacing (void)
+{
+  if (__target_fps_now <= 0.0f)
+  {
+    return false;
+  }
+
+  return enable_native_limit;
+}                               
+
+extern NvU32 SK_Reflex_LastNativeSleepTime;
+
 void
 SK::Framerate::Tick ( bool          wait,
                       double        dt,
@@ -4638,7 +4680,7 @@ SK::Framerate::Tick ( bool          wait,
   if (wait)
     pLimiter->wait ();
 
-  if (config.fps.timing_method == SK_FrametimeMeasures_LimiterPacing && pLimiter->get_limit () > 0.0f && (!__SK_IsDLSSGActive || !config.render.framerate.streamline.enable_native_limit))
+  if (config.fps.getTimingMethod () == SK_FrametimeMeasures_LimiterPacing && (!__SK_IsDLSSGActive || !config.render.framerate.streamline.wantNativePacing()) && (config.render.framerate.enforcement_policy != 2 || SK_Reflex_LastNativeSleepTime == 0 || SK_Reflex_LastNativeSleepTime < SK_timeGetTime() - 250))
   {
     SK::Framerate::TickEx (false, dt, now, swapchain);
   }

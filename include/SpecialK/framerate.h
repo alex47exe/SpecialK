@@ -818,7 +818,7 @@ bool StopTraceSession                 (void);
 
 extern volatile LONG64 lD3DKMTPresentCalls;
 
-static constexpr float __SK_FramerateScale = 1.0f;
+extern float __SK_FramerateScale;
 
 extern bool __SK_HasDLSSGStatusSupport;
 extern bool __SK_IsDLSSGActive;
@@ -832,6 +832,7 @@ extern int  __SK_LatentSyncSkip;
 
 extern float __target_fps;
 extern float __target_fps_bg;
+extern float __target_fps_now;
 extern float __target_fps_temp;
 
 extern LONGLONG __SK_LatentSyncPostDelay;

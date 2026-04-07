@@ -350,6 +350,7 @@ struct sk_config_t
     bool   framenumber    = false;
     bool   compact_vrr    = false;
     int    timing_method  = SK_FrametimeMeasures_LimiterPacing;
+    int    getTimingMethod (void);
 
     struct keybinds_s {
       BYTE toggle [4]     = { VK_CONTROL, VK_SHIFT, 'F', 0 };
@@ -568,6 +569,7 @@ struct sk_config_t
     bool        is_addon_hookless     = false;  // True if ReShade has no hooked effect runtimes
     bool        has_local_ini         = false;  // Using local ReShade.ini instead of SK's
     bool        allow_unsafe_addons   = false;
+    bool        allow_addon_with_reno = true;   // Deprecated
     SK_ConfigSerializedKeybind
                 toggle_overlay_keybind= {
                     SK_Keybind {
@@ -838,10 +840,11 @@ struct sk_config_t
         bool  finish_after_present  =  true;
       } latent_sync;
       bool    use_amd_mwaitx       =   true;
-      struct {
-        bool  enable_native_limit  =  false;
+      struct streamline_s {
+        bool  enable_native_limit  =   true;
         float target_fps           =   0.0f;
-        int   enforcement_policy   =      4; // Pending removal
+        int   pacing_mode          =      3; // 0 = N/A, 1 = Smooth, 2 = Low-Latency, 3 = Ultra-Low-Latency
+        bool  wantNativePacing (void);
       } streamline;
       struct {
         int  allow_latency_wait    = -1;
@@ -849,6 +852,7 @@ struct sk_config_t
       } engine_overrides;
       bool   max_timer_resolution  = true;
       bool   force_high_res_timers = true;
+      bool   ignore_env_vars       = false;
     } framerate;
     struct d3d9_s {
       bool    force_d3d9ex         = false;
@@ -895,7 +899,7 @@ struct sk_config_t
       bool    hide_hdr_support     = false; // Games won't know HDR is supported
       int     hdr_metadata_override=
                            SK_NoPreference; // -1 = Don't Care, -2 Disable outright
-      bool    use_factory_cache    =  true; // Fix performance issues in Resident Evil 8
+      bool    use_factory_cache    = false; // Fix performance issues in Resident Evil 8
       bool    skip_mode_changes    =  true; // Try to skip rendundant resolution changes
       bool    temporary_dwm_hdr    = false; // Always turns HDR on and off for this game
       bool    disable_virtual_vbi  =  true; // Disable Windows 11 Dynamic Refresh Rate
@@ -1124,7 +1128,7 @@ struct sk_config_t
       int     use_sharpening      = SK_NoPreference;
       float   forced_sharpness    =   0.0f;
       int     forced_multiframe   = SK_NoPreference;
-      bool    allow_flip_metering =  false;
+      bool    allow_flip_metering =   true;
       bool    streamline_dbg_out  =  false;
       struct {
         float performance         =   0.0f;
@@ -1377,6 +1381,7 @@ struct sk_config_t
     bool    background_mute     = false;
     bool    confine_cursor      = false;
     bool    unconfine_cursor    = false;
+    bool    clip_taskbar        = false; // Don't allow the cursor to move into the taskbar area when confining
     bool    persistent_drag     = false;
     bool    drag_lock           = false; // NOT SAVED IN INI
     bool    fullscreen          = false;
@@ -1943,7 +1948,8 @@ enum class SK_GAME_ID
   PhoenixWright_Trilogy,        // PWAAT.exe
   eFootball_PES_2021,           // PES2021.exe
   AgeOfEmpires4,                // RelicCardinal.exe
-  ArknightsEndfield,             // Endfield.exe, PlatformProcess.exe (if injected too late)
+  ArknightsEndfield,            // Endfield.exe, PlatformProcess.exe (if injected too late)
+  CrimsonDesert,                // CrimsonDesert.exe
 
   UNKNOWN_GAME               = 0xffff
 };

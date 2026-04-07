@@ -2408,42 +2408,57 @@ SK_NGX_DLSS_ControlPanel (void)
       // FIXME:  Implement Vulkan Native Pacing
       if (__SK_IsDLSSGActive && (! config.nvidia.reflex.vulkan))
       {
-        if (ImGui::Checkbox ("Pace Native Frames", &config.render.framerate.streamline.enable_native_limit))
+        ImGui::PushItemWidth (ImGui::CalcTextSize ("Ultra Low-Latency\tTT").x);
+
+        int pacing_mode =
+          std::max (0, config.render.framerate.streamline.pacing_mode - 1);
+
+        if (ImGui::Combo ("Frame Generation Pacing", &pacing_mode,
+                          "Smooth\0Low-Latency\0Ultra Low-Latency\0\0", 4))
         {
+          config.render.framerate.streamline.pacing_mode = pacing_mode + 1;
+
+          // Off mode is disabled for now.
+          if (config.render.framerate.streamline.pacing_mode == 0)
+              config.render.framerate.streamline.pacing_mode  = 3;
+              //config.render.framerate.streamline.enable_native_limit = false;
+          else
+              config.render.framerate.streamline.enable_native_limit = true;
+
+          void SK_Reflex_SetSleepModeOverrides (void);
+               SK_Reflex_SetSleepModeOverrides ();
+
           config.utility.save_async ();
         }
+
         if (ImGui::BeginItemTooltip ())
         {
-          ImGui::TextUnformatted ("Apply framerate limiting to a game's native frames when Frame Generation is active.");
+          ImGui::TextUnformatted ("Apply Special K's Framerate Limiter to a Game's Native Frames.");
           ImGui::Separator       ();
-          ImGui::BulletText      ("The NATIVE framerate will be reported in graphs and text");
+          ImGui::BeginGroup      ();
+        //ImGui::BulletText      ("Off ");
+          ImGui::BulletText      ("Smooth ");
+          ImGui::BulletText      ("Low-Latency ");
+          ImGui::BulletText      ("Ultra Low-Latency ");
+          ImGui::EndGroup        ();
+          ImGui::SameLine        ();
+          ImGui::BeginGroup      ();
+        //ImGui::TextUnformatted ("  Default NVIDIA Streamline Behavior");
+          ImGui::TextUnformatted ("  Favors Smoothness Over Latency ");
+          ImGui::TextUnformatted ("  Enables Driver-level Latency Reduction ");
+          ImGui::TextUnformatted ("  Enables Reflex Framerate Limiter ");
+          ImGui::EndGroup        ();
+          ImGui::SameLine        ();
+          ImGui::BeginGroup      ();
+        //ImGui::TextUnformatted ("");
+          ImGui::TextUnformatted ("  Adds latency if GPU load exceeds ~96%; use a more conservative limit for best results.");
+          ImGui::TextUnformatted ("");
+          ImGui::TextUnformatted ("  Lowest latency (but standard native Reflex behavior); may cause stutter in some games.");
+          ImGui::EndGroup        ();
           ImGui::EndTooltip      ();
         }
 
-        // Remove mode option, it is being phased out...
-#if 0
-        if (config.render.framerate.streamline.enable_native_limit)
-        {
-          ImGui::SameLine ();
-
-          int sel = ( config.render.framerate.streamline.enforcement_policy == 4 ) ? 0 :
-                    ( config.render.framerate.streamline.enforcement_policy == 2 ) ? 1 : 0;
-
-          ImGui::PushItemWidth (ImGui::CalcTextSize ("Low-Latency\tTT").x);
-
-          if (ImGui::Combo ("Mode###StreamlinePacingMode", &sel, "Normal\0Low-Latency\0\0", 2))
-          {
-            config.render.framerate.streamline.enforcement_policy =
-              ( sel == 0 ) ? 4 :
-              ( sel == 1 ) ? 2 : 4;
-
-            config.utility.save_async ();
-          }
-
-          ImGui::PopItemWidth ();
-        }
-#endif
-        ImGui::SameLine ();
+        ImGui::PopItemWidth ();
       }
 
       static bool flip_restart_required = false;
@@ -2461,8 +2476,8 @@ SK_NGX_DLSS_ControlPanel (void)
         {
           ImGui::TextUnformatted ("Allow NVIDIA to use Flip Metering instead of standard DLSS Frame Pacing");
           ImGui::Separator       ();
-          ImGui::BulletText      ("Increases latency and makes pacing worse");
-          ImGui::BulletText      ("May be required for multi-frame gen");
+          ImGui::BulletText      ("Paces generated frames at the driver level, but produces nonsense timing graphs in some apps (i.e. RTSS).");
+          ImGui::BulletText      ("This optimization is important for multi-frame gen users.");
           ImGui::EndTooltip      ();
         }
       }

@@ -332,6 +332,7 @@ SK_GetCurrentGameID (void)
           { L"RelicCardinal.exe",                      SK_GAME_ID::AgeOfEmpires4                },
           { L"Endfield.exe",                           SK_GAME_ID::ArknightsEndfield            },
           { L"PlatformProcess.exe",                    SK_GAME_ID::ArknightsEndfield            },
+          { L"CrimsonDesert.exe",                      SK_GAME_ID::CrimsonDesert                }
         };
 
     first_check  = false;
@@ -827,6 +828,7 @@ struct {
   } overlay;
   sk::ParameterBool*      draw_first              = nullptr;
   sk::ParameterBool*      unsafe_addons           = nullptr;
+  sk::ParameterBool*      allow_sk_addon_and_reno = nullptr;
 } reshade_cfg;
 
 struct {
@@ -952,6 +954,7 @@ struct {
     sk::ParameterInt*     tearing_mode            = nullptr;
     sk::ParameterInt*     latency_mode            = nullptr;
     sk::ParameterInt*     render_queue            = nullptr;
+    sk::ParameterInt*     buffer_count_old        = nullptr;
     sk::ParameterInt*     buffer_count            = nullptr;
     sk::ParameterInt*     max_delta_time          = nullptr;
     sk::ParameterBool*    flip_discard            = nullptr;
@@ -975,7 +978,8 @@ struct {
     sk::ParameterBool*    enable_etw_tracing      = nullptr;
     sk::ParameterBool*    use_amd_mwaitx          = nullptr;
     sk::ParameterBool*    apply_streamline_pacing = nullptr;
-    sk::ParameterInt*     streamline_limit_policy = nullptr;
+    sk::ParameterInt*     streamline_pacing_mode  = nullptr;
+    sk::ParameterBool*    ignore_environment_vars = nullptr;
     sk::ParameterBool*    force_vk_mailbox        = nullptr;
     sk::ParameterBool*    force_vk_adaptive       = nullptr;
     sk::ParameterBool*    max_timer_resolution    = nullptr;
@@ -1272,6 +1276,7 @@ struct {
   sk::ParameterBool*      background_mute         = nullptr;
   sk::ParameterBool*      confine_cursor          = nullptr;
   sk::ParameterBool*      unconfine_cursor        = nullptr;
+  sk::ParameterBool*      prevent_taskbar_unhide  = nullptr;
   sk::ParameterBool*      persistent_drag         = nullptr;
   sk::ParameterBool*      fullscreen              = nullptr;
   sk::ParameterStringW*   override                = nullptr;
@@ -1980,6 +1985,7 @@ auto DeclKeybind =
     ConfigEntry (window.offset.y,                        L"Y Offset (Percent or Absolute)",                            dll_ini,         L"Window.System",         L"YOffset"),
     ConfigEntry (window.confine_cursor,                  L"Confine the Mouse Cursor to the Game Window",               dll_ini,         L"Window.System",         L"ConfineCursor"),
     ConfigEntry (window.unconfine_cursor,                L"Unconfine the Mouse Cursor from the Game Window",           dll_ini,         L"Window.System",         L"UnconfineCursor"),
+    ConfigEntry (window.prevent_taskbar_unhide,          L"Prevent the Mouse Cursor from Unhiding the Taskbar",        dll_ini,         L"Window.System",         L"PreventTaskbarUnhide"),
     ConfigEntry (window.persistent_drag,                 L"Remember where the window is dragged to",                   dll_ini,         L"Window.System",         L"PersistentDragPos"),
     ConfigEntry (window.fullscreen,                      L"Make the Game Window Fill the Screen (scale to fit)",       dll_ini,         L"Window.System",         L"Fullscreen"),
     ConfigEntry (window.override,                        L"Force the Client Region to this Size in Windowed Mode",     dll_ini,         L"Window.System",         L"OverrideRes"),
@@ -2093,7 +2099,8 @@ auto DeclKeybind =
     ConfigEntry (render.framerate.last_refresh_rate,     L"Refresh rate the last time framerate limit was configured.",dll_ini,         L"Render.FrameRate",      L"LastRefreshRate"),
     ConfigEntry (render.framerate.last_monitor_path,     L"The monitor the last time framerate limit was configured.", dll_ini,         L"Render.FrameRate",      L"LastMonitorPath"),
     ConfigEntry (render.framerate.wait_for_vblank,       L"Limiter Will Wait for VBLANK",                              dll_ini,         L"Render.FrameRate",      L"WaitForVBLANK"),
-    ConfigEntry (render.framerate.buffer_count,          L"Number of Backbuffers in the Swapchain",                    dll_ini,         L"Render.FrameRate",      L"BackBufferCount"),
+    ConfigEntry (render.framerate.buffer_count_old,      L"Number of (Back)Buffers in the Swapchain",                  dll_ini,         L"Render.FrameRate",      L"BackBufferCount"),
+    ConfigEntry (render.framerate.buffer_count,          L"Number of (Back)Buffers in the Swapchain",                  dll_ini,         L"Render.FrameRate",      L"BufferCount"),
     ConfigEntry (render.framerate.present_interval,      L"Presentation Interval (VSYNC)",                             dll_ini,         L"Render.FrameRate",      L"PresentationInterval"),
     ConfigEntry (render.framerate.sync_interval_clamp,   L"Maximum Sync Interval (Clamp VSYNC)",                       dll_ini,         L"Render.FrameRate",      L"SyncIntervalClamp"),
     ConfigEntry (render.framerate.tearing_mode,          L"Tearing Mode (Always On/Off or Adaptive)",                  dll_ini,         L"Render.FrameRate",      L"TearingMode"),
@@ -2112,7 +2119,9 @@ auto DeclKeybind =
     ConfigEntry (render.framerate.
                                 apply_streamline_pacing, L"Apply Pacing to Native frames when using DLSS Frame Gen.",  dll_ini,         L"Render.FrameRate",      L"EnableStreamlinePacing"),
     ConfigEntry (render.framerate.
-                                streamline_limit_policy, L"When to apply Native Frame pacing.",                        dll_ini,         L"Render.FrameRate",      L"StreamlineEnforcementPolicy"),
+                                streamline_pacing_mode,  L"Level of DLSS Frame Gen pacing latency reduction.",         dll_ini,         L"Render.FrameRate",      L"StreamlinePacingMode"),
+    ConfigEntry (render.framerate.
+                                ignore_environment_vars, L"Ignore environment variable-defined framerate limits.",     dll_ini,         L"Render.FrameRate",      L"IgnoreEnvironmentVars"),
 
     ConfigEntry (render.framerate.control.render_ahead,  L"Maximum number of CPU-side frames to work ahead of GPU.",   dll_ini,         L"FrameRate.Engine",      L"MaxRenderAheadFrames"),
     ConfigEntry (render.framerate.engine.
@@ -2306,6 +2315,7 @@ auto DeclKeybind =
 
     ConfigEntry (reshade_cfg.draw_first,                 L"Draw ReShade before SK's overlay in AddOn capable versions",dll_ini,         L"ReShade.System",        L"DrawFirst"),
     ConfigEntry (reshade_cfg.unsafe_addons,              L"Supress warnings for incompatible ReShade AddOns",          dll_ini,         L"ReShade.System",        L"UnsafeAddOns"),
+    ConfigEntry (reshade_cfg.allow_sk_addon_and_reno,    L"Enable Special K's ReShade Add-On when RenoDX is in use.",  dll_ini,         L"ReShade.System",        L"AllowSKAddOnWithRenoDX"),
 
     ConfigEntry (imgui.show_eula,                        L"Show Software EULA",                                        dll_ini,         L"SpecialK.System",       L"ShowEULA"),
     ConfigEntry (imgui.disable_alpha,                    L"Disable Alpha Transparency (reduce flicker)",               dll_ini,         L"ImGui.Render",          L"DisableAlpha"),
@@ -3520,8 +3530,6 @@ auto DeclKeybind =
         config.nvidia.reflex.native                =  true;
         config.render.framerate.streamline.enable_native_limit
                                                    =  true;
-        config.render.framerate.streamline.enforcement_policy
-                                                   =     2;
         config.nvidia.reflex.low_latency           =  true;
         config.nvidia.reflex.low_latency_boost     =  true;
         config.nvidia.reflex.enable                =  true;
@@ -4543,6 +4551,12 @@ auto DeclKeybind =
       } break;
 
 #ifdef _M_AMD64
+      case SK_GAME_ID::CrimsonDesert:
+      {
+        // Prevent the Ctrl+Shift debug shenanigans in this game from
+        //   causing the window to resize itself during combat.
+        config.window.confine_cursor = true;
+      } break;
       case SK_GAME_ID::EnderLilies:
       {
         SK_EnderLilies_InitPlugIn ();
@@ -4561,9 +4575,6 @@ auto DeclKeybind =
 
         config.textures.d3d11.cache = false;          // cause UI or 2D texture issues
         config.textures.cache.ignore_nonmipped = true;
-        config.apis.dxgi.d3d12.hook = false;
-        config.apis.d3d9.hook = false;
-        config.apis.d3d9ex.hook = false;
 
         config.apis.Vulkan.translate = 1;
         config.apis.NvAPI.vulkan_bridge = 1;
@@ -4824,6 +4835,7 @@ auto DeclKeybind =
 
   reshade_cfg.draw_first->load              (config.reshade.draw_first);
   reshade_cfg.unsafe_addons->load           (config.reshade.allow_unsafe_addons);
+  reshade_cfg.allow_sk_addon_and_reno->load (config.reshade.allow_addon_with_reno);
 
   notifications.location->load              (config.notifications.location);
   notifications.silent->load                (config.notifications.silent);
@@ -4918,14 +4930,22 @@ auto DeclKeybind =
   render.framerate.use_amd_mwaitx->load       (config.render.framerate.use_amd_mwaitx);
   render.framerate.apply_streamline_pacing->
                                          load (config.render.framerate.streamline.enable_native_limit);
-  render.framerate.streamline_limit_policy->
-                                         load (config.render.framerate.streamline.enforcement_policy);
+  render.framerate.streamline_pacing_mode->
+                                         load (config.render.framerate.streamline.pacing_mode);
+  render.framerate.ignore_environment_vars->
+                                         load (config.render.framerate.ignore_env_vars);
+
+  // Non-native pacing codepath is broken / being phased-out,
+  //   better to just force-enable native limit if pacing mode is not 0.
+  if (config.render.framerate.streamline.pacing_mode != 0)
+      config.render.framerate.streamline.enable_native_limit = true;
 
   if (! SK_CPU_HasMWAITX) // Turn off if CPU does not support
     config.render.framerate.use_amd_mwaitx = false;
 
-  __target_fps    = config.render.framerate.target_fps;
-  __target_fps_bg = config.render.framerate.target_fps_bg;
+  __target_fps_now = config.render.framerate.target_fps;
+  __target_fps_bg  = config.render.framerate.target_fps_bg;
+  __target_fps     = __target_fps_now;
 
 //  render.framerate.control.
 //                  render_ahead->load        (config.render.framerate.max_render_ahead);
@@ -5016,13 +5036,17 @@ auto DeclKeybind =
   render.hdr.last_used_colorspace->load      (config.render.hdr.last_used_colorspace);
 
   render.framerate.wait_for_vblank->load     (config.render.framerate.wait_for_vblank);
-  render.framerate.buffer_count->load        (config.render.framerate.buffer_count);
   render.framerate.prerender_limit->load     (config.render.framerate.pre_render_limit);
   render.framerate.present_interval->load    (config.render.framerate.present_interval);
   render.framerate.sync_interval_clamp->load (config.render.framerate.sync_interval_clamp);
   render.framerate.tearing_mode->load        (config.render.framerate.tearing_mode);
   render.framerate.latency_mode->load        (config.render.framerate.latency_mode);
   render.framerate.render_queue->load        (config.render.framerate.render_queue);
+
+  if (! render.framerate.buffer_count->load (config.render.framerate.buffer_count))
+  {
+    render.framerate.buffer_count_old->load (config.render.framerate.buffer_count);
+  }
 
   if (render.framerate.refresh_rate)
   {
@@ -5608,6 +5632,7 @@ auto DeclKeybind =
 
   window.confine_cursor->load         (config.window.confine_cursor);
   window.unconfine_cursor->load       (config.window.unconfine_cursor);
+  window.prevent_taskbar_unhide->load (config.window.clip_taskbar);
   window.persistent_drag->load        (config.window.persistent_drag);
   window.fullscreen->load             (config.window.fullscreen);
   window.fix_mouse_coords->load       (config.window.res.override.fix_mouse);
@@ -6183,22 +6208,24 @@ auto DeclKeybind =
 
   // Auto-Config for Unity Engine Games on First Launch
   //
-  if (SK_GetModuleHandleW (L"UnityPlayer.dll") || PathFileExistsW (L"UnityPlayer.dll"))
-  {
-    if (config.render.framerate.engine_overrides.allow_latency_wait == -1 ||
-        config.render.framerate.pre_render_limit                    == -1)
+  SK_RunOnce (
+    if (SK_GetModuleHandleW (L"UnityPlayer.dll") || PathFileExistsW (L"UnityPlayer.dll"))
     {
-      // Unity will be assigned a maximum frame latency of 1 frame if it tries
-      //   to use latency waitable and user has not overriden the pre-render limit.
-      config.render.framerate.engine_overrides.allow_latency_wait  =  TRUE;
+      if (config.render.framerate.engine_overrides.allow_latency_wait == -1 ||
+          config.render.framerate.pre_render_limit                    == -1)
+      {
+        // Unity will be assigned a maximum frame latency of 1 frame if it tries
+        //   to use latency waitable and user has not overriden the pre-render limit.
+        config.render.framerate.engine_overrides.allow_latency_wait  =  TRUE;
+      }
+      config.render.framerate.engine_overrides.allow_wait_for_vblank = FALSE;
+      config.textures.cache.ignore_nonmipped                         =  true;
     }
-    config.render.framerate.engine_overrides.allow_wait_for_vblank = FALSE;
-    config.textures.cache.ignore_nonmipped                         =  true;
-  }
 
-  // Figure out the storefront type
-  //
-  SK_Platform_EstablishStorefrontOnFirstLoad ();
+    // Figure out the storefront type
+    //
+    SK_Platform_EstablishStorefrontOnFirstLoad ();
+  );
 
   LoadKeybind (&config.render.keys.hud_toggle);
   LoadKeybind (&config.osd.keys.console_toggle);
@@ -7188,6 +7215,7 @@ SK_SaveConfig ( std::wstring name,
 
   window.confine_cursor->store                (config.window.confine_cursor);
   window.unconfine_cursor->store              (config.window.unconfine_cursor);
+  window.prevent_taskbar_unhide->store        (config.window.clip_taskbar);
   window.persistent_drag->store               (config.window.persistent_drag);
   window.fullscreen->store                    (config.window.fullscreen);
   window.always_on_top->store                 (config.window.always_on_top);
@@ -7303,6 +7331,10 @@ SK_SaveConfig ( std::wstring name,
 
   render.framerate.apply_streamline_pacing->
                                        store (config.render.framerate.streamline.enable_native_limit);
+  render.framerate.streamline_pacing_mode->
+                                       store (config.render.framerate.streamline.pacing_mode);
+  render.framerate.ignore_environment_vars->
+                                       store (config.render.framerate.ignore_env_vars);
 
   render.framerate.override_cpu_count->store (config.render.framerate.override_num_cpus);
   render.framerate.max_timer_resolution->
@@ -7594,7 +7626,12 @@ SK_SaveConfig ( std::wstring name,
   }
 
   reshade_cfg.draw_first->store               (config.reshade.draw_first);
-  reshade_cfg.unsafe_addons->store            (config.reshade.allow_unsafe_addons);
+
+  if (SK_ReShade_HasRenoDX ())
+  {
+    reshade_cfg.unsafe_addons->store          (config.reshade.allow_unsafe_addons);
+    reshade_cfg.allow_sk_addon_and_reno->store(config.reshade.allow_addon_with_reno);
+  }
 
   notifications.location->store               (config.notifications.location);
   notifications.silent->store                 (config.notifications.silent);

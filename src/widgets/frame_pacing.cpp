@@ -960,17 +960,19 @@ SK_ImGui_DrawGraph_FramePacing (void)
   static const bool ffx = SK_GetModuleHandle (L"UnX.dll") != nullptr;
 
   float& target =
-    ( SK_IsGameWindowActive () || __target_fps_bg == 0.0f ) ?
+    ( SK_IsGameWindowActive () || __target_fps_bg <= 0.0f ) ?
                   __target_fps  : __target_fps_bg;
 
   float target_frametime = ( target == 0.0f ) ?
                            ( 1000.0f   / (ffx ? 30.0f : 60.0f) ) :
                              ( 1000.0f / fabs (target) );
 
-  if (config.render.framerate.streamline.enable_native_limit && __target_fps > 0.0f &&
-      __SK_IsDLSSGActive)
+  if (__SK_IsDLSSGActive)
   {
-    target_frametime = 1000.0f / config.render.framerate.streamline.target_fps;
+    if (config.render.framerate.streamline.wantNativePacing () || config.nvidia.reflex.vulkan)
+    {
+      target_frametime = 1000.0f / fabs (config.render.framerate.streamline.target_fps);
+    }
   }
 
   const SK_RenderBackend& rb =
@@ -1161,7 +1163,7 @@ SK_ImGui_DrawGraph_FramePacing (void)
       else
       {
         ImGui::TextUnformatted (
-          "SteamOS  (Presentation Model Undefined)"
+          "Linux/Proton  (Presentation Model Undefined)"
         );
       }
     }
@@ -1268,7 +1270,7 @@ SK_ImGui_DrawGraph_FramePacing (void)
                         SK_RenderBackend_V2::latency.stats.MaxMs,
                         SK_RenderBackend_V2::latency.delays.SyncDelay,
               (double)max - (double)min,
-                      1000.0f / (sum / frames),
+                     (1000.0f / (sum / frames)) * __SK_FramerateScale,
                         ((double)max-(double)min)/(1000.0f/(sum/frames)) );
     }
 
@@ -1465,7 +1467,7 @@ SK_ImGui_DrawGraph_FramePacing (void)
 
   float target_avg_frametime = 2.0f * target_frametime + 0.1f;
 
-  if (__SK_IsDLSSGActive && config.render.framerate.streamline.enable_native_limit && SK_IsCurrentGame (SK_GAME_ID::AssassinsCreed_Shadows))
+  if (__SK_IsDLSSGActive && config.render.framerate.streamline.wantNativePacing () && SK_IsCurrentGame (SK_GAME_ID::AssassinsCreed_Shadows))
   {
     target_avg_frametime /= 2.0f;
   }

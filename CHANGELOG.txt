@@ -1,4 +1,285 @@
-﻿26.3.14.2
+﻿26.4.5
+======
+ + Fixed previous Reflex and HDR-related issues in DOOM: The Dark Ages.
+ + Removed RenoDX warning for Crimson Desert; statically linking fixes the mod.
+
+26.4.4
+======
+ + Added support for fake NVAPI on Linux for NV users running through Proton.
+    * Enables native Reflex features and Reflex injection in D3D11 and D3D12.
+ + Refactored Vulkan hooks to integrate custom dispatch tables and eventually
+     add support for Reflex functionality in DXVK (D3D9) and emulators.
+ + Enable DLSS Frame Generation native pacing when running in Wine.
+ + Changed the Presentation Model Undefined text when running in Wine to stop
+     referring to the Proton quagmire of broken APIs as "SteamOS."
+
+ + Added warning if attempting to use RenoDX in Crimson Desert without deleting
+     the incompatible MSVC runtime DLLs that come with the game.
+
+ - DOOM: The Dark Ages is known to have broken Reflex at the driver-level on
+     drivers newer than ~581.94, leading to half-framerate when frame gen is
+       enabled; use an older driver or disable SK's limiter in this game.
+   * VK/DXGI interop is also broken in the game if the display is HDR-enabled.
+
+26.4.3.1
+========
+ + Ensure SK's framerate limiter only attempts to flush D3D11 immediate context
+     if it is running on the same thread as the SwapChain, because it would
+       deadlock Reflex-native games using Low-Latency limiter mode otherwise.
+
+26.4.3
+======
+ + Handle GOG games that use both EOS and Galaxy APIs together, allowing achievement
+     management to show up in the control panel (provided Galaxy API 1.120+).
+
+26.4.2
+======
+ + The SK_FPS_LIMIT environment variable now takes precedence over Sunshine/Apollo;
+     if set to 0.0 it will allow software streamed using Sunshine/Apollo to ignore
+       SUNSHINE_CLIENT_FPS and use an INI-defined framerate limit as usual.
+ + Added INI option to ignore framerate environment variables
+
+    [Render.Framerate]
+    IgnoreEnvironmentVars={true|false}  Default: false
+
+ + Removed GOG Galaxy DRM workaround.
+
+26.4.1.2
+========
+ + Prevent Crimson Desert from activating window resize in Borderless Fullscreen
+     when clicking on the edge of the screen; unless "Unconfine Cursor" is setup.
+   * ReShade breaks this while its UI is open, be careful.
+
+26.4.1.1
+========
+ + Correctly handle Reflex framerate limits when a background framerate limit
+     is set, particularly when no foreground limit is set.
+ + Added invalid Reflex frame counter to Latency Management control panel.
+
+26.4.1
+======
+ + Default DLSS Frame Generation Pacing mode to Ultra Low-Latency.
+ + Workaround GOG Galaxy DRM bug that causes crashes when unlocking achievements.
+
+26.3.31.1
+=========
+ + Added option to prevent the mouse cursor from unhiding the Windows taskbar
+     when moved to the edge of the screen while SK is locking the cursor to
+       the game window.
+
+26.3.31
+=======
+ + Added Ultra Low-Latency option to DLSS Frame Generation Pacing, and
+     enabled Flip Metering by default.
+ + Allow SleepEx (...) with -1 (infinity) for dwMilliseconds, but check
+     for alertable flag in this special case.
+
+26.3.27.1
+=========
+ + Correctly disable Reflex framerate limiter when Native Pacing is enabled.
+
+26.3.27
+=======
+ + Enable DLSS Frame Generation Native Pacing by default.
+ + Report generated framerate instead of input (native) framerate when
+     Native Pacing is enabled.
+
+26.3.26.2
+=========
+ + Turned off NVIDIA Reflex Low-Latency mode when SK's own limiter is set to
+     Low-Latency.
+ + Changed optimal VRR framerate to 1% below Reflex limit instead of 0.5%,
+     to recover from latency spikes quicker without visible stutter.
+
+26.3.26.1
+=========
+ + Improved handling of games that stop calling NVIDIA Reflex Sleep for
+     long periods of time.
+ + Skip the actual driver-sleep if Low Latency mode is enabled and the
+     game is not rendering faster than the GPU can draw at to eliminate
+       Reflex stutter.
+
+26.3.26
+=======
+ + Attempt #2 at using NVIDIA Reflex Sleep API call as the trigger point for
+     framerate limiting in low-latency mode.
+
+26.3.25.3
+=========
+ + Further changes to prevent HDR override when RenoDX is loaded, hopefully
+     it correctly sets the colorspace in recent builds.
+
+   * This change allows SDR users to use RenoDX, for the RenoDX mods where such
+       a thing makes any sense.
+
+26.3.25.2
+=========
+ + Prevent persistently storing temporary HDR overrides when Streamline or
+     ReShade are loaded.
+
+26.3.25.1
+=========
+ + Implement SOFTWARE cursor auto-hide functionality for Crimson Desert,
+     by spoofing the cursor position to be off-screen when SK would normally
+       hide the HARDWARE cursor when configured to do so.
+
+26.3.25
+=======
+ + Partially revert VRR Optimized Limiter changes from 26.3.23
+ + Prevent Crimson Desert from stubbornly bringing the game window to the
+     foreground while it is not the active application if Continue Rendering
+       is enabled.
+
+26.3.23.1
+=========
+ + Fixed potential flood of "ReShade + HDR + Streamline Detected - ..." logs.
+
+26.3.23
+=======
+ + Added DPI scaling option back to the Display menu in the control panel.
+ + Changed VRR optimized framerate limiter mode to use Reflex NVAPI Sleep
+     call as pacing trigger instead of DXGI Present.
+
+26.3.22
+=======
+ + Added Smooth / Low-Latency Mode to DLSS Frame Generation Native Pacing.
+
+    * Default is Low-Latency, Smooth may offer relief in games with bad Reflex,
+        but latency will go up by 1 screen refresh on average.
+
+26.3.21.2
+=========
+ + Fixed screenshot override (Global\osd.ini [Screenshot.System] OverridePath=)
+     not correctly working for local injection games with SpecialK.central cfg.
+
+26.3.21.1
+=========
+ + Workaround an HDR-related deadlock in games that use NVIDIA Streamline and
+     D3D12 Agility, while ReShade and Special K are loaded (40-series+ GPUs).
+
+26.3.21
+=======
+ + Decoupled foreground framerate limit from background so that no foreground
+     limit needs to be set in order to set a background limit.
+ + Made the INI file more confusing by changing BackBufferCount to BufferCount,
+     and leaving the old BackBufferCount variable even though it does nothing.
+
+26.3.20
+=======
+ + Only show Nixxes instability warnings one time, and do not display errors if
+     attempting to use local injection with crs-video.exe. (Death Stranding 2)
+
+26.3.18
+=======
+ + Improved ReShade compatibility with FarCry Primal and potentially other games.
+
+26.3.17.4
+=========
+ + Allow SK's ReShade AddOn to enable itself when RenoDX is present by default.
+    * Helps keep SK from post-processing ReShade's UI or being post-processed.
+ + Allow "Show OSD in Video Capture" option to be set from the control panel
+     when SK's ReShade AddOn is active (was removed due to lack of space).
+
+26.3.17.3
+=========
+ + Re-order ReShade unwrap code in D3D12 games to ensure that Reflex status
+     does not warn about "no draw calls captured."
+
+26.3.17.2
+=========
+ + Fixed default INI parameters for Arknights: Endfield to include D3D12
+     for NVIDIA's Vulkan/DXGI Interop.
+ + Merge pull request #345 from Aemony:main
+    * Warn when MPOs are disabled through the registry
+
+26.3.17.1
+=========
+ + Remove warnings for loading ReShade early if RenoDX is present.
+ + Change default ReShade plug-in load order to Early.
+
+26.3.17
+=======
+ + Added ReShade interface unwrapping support to bypass proxy objects and
+     significantly improve compatibility with ReShade (6.6.x+) and RenoDX.
+
+26.3.16.3
+=========
+ + Eliminate possible "corrupted interface" error in D3D11 debug layer when
+     opening SK's Render Mod Toolkit.
+ + Avoid WASAPI audio endpoint cleanup on exit to prevent rare crashes.
+
+26.3.16.2
+=========
+ + Switch from Fiber Local Storage to Thread Local Storage for lower memory
+     management overhead.
+
+26.3.16.1
+=========
+ + Minor optimization of D3D11 Proxy BackBuffers (for HDR / Blt->Flip Model).
+
+26.3.16
+=======
+ + Added HDR preset change notification when activated using its keybind.
+ + Auto-copy local XInput1_3 or older DLLs to XInput1_4 in order to ensure
+     mods use the correct DLL.
+
+26.3.15.5
+=========
+ + Automatically turn off DXGI factory caching if ReShade is detected,
+     rather than expecting users to reset old INIs from before the default
+       was changed to off.
+
+26.3.15.4
+=========
+ + Improved RenoDX detection for the changes made in 26.3.15.3.
+ + Allow partial SK ReShade AddOn support even if RenoDX is loaded, but disable
+     things RenoDX is known to break (draw before/after or state tracking).
+
+26.3.15.3
+=========
+ + Partially rever 26.3.15.1, because RenoDX continues to break stuff in some
+     games.
+
+ + Added new INI option to allow SK's intended ReShade functionality even if
+     RenoDX is loaded:
+
+    [ReShade.System]
+    AllowSKAddOnWithRenoDX={true|false}  Default: false
+
+      Setting to true will allow SK's ReShade AddOn registration to work even
+        if RenoDX is loaded; if false some advanced ReShade features will be
+          unavailable in RenoDX games (i.e. draw before/after, overlay hide,
+            etc.).
+
+26.3.15.2
+=========
+ + Loading ReShade{32|64}.dll from a game directory without an existing
+     ReShade.ini will now opt-in to using SK's profile directory for ReShade
+       settings instead of the game directory.
+
+26.3.15.1
+=========
+ + Tweak ReShade AddOn registration so that SK still has access to advanced
+     ReShade features (i.e. draw before/after, overlay hide, etc.) when
+       RenoDX + dxgi.dll are in use.
+
+26.3.15
+=======
+ + Pre-load ReShade (if dxgi.dll) in Unity engine games to prevent problems
+     introduced in ReShade 6.6.0 that would cause it to fail.
+
+     (d3d11.dll, d3d12.dll, ReShade{32|64}.dll were unaffected by 6.6.0).
+
+26.3.14.3
+=========
+ + Ignore Microsoft WARP and Reference D3D11 devices when hooking things.
+ + Disable DXGI Factory Cache by default in order to workaround ReShade
+     factory changes made in 6.6.0.
+
+   * Reset INI files before attempting to use ReShade 6.6.0+ in a game that
+       you previously used Special K in (...or set UseFactoryCache=false).
+
+26.3.14.2
 =========
  + Added "Allow Flip Metering" option directly to the DLSS control panel,
      instead of making it a hidden INI setting (shown if Frame Gen is active).

@@ -121,11 +121,13 @@ static constexpr constexpr_module_s::list_type __blacklist = {
   L"vhui64.exe",
   L"x64launcher.exe",
   L"ff9_launcher.exe",
+  L"fcsplash.exe",
   L"vcredist_x64.exe",
   L"vc_redist.x64.exe",
   L"vc2010redist_x64.exe",
   L"ubisoftgamelauncher64.exe",
   L"sen3launcher.exe",
+  L"krsdkexternal.exe", // Wuthering Waves something
 
   L"wallpaper64.exe",
   L"winrtutil64.exe",

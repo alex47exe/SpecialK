@@ -87,6 +87,8 @@ D3D12CommandQueue_ExecuteCommandLists_Detour (
       if (! bIsStreamline)
           pCmdQueue = This;
 
+      reshade::UnwrapObject (&pCmdQueue);
+
       auto            name = SK_D3D12_GetDebugNameUTF8 (pCmdQueue);
       bool compatible_name =
            (StrStrIA (name.c_str (), "3D Queue (GPU") != nullptr);
@@ -103,6 +105,9 @@ D3D12CommandQueue_ExecuteCommandLists_Detour (
                            pDevice = pLazyD3D12Device;
         if (SK_slGetNativeInterface (pLazyD3D12Chain,  (void **)&pSwapChain.p) != sl::Result::eOk)
                         pSwapChain = pLazyD3D12Chain;
+
+        reshade::UnwrapObject (&pDevice);
+        reshade::UnwrapObject (&pSwapChain);
 
         // Now we are holding a ref...
         rb.setDevice            (pDevice.p);
@@ -245,6 +250,8 @@ _InstallCommandQueueHooksImpl (ID3D12Device* pDevice12)
       SK_LOGi0 (L"Hooking Streamline Native Interface for ID3D12CommandQueue...");
     else pDev12 = pDevice12;
   } else pDev12 = pDevice12;
+
+  reshade::UnwrapObject (&pDev12);
 
   SK_ComPtr < ID3D12CommandQueue > p12Queue;
   D3D12_COMMAND_QUEUE_DESC queue_desc = { };

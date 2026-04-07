@@ -1935,10 +1935,20 @@ ClipCursor_Detour (const RECT *lpRect)
       //   flat-out ignore cursor clip rects if the window's not even active.
       if (SK_IsGameWindowActive ())
       {
+        RECT rcWindow = game_window.actual.window;
+
+        if (config.window.clip_taskbar)
+        {
+          rcWindow.left   += 2;
+          rcWindow.right  -= 2;
+          rcWindow.bottom -= 2;
+          rcWindow.top    += 2;
+        }
+
         return
           SK_ClipCursor ( config.window.unconfine_cursor ? nullptr
                                                          :
-                                      &game_window.actual.window );
+                                                       &rcWindow );
       }
     }
 
@@ -2036,14 +2046,24 @@ ClipCursor_Detour (const RECT *lpRect)
   {
     if (SK_IsGameWindowActive ())
     {
+      RECT rcWindow = game_window.actual.window;
+
+      if (config.window.clip_taskbar)
+      {
+        rcWindow.left   += 2;
+        rcWindow.right  -= 2;
+        rcWindow.bottom -= 2;
+        rcWindow.top    += 2;
+      }
+
       if (lpRect != nullptr)
       {
         if (! SK_ImGui_Active ()) // Never narrow the clip rect while SK's UI is active
         {
           // If confining, and the game provides a rectangle small enough to satisfy confinement,
           //   then allow it to happen.
-          if ( PtInRect (&game_window.actual.window, POINT { _rect.left,  _rect.top    }) &&
-               PtInRect (&game_window.actual.window, POINT { _rect.right, _rect.bottom }) )
+          if ( PtInRect (&rcWindow, POINT { _rect.left,  _rect.top    }) &&
+               PtInRect (&rcWindow, POINT { _rect.right, _rect.bottom }) )
           {
             return
               SK_ClipCursor (&_rect);
@@ -2052,7 +2072,7 @@ ClipCursor_Detour (const RECT *lpRect)
       }
 
       return
-        SK_ClipCursor (&game_window.actual.window);
+        SK_ClipCursor (&rcWindow);
     }
   }
 
@@ -2108,8 +2128,18 @@ ClipCursor_Detour (const RECT *lpRect)
       }
     }
 
+    RECT rcClip = game_window.cursor_clip;
+
+    if (config.window.confine_cursor && config.window.clip_taskbar)
+    {
+      if (rcClip.left   <= rcClip.right  - 2) rcClip.left   += 2; else rcClip.left   = rcClip.right;
+      if (rcClip.right  >= rcClip.left   + 2) rcClip.right  -= 2; else rcClip.right  = rcClip.left;
+      if (rcClip.bottom >= rcClip.top    + 2) rcClip.bottom -= 2; else rcClip.bottom = rcClip.top;
+      if (rcClip.top    <= rcClip.bottom - 2) rcClip.top    += 2; else rcClip.top    = rcClip.bottom;
+    }
+
     return
-      SK_ClipCursor (&game_window.cursor_clip);
+      SK_ClipCursor (&rcClip);
   }
 
   return
@@ -4659,7 +4689,7 @@ GetWindowInfo_Detour (HWND hwnd, PWINDOWINFO pwi)
     }
 
     // DXGI checks on this during SwapChain creation...
-    //   lie to DXGI if we have to, so that SwapCHain creation succeeds.
+    //   lie to DXGI if we have to, so that SwapChain creation succeeds.
     if (StrStrIW (SK_GetCallerName ().c_str (), L"dxgi.dll"))
     {
       pwi->dwExStyle &= ~WS_EX_TOPMOST;
@@ -4772,8 +4802,6 @@ SK_Window_UninitHooks (void)
 
     UNSET_HOOK_TARGET (GetWindowRect);
     UNSET_HOOK_TARGET (GetClientRect);
-
-    UNSET_HOOK_TARGET (GetWindowInfo);
   );
 }
 
@@ -5550,7 +5578,7 @@ GetForegroundWindow_Detour (void)
 
   // This function is hooked before we actually know the game's HWND,
   //   this would be catastrophic.
-  if (game_window.hWnd != 0 && IsWindow (game_window.hWnd))
+  if (game_window.hWnd != 0)
   {
     const SK_RenderBackend_V2& rb =
       SK_GetCurrentRenderBackend ();
@@ -5562,7 +5590,7 @@ GetForegroundWindow_Detour (void)
       {
         // Do not lie to SDL about this state, it will not handle window focus messages correctly
         //   if we spoof this.
-        if (! rb.windows.sdl)
+        if ((! rb.windows.sdl) && IsWindow (game_window.hWnd))
         {
           return game_window.hWnd;
         }
@@ -5603,6 +5631,14 @@ WINAPI
 SetForegroundWindow_Detour (HWND hWnd)
 {
   SK_LOG_FIRST_CALL;
+
+  // Fix problems with Crimson Sands bringing itself to the foreground constantly
+  //   when using background rendering
+  if ( hWnd == game_window.hWnd && config.window.background_render
+                                && !SK_IsGameWindowActive () )
+  {
+    return TRUE;
+  }
 
   // This breaks alt-tab and window activation in some cases
 #if 0
@@ -7885,12 +7921,18 @@ SK_MakeWindowHook (WNDPROC class_proc, WNDPROC wnd_proc, HWND hWnd)
   {
     if (! _wcsicmp (wszClassName, L"GameNxApp") && SK_GetModuleHandleW (L"sl.dlss_g.dll"))
     {
-      SK_MessageBox (
-        L"You must use Local Injection or remove sl.dlss_g.dll for Special K to work in Nixxes games.\r\n\r\n"
-        L"Otherwise they will crash or Frame Generation will not work.",
-        L"Nixxes/Special K Software Incompatibility",
-        MB_ICONEXCLAMATION | MB_OK
-      );
+      if (! SK_GetDLLConfig ()->get_section (L"Compatibility").contains_key  (L"NixxesWarningShown"))
+      {     SK_GetDLLConfig ()->get_section (L"Compatibility").add_key_value (L"NixxesWarningShown", L"true");
+
+        config.utility.save_async ();
+
+        SK_MessageBox (
+          L"You may need to use Local Injection or remove sl.dlss_g.dll for Special K to work correctly in Nixxes games.\r\n\r\n"
+          L"Otherwise they may crash or Frame Generation will not work.\r\n\r\nPress OK to continue; message will not be shown again.",
+          L"Nixxes/Special K Software Incompatibility",
+          MB_ICONEXCLAMATION | MB_OK
+        );
+      }
     }
   }
 
@@ -8878,7 +8920,41 @@ SK_DWM_Flush (void)
 
 
 
+std::optional <BOOL>
+SK_ClipCursor_GameSpecificFixes (const RECT* lpRect)
+{
+  std::ignore = lpRect;
 
+  switch (SK_GetCurrentGameID ())
+  {
+    case SK_GAME_ID::CrimsonDesert:
+    {
+      if (game_window.active && !config.window.unconfine_cursor)
+      {
+        RECT rcWindow = game_window.actual.window;
+
+        static int width  = GetSystemMetrics (SM_CXSIZEFRAME);
+        static int height = GetSystemMetrics (SM_CYSIZEFRAME);
+
+        rcWindow.left   +=  width * 2;
+        rcWindow.right  -=  width * 2;
+        rcWindow.top    += height * 2;
+        rcWindow.bottom -= height * 2;
+
+        BOOL bRet =
+          ClipCursor_Original != nullptr ?
+          ClipCursor_Original (&rcWindow):
+          ClipCursor          (&rcWindow);
+
+        return bRet;
+      }
+    } break;
+    default:
+      break;
+  }
+
+  return std::nullopt;
+}
 
 BOOL
 WINAPI
@@ -8891,6 +8967,10 @@ SK_ClipCursor (const RECT *lpRect)
   // Do not allow cursor clipping when the game's window is inactive
   if ((! game_window.active) || (game_window.size_move)) // Or being moved
     lpRect = nullptr;
+
+  if (auto fixup = SK_ClipCursor_GameSpecificFixes (lpRect);
+           fixup.has_value ())
+    return fixup.    value ();
 
   //
   // Avoid unnecessary OS calls, since we have the base function hooked already

@@ -1306,7 +1306,7 @@ SK::ControlPanel::D3D11::Draw (void)
 
       if (! (d3d12 && !config.render.dxgi.allow_d3d12_footguns))
       {
-        if (ImGui::InputInt ("BackBuffer Count", &config.render.framerate.buffer_count))
+        if (ImGui::InputInt ("Buffer Count", &config.render.framerate.buffer_count))
         {
           auto& io =
             ImGui::GetIO ();
@@ -1564,21 +1564,20 @@ SK::ControlPanel::D3D11::Draw (void)
       config.utility.save_async_if (changed);
     }
 
-    if (! config.reshade.is_addon)
-    {
-      // This only works when we have wrapped SwapChains
-      if ( ReadAcquire (&SK_DXGI_LiveWrappedSwapChains)  != 0 ||
-           ReadAcquire (&SK_DXGI_LiveWrappedSwapChain1s) != 0 )
-      {
-        if (d3d11 && !indirect) ImGui::SameLine ();
-
-        OSD::DrawVideoCaptureOptions ();
-      }
-    }
-
-    else
+    // This only works when we have wrapped SwapChains
+    if ( ReadAcquire (&SK_DXGI_LiveWrappedSwapChains)  != 0 ||
+         ReadAcquire (&SK_DXGI_LiveWrappedSwapChain1s) != 0 )
     {
       if (d3d11 && !indirect)
+        ImGui::SameLine ();
+
+      OSD::DrawVideoCaptureOptions ();
+    }
+
+    if (config.reshade.is_addon)
+    {
+      if (d3d11 && !indirect || ( ReadAcquire (&SK_DXGI_LiveWrappedSwapChains)  != 0 ||
+                                  ReadAcquire (&SK_DXGI_LiveWrappedSwapChain1s) != 0 ))
         ImGui::SameLine ();
 
       if (ImGui::Checkbox ("Draw ReShade First", &config.reshade.draw_first))
@@ -1614,7 +1613,7 @@ SK::ControlPanel::D3D11::Draw (void)
     {
       ImGui::SameLine ();
 
-      if (ImGui::TreeNode ("Advanced (Debug)###Advanced_D3D11"))
+      if (ImGui::TreeNode ("Debug###Debug_D3D11"))
       {
         ImGui::TreePop               ();
         ImGui::Separator             ();
@@ -2267,7 +2266,7 @@ SK_ImGui_SummarizeDXGISwapchain (IDXGISwapChain* pSwapDXGI)
       ImGui::TextUnformatted   ("Color:");
     //ImGui::TextUnformatted   ("Depth/Stencil:");
       ImGui::TextUnformatted   ("Resolution:");
-      ImGui::TextUnformatted   ("Back Buffers:");
+      ImGui::TextUnformatted   ("Buffers:");
       if ((! fullscreen_desc.Windowed) && fullscreen_desc.Scaling          != DXGI_MODE_SCALING_UNSPECIFIED)
         ImGui::TextUnformatted ("Scaling Mode:");
       if ((! fullscreen_desc.Windowed) && fullscreen_desc.ScanlineOrdering != DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED)

@@ -430,9 +430,6 @@ STDMETHODCALLTYPE IWrapDXGISwapChain::GetPrivateData (REFGUID Name, UINT *pDataS
 {
   std::scoped_lock lock (_backbufferLock);
 
-  //
-  // TODO: Optimize this to store SRV and RTVs persistently
-  //
   if (IsEqualGUID (Name, SKID_DXGI_SwapChainProxyBackbuffer_D3D11) && _backbuffers.contains (0))
   {
     if (SK_ComQIPtr <ID3D11Device> pDev11 (pDev); pDev11.p  != nullptr &&
@@ -456,13 +453,17 @@ STDMETHODCALLTYPE IWrapDXGISwapChain::GetPrivateData (REFGUID Name, UINT *pDataS
             srvDesc.ViewDimension       = D3D_SRV_DIMENSION_TEXTURE2D;
             srvDesc.Texture2D.MipLevels = 1;
 
-          SK_ComPtr <ID3D11ShaderResourceView>                           pSRV;
-          pDev11->CreateShaderResourceView (_backbuffers [0], &srvDesc, &pSRV.p);
+          ID3D11Texture2D*            pBackbuffer = _backbuffers [0].p;
+          ID3D11ShaderResourceView** ppSRV        = &_backbuffer_srvs [pBackbuffer];
 
-          if (pSRV.p != nullptr)
+          if (*ppSRV == nullptr)
           {
-                                    pSRV.p->AddRef ();
-            memcpy (pData, (void *)&pSRV.p, sizeof (void *));
+            pDev11->CreateShaderResourceView (pBackbuffer, &srvDesc, ppSRV);
+          }
+
+          if (*ppSRV != nullptr)
+          {  (*ppSRV)->AddRef ();
+            memcpy (pData, (void *)ppSRV, sizeof (void *));
             return S_OK;
           }
         }
@@ -500,13 +501,16 @@ STDMETHODCALLTYPE IWrapDXGISwapChain::GetPrivateData (REFGUID Name, UINT *pDataS
             rtvDesc.Format        = typed_format;
             rtvDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 
-          SK_ComPtr <ID3D11RenderTargetView>                      pRTV;
-          pDev11->CreateRenderTargetView (pBackBuffer, &rtvDesc, &pRTV.p);
+          ID3D11RenderTargetView** ppRTV = &_backbuffer_rtvs [pBackBuffer.p];
 
-          if (pRTV.p != nullptr)
+          if (*ppRTV == nullptr)
           {
-                                    pRTV.p->AddRef ();
-            memcpy (pData, (void *)&pRTV.p, sizeof (void *));
+            pDev11->CreateRenderTargetView (pBackBuffer, &rtvDesc, ppRTV);
+          }
+
+          if (*ppRTV != nullptr)
+          {  (*ppRTV)->AddRef ();
+            memcpy (pData, (void *)ppRTV, sizeof (void *));
             return S_OK;
           }
         }
@@ -993,6 +997,22 @@ IWrapDXGISwapChain::ResizeBuffers ( UINT        BufferCount,
   DXGI_SWAP_CHAIN_DESC swapDesc = { };
   GetDesc            (&swapDesc);
 
+  if (! _backbuffer_rtvs.empty ())
+  {
+    std::scoped_lock lock (_backbufferLock);
+
+    for ( auto& rtv : _backbuffer_rtvs )
+    {
+      if (rtv.second != nullptr)
+      {
+        rtv.second->Release ();
+        rtv.second = nullptr;
+      }
+    }
+
+    _backbuffer_rtvs.clear ();
+  }
+
   HRESULT hr =
     pReal->ResizeBuffers (BufferCount, Width, Height, NewFormat, SwapChainFlags);
     //SK_DXGI_SwapChain_ResizeBuffers_Impl ( pReal, BufferCount, Width, Height,
@@ -1041,6 +1061,12 @@ IWrapDXGISwapChain::ResizeBuffers ( UINT        BufferCount,
             else
             {
               SK_LOGi1 (L"ResizeBuffers => Remove");
+
+              if (_backbuffer_srvs [backbuffer.p] != nullptr)
+              {   _backbuffer_srvs [backbuffer.p]->Release ();
+                  _backbuffer_srvs [backbuffer.p]  = nullptr;
+              }
+
               backbuffer.Release ();
             }
           }
@@ -1061,6 +1087,7 @@ IWrapDXGISwapChain::ResizeBuffers ( UINT        BufferCount,
         {
           SK_LOGi1 (L"ResizeBuffers => Clear");
           _backbuffers.clear ();
+          _backbuffer_srvs.clear ();
         }
       }
     }
@@ -1141,27 +1168,27 @@ IWrapDXGISwapChain::GetFrameStatistics (DXGI_FRAME_STATISTICS *pStats)
           SK_CreateEvent (nullptr, FALSE, TRUE, nullptr)
       );
 
+#if 0
       static HANDLE   hTimer     = 0;
       static LONGLONG next_frame = 0;
 
       auto *pLimiter =
-        SK::Framerate::GetLimiter (SK_GetCurrentRenderBackend ().swapchain);
+        SK::Framerate::GetLimiter ((IUnknown *)-1);
+
       if (pLimiter != nullptr)
       {
-        next_frame = pLimiter->get_next_tick ();
+      //WaitForSingleObject (SK_Unity_GetFrameStatsWaitEvent, INFINITE);
+        pLimiter->standalone = true;
+        pLimiter->set_limit (__target_fps_now);
+        pLimiter->wait      (                );
       }
-
-      //DWORD dwTimeStart = SK_timeGetTime ();
-
-      void SK_Framerate_WaitUntilQPC (LONGLONG llQPC, HANDLE& hTimer);
-           SK_Framerate_WaitUntilQPC (next_frame, hTimer);
-
-      //SK_LOGi0 (L"Waited %d msecs on Unity Game Thread...", SK_timeGetTime () - dwTimeStart);
+#endif
 
       // Unity doesn't need to see this, give it fake data...
       //   the actual reliability of the frame stats is much lower
       //     than Unity believes and they are better off with an error :)
       auto ret = E_ACCESSDENIED;
+
       //auto ret =
       //  pReal->GetFrameStatistics (pStats);
 
@@ -1615,6 +1642,15 @@ IWrapDXGISwapChain::SetHDRMetaData ( DXGI_HDR_METADATA_TYPE  Type,
         metadata.MaxMasteringLuminance, (double)metadata.MinMasteringLuminance * 0.0001,
         metadata.MaxContentLightLevel,          metadata.MaxFrameAverageLightLevel
       );
+
+      if (config.compatibility.disable_dx12_vk_interop && !__SK_HDR_UserForced)
+      {
+        SK_LOGi0 (L"Turning on HDR10 for Vk Interop SwapChain...");
+
+        __SK_HDR_10BitSwap = true;
+
+        SetColorSpace1 (DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+      }
     }
 
     if (config.render.dxgi.hdr_metadata_override == -1)
@@ -2036,6 +2072,72 @@ SK_RenderBackend_V2::isTrueFullscreen (void) const
 }
 
 bool
+SK_RenderBackend_V2::isMPODisabled (void)
+{
+  if (! SK_API_IsDXGIBased (api))
+    return false;
+
+  typedef unsigned long DWMOverlayTestModeFlags;  // -> enum DWMOverlayTestModeFlags_
+
+  enum DWMOverlayTestModeFlags_
+  {
+    DWMOverlayTestModeFlags_None        = 0,      // No overlay test mode flag is set
+    DWMOverlayTestModeFlags_MPORelated1 = 1 << 0, // Unknown purpose (but MPO related)
+    DWMOverlayTestModeFlags_Unknown1    = 1 << 1, // Unknown purpose
+    DWMOverlayTestModeFlags_MPORelated2 = 1 << 2, // Unknown purpose (but MPO related)
+    DWMOverlayTestModeFlags_Unknown2    = 1 << 4, // Unknown purpose
+    DWMOverlayTestModeFlags_INITIAL     = 1 << 16 // Initial dummy value before we check it
+  };
+
+  static DWMOverlayTestModeFlags flagOverlayTestMode = DWMOverlayTestModeFlags_INITIAL;
+  static int iDisableOverlay = 0;
+  static bool  isDisabled    = false;
+
+  if (flagOverlayTestMode != DWMOverlayTestModeFlags_INITIAL)
+    return isDisabled;
+
+  isDisabled = false;
+
+  HKEY hKey;
+  unsigned long size = 1024;
+
+  // Check if GraphicsDrivers's DisableOverlays has MPOs disabled
+  if (ERROR_SUCCESS == RegOpenKeyExW (HKEY_LOCAL_MACHINE, LR"(SYSTEM\CurrentControlSet\Control\GraphicsDrivers\)", 0, KEY_READ | KEY_WOW64_64KEY, &hKey))
+  {
+    if (ERROR_SUCCESS == RegQueryValueEx (hKey, L"DisableOverlays", NULL, NULL, (LPBYTE)&iDisableOverlay, &size))
+    { }
+    else
+      iDisableOverlay = 0;
+
+    RegCloseKey (hKey);
+  }
+
+  else
+    iDisableOverlay = 0;
+
+  // Check if DWM's OverlayTestMode has MPOs disabled
+  if (ERROR_SUCCESS == RegOpenKeyExW (HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Windows\Dwm\)", 0, KEY_READ | KEY_WOW64_64KEY, &hKey))
+  {
+    if (ERROR_SUCCESS == RegQueryValueEx (hKey, L"OverlayTestMode", NULL, NULL, (LPBYTE)&flagOverlayTestMode, &size))
+    { }
+    else
+      flagOverlayTestMode = DWMOverlayTestModeFlags_None;
+
+    RegCloseKey (hKey);
+  }
+
+  else
+    flagOverlayTestMode = DWMOverlayTestModeFlags_None;
+
+  
+  if (iDisableOverlay || ((flagOverlayTestMode & DWMOverlayTestModeFlags_MPORelated1) == DWMOverlayTestModeFlags_MPORelated1 &&
+                          (flagOverlayTestMode & DWMOverlayTestModeFlags_MPORelated2) == DWMOverlayTestModeFlags_MPORelated2))
+    isDisabled = true;
+
+  return isDisabled;
+}
+
+bool
 SK_DXGI_IsFakeFullscreen (IUnknown *pSwapChain) noexcept
 {
   if (SK_ComQIPtr <IDXGISwapChain> pDXGISwapChain (pSwapChain);
@@ -2362,7 +2464,7 @@ SK_DXGI_SwapChain_ResizeBuffers_Impl (
   }
 
   //
-  // Do not apply backbuffer count overrides in D3D12 unless user presents
+  // Do not apply buffer count overrides in D3D12 unless user presents
   //   a valid footgun license and can afford to lose a few toes.
   //
   if (                                  SK_ComPtr <ID3D12Device> pSwapDev12;

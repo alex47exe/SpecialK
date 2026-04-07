@@ -771,6 +771,7 @@ SK_VK_CreateDevice (
   extns.push_back ("VK_NV_low_latency2");
   extns.push_back ("VK_KHR_present_id");
   extns.push_back ("VK_KHR_timeline_semaphore");
+  extns.push_back ("VK_KHR_swapchain");
 
   VkDeviceCreateInfo _CreateInfo = *pCreateInfo;
 
@@ -827,8 +828,6 @@ SK_VK_CreateSwapchainKHR (
   );
 
   const wchar_t* wszPresentMode = L"";
-
-  std::wstring present_mode = L"";
 
   switch (_CreateInfoCopy.presentMode)
   {
@@ -1345,37 +1344,55 @@ SK_VK_CreateInstance (
     }
   }
 
-  if (config.apis.Vulkan.hook)
+  if (config.apis.Vulkan.hook && pInstance != nullptr)
   SK_RunOnce (
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkCreateDevice",
-                          SK_VK_CreateDevice,
-     static_cast_p2p <void> (&vkCreateDevice_Original));
+    auto vkCreateDevice = vkGetInstanceProcAddr_SK (*pInstance, "vkCreateDevice");
 
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkQueueSubmit",
-                          SK_VK_QueueSubmit,
-     static_cast_p2p <void> (&vkQueueSubmit_Original));
-     
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkQueueSubmit2",
-                          SK_VK_QueueSubmit2,
-     static_cast_p2p <void> (&vkQueueSubmit2_Original));
+    if (                       vkCreateDevice != nullptr &&
+                MH_CreateHook (vkCreateDevice,
+                           SK_VK_CreateDevice,
+      static_cast_p2p <void> (&vkCreateDevice_Original) ) == MH_OK )
+           MH_QueueEnableHook (vkCreateDevice);
 
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkBeginCommandBuffer",
-                          SK_VK_BeginCommandBuffer,
-     static_cast_p2p <void> (&vkBeginCommandBuffer_Original));
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkCreateDevice",
+     //                     SK_VK_CreateDevice,
+     //static_cast_p2p <void> (&vkCreateDevice_Original));
 
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkCreateSwapchainKHR",
-                          SK_VK_CreateSwapchainKHR,
-     static_cast_p2p <void> (&vkCreateSwapchainKHR_Original));
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkQueueSubmit",
+     //                     SK_VK_QueueSubmit,
+     //static_cast_p2p <void> (&vkQueueSubmit_Original));
 
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkQueuePresentKHR",
-                          SK_VK_QueuePresentKHR,
-     static_cast_p2p <void> (&vkQueuePresentKHR_Original));
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkQueueSubmit2",
+     //                     SK_VK_QueueSubmit2,
+     //static_cast_p2p <void> (&vkQueueSubmit2_Original));
+
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkBeginCommandBuffer",
+     //                     SK_VK_BeginCommandBuffer,
+     //static_cast_p2p <void> (&vkBeginCommandBuffer_Original));
+
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkCreateSwapchainKHR",
+     //                     SK_VK_CreateSwapchainKHR,
+     //static_cast_p2p <void> (&vkCreateSwapchainKHR_Original));
+
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkQueuePresentKHR",
+     //                     SK_VK_QueuePresentKHR,
+     //static_cast_p2p <void> (&vkQueuePresentKHR_Original));
+
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkAcquireNextImageKHR",
+     //                         vkAcquireNextImageKHR_Detour,
+     //static_cast_p2p <void> (&vkAcquireNextImageKHR_Original));
+
+     //    SK_CreateDLLHook2 (L"vulkan-1.dll",
+     //                        "vkAcquireNextImage2KHR",
+     //                         vkAcquireNextImage2KHR_Detour,
+     //static_cast_p2p <void> (&vkAcquireNextImage2KHR_Original));
 
          SK_CreateDLLHook2 (L"vulkan-1.dll",
                              "vkEnumerateInstanceExtensionProperties",
@@ -1386,16 +1403,6 @@ SK_VK_CreateInstance (
                              "vkEnumerateDeviceExtensionProperties",
                           SK_VK_EnumerateDeviceExtensionProperties,
      static_cast_p2p <void> (&vkEnumerateDeviceExtensionProperties_Original));
-
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkAcquireNextImageKHR",
-                              vkAcquireNextImageKHR_Detour,
-     static_cast_p2p <void> (&vkAcquireNextImageKHR_Original));
-
-         SK_CreateDLLHook2 (L"vulkan-1.dll",
-                             "vkAcquireNextImage2KHR",
-                              vkAcquireNextImage2KHR_Detour,
-     static_cast_p2p <void> (&vkAcquireNextImage2KHR_Original));
 
     extern bool SK_CanQueuedHooksBeApplied (void);
 
@@ -1408,7 +1415,7 @@ SK_VK_CreateInstance (
     {
       suspended = SK_SuspendAllOtherThreads ();
       SK_EnableApplyQueuedHooks ();
-    }      
+    }
 
     SK_ApplyQueuedHooks ();
 
@@ -1530,8 +1537,63 @@ vkSetLatencyMarkerNV_Detour (
 }
 
 void
-SK_VK_HookFirstDevice (VkDevice/*device*/)
+SK_VK_HookFirstDevice (VkDevice device)
 {
+  if (vkCreateSwapchainKHR_Original == nullptr)
+  {
+    auto vkQueueSubmit          = (PFN_vkQueueSubmit)         vkGetDeviceProcAddr_SK (device, "vkQueueSubmit"         );
+    auto vkQueueSubmit2         = (PFN_vkQueueSubmit2)        vkGetDeviceProcAddr_SK (device, "vkQueueSubmit2"        );
+    auto vkBeginCommandBuffer   = (PFN_vkBeginCommandBuffer)  vkGetDeviceProcAddr_SK (device, "vkBeginCommandBuffer"  );
+    auto vkCreateSwapchainKHR   = (PFN_vkCreateSwapchainKHR)  vkGetDeviceProcAddr_SK (device, "vkCreateSwapchainKHR"  );
+    auto vkQueuePresentKHR      = (PFN_vkQueuePresentKHR)     vkGetDeviceProcAddr_SK (device, "vkQueuePresentKHR"     );
+    auto vkAcquireNextImageKHR  = (PFN_vkAcquireNextImageKHR) vkGetDeviceProcAddr_SK (device, "vkAcquireNextImageKHR" );
+    auto vkAcquireNextImage2KHR = (PFN_vkAcquireNextImage2KHR)vkGetDeviceProcAddr_SK (device, "vkAcquireNextImage2KHR");
+
+    if (                     vkQueueSubmit != nullptr &&
+              MH_CreateHook (vkQueueSubmit,
+                         SK_VK_QueueSubmit,
+    static_cast_p2p <void> (&vkQueueSubmit_Original) ) == MH_OK )
+         MH_QueueEnableHook (vkQueueSubmit);
+
+    if (                       vkQueueSubmit2 != nullptr &&
+                MH_CreateHook (vkQueueSubmit2,
+                           SK_VK_QueueSubmit2,
+      static_cast_p2p <void> (&vkQueueSubmit2_Original) ) == MH_OK )
+           MH_QueueEnableHook (vkQueueSubmit2);
+
+    if (                       vkBeginCommandBuffer != nullptr &&
+                MH_CreateHook (vkBeginCommandBuffer,
+                           SK_VK_BeginCommandBuffer,
+      static_cast_p2p <void> (&vkBeginCommandBuffer_Original) ) == MH_OK )
+           MH_QueueEnableHook (vkBeginCommandBuffer);
+
+    if (                     vkCreateSwapchainKHR != nullptr &&
+              MH_CreateHook (vkCreateSwapchainKHR,
+                         SK_VK_CreateSwapchainKHR,
+    static_cast_p2p <void> (&vkCreateSwapchainKHR_Original) ) == MH_OK )
+         MH_QueueEnableHook (vkCreateSwapchainKHR);
+
+    if (                     vkQueuePresentKHR != nullptr &&
+              MH_CreateHook (vkQueuePresentKHR,
+                         SK_VK_QueuePresentKHR,
+    static_cast_p2p <void> (&vkQueuePresentKHR_Original) ) == MH_OK )
+         MH_QueueEnableHook (vkQueuePresentKHR);
+
+    if (                     vkAcquireNextImageKHR != nullptr &&
+              MH_CreateHook (vkAcquireNextImageKHR,
+                             vkAcquireNextImageKHR_Detour,
+    static_cast_p2p <void> (&vkAcquireNextImageKHR_Original) ) == MH_OK )
+         MH_QueueEnableHook (vkAcquireNextImageKHR);
+
+    if (                     vkAcquireNextImage2KHR != nullptr &&
+              MH_CreateHook (vkAcquireNextImage2KHR,
+                             vkAcquireNextImage2KHR_Detour,
+    static_cast_p2p <void> (&vkAcquireNextImage2KHR_Original) ) == MH_OK )
+         MH_QueueEnableHook (vkAcquireNextImage2KHR);
+
+    SK_ApplyQueuedHooks ();
+  }
+
   if (SK_VK_HasLowLatency2 && vkGetLatencyTimingsNV_Original == nullptr
                            && vkGetInstanceProcAddr_SK (SK_Reflex_VkInstance, "vkSetLatencySleepModeNV") != nullptr)
   {
@@ -1721,8 +1783,8 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
                  config.render.framerate.target_fps >=  config.render.framerate.last_refresh_rate - 0.1f )
             || ( config.render.framerate.target_fps <= dVRROptimalFPS + 0.1f &&
                  config.render.framerate.target_fps >= dVRROptimalFPS - 0.1f ) 
-            || ( config.render.framerate.target_fps <= dVRROptimalFPS - 0.005 * dVRROptimalFPS + 0.1f &&
-                 config.render.framerate.target_fps >= dVRROptimalFPS - 0.005 * dVRROptimalFPS - 0.1f ) )
+            || ( config.render.framerate.target_fps <= dVRROptimalFPS - 0.01 * dVRROptimalFPS + 0.1f &&
+                 config.render.framerate.target_fps >= dVRROptimalFPS - 0.01 * dVRROptimalFPS - 0.1f ) )
           {
             // Re-apply AutoVRR
             if ( config.render.framerate.auto_low_latency.triggered ||
@@ -1777,7 +1839,7 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
       double dVRROptimalFPS =
         (dRefreshRate - (dRefreshRate * dRefreshRate) / (3600.0));
 
-      dVRROptimalFPS -= 0.005 * dVRROptimalFPS;
+      dVRROptimalFPS -= 0.01 * dVRROptimalFPS;
 
       if (config.render.framerate.auto_low_latency.waiting)
       {
@@ -2737,13 +2799,13 @@ SK_RenderBackend_V2::updateActiveAPI (SK_RenderAPI _api)
           ( static_cast <int> (SK_RenderAPI::D3D9  ) |
             static_cast <int> (SK_RenderAPI::D3D9Ex)  );
 
-        wcsncpy (name, L"D3D9Ex", 8);
+        wcsncpy (name, L"D3D9Ex", 7);
       }
 
       else if (SUCCEEDED (device->QueryInterface <IDirect3DDevice9> (&pDev9)))
       {
                  api  = SK_RenderAPI::D3D9;
-        wcsncpy (name, L"D3D9  ", 8);
+        wcsncpy (name, L"D3D9  ", 7);
       }
 
       else if (SUCCEEDED (device->QueryInterface <ID3D12Device> (&pDev12)))
@@ -2762,7 +2824,7 @@ SK_RenderBackend_V2::updateActiveAPI (SK_RenderAPI _api)
             break;
           default:
             api = SK_RenderAPI::D3D12;
-            wcsncpy (name, L"D3D12 ", 8);
+            wcsncpy (name, L"D3D12 ", 7);
             break;
         }
 
@@ -2861,7 +2923,7 @@ SK_RenderBackend_V2::updateActiveAPI (SK_RenderAPI _api)
               } else if (SUCCEEDED (device->QueryInterface (IID_ID3D11Device1, (void **)&pTest))) {
                 wcsncpy (name, L"D3D11.1", 8);
               } else {
-                wcsncpy (name, L"D3D11 ", 8);
+                wcsncpy (name, L"D3D11 ", 7);
               }
             }
           }
@@ -2899,7 +2961,7 @@ SK_RenderBackend_V2::updateActiveAPI (SK_RenderAPI _api)
       if (major > 0) wsnprintf (name, 8,  L"GL %d.%d", major, minor);
       else
 #endif
-      wcsncpy (name, L"OpenGL", 8);
+      wcsncpy (name, L"OpenGL", 7);
     }
   }
 }
@@ -4596,6 +4658,17 @@ SK_RenderBackend_V2::updateWDDMCaps (SK_RenderBackend_V2::output_s *pDisplay)
             SK_RunOnce (
               SK_ImGui_Warning (L"MPOs are not active, consider restarting your driver.")
             );
+          }
+
+          // MPOs can be disabled through the registry!
+          else if (isMPODisabled ( ))
+          {
+            if (pDisplay == &displays[active_display] && config.display.warn_no_mpo_planes && pDisplay->mpo_planes > 1)
+            {
+              SK_RunOnce(
+                SK_ImGui_Warning (L"MPOs are available but disabled through the registry; use SKIF to re-enable.")
+              );
+            }
           }
         }
       }

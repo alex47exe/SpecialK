@@ -35,9 +35,12 @@
 #include <reflex/pclstats.h>
 
 extern float __target_fps;
+extern float __target_fps_now;
 
 volatile ULONG64 SK_Reflex_LastFrameSleptVk  = 0;
 volatile ULONG64 SK_Reflex_LastFrameMarked   = 0;
+volatile ULONG64 SK_Reflex_LastFrameId       = 0;
+volatile ULONG64 SK_Reflex_InvalidFrameCount = 0;
 volatile LONG    SK_RenderBackend::flip_skip = 0;
 
 using  NvAPI_QueryInterface_pfn       =
@@ -55,11 +58,19 @@ using  NvAPI_D3D_Sleep_pfn            =
 NvU64                    SK_Reflex_LastInputFrameId          = 0ULL;
 NvU64                    SK_Reflex_LastNativeMarkerFrame     = 0ULL;
 NvU64                    SK_Reflex_LastNativeSleepFrame      = 0ULL;
+NvU32                    SK_Reflex_LastNativeSleepTime       = 0ULL;
 NvU64                    SK_Reflex_LastNativeFramePresented  = 0ULL;
+NvU64                    SK_Reflex_SkipLowLatencyFrameTick   = 0ULL;
 static constexpr auto    SK_Reflex_MinimumFramesBeforeNative = 150;
 NV_SET_SLEEP_MODE_PARAMS SK_Reflex_NativeSleepModeParams     = { };
 
 void SK_PCL_Heartbeat (const NV_LATENCY_MARKER_PARAMS& marker);
+
+extern UINT            __SK_DLSSGMultiFrameCount;
+extern IDXGISwapChain   *SK_Streamline_ProxyChain;
+
+extern void   SK_SpawnPresentMonWorker (void);
+extern HANDLE SK_ImGui_SignalBackupInputThread;
 
 //
 // NOTE: All hooks currently assume a game only has one D3D device, and that it is the
@@ -78,6 +89,8 @@ SK_NvAPI_D3D_SetLatencyMarker ( __in IUnknown                 *pDev,
 
   if (NvAPI_D3D_SetLatencyMarker_Original != nullptr)
   {
+    reshade::UnwrapObject (&pDev);
+
     SK_ComPtr <ID3D12Device>                     pDev12;
     if (SK_slGetNativeInterface (pDev, (void **)&pDev12.p) == sl::Result::eOk)
       return NvAPI_D3D_SetLatencyMarker_Original(pDev12.p, pSetLatencyMarkerParams);
@@ -97,15 +110,21 @@ SK_NvAPI_D3D_Sleep (__in IUnknown *pDev)
   // Ensure games never call this more than once per-frame, which
   //   Monster Hunter Wilds does and potentially other games too...
   static UINT64
-      lastSleepFrame = MAXUINT64;
-  if (lastSleepFrame == SK_GetFramesDrawn ())
+      lastSleepFrameId = MAXUINT64;
+  if (lastSleepFrameId == ReadULong64Acquire (&SK_Reflex_LastFrameId))
   {
+    SK_RunOnce (SK_LOGi0 (L"Game called NvAPI_D3D_Sleep twice in one frame!"));
+
+    InterlockedIncrement (&SK_Reflex_InvalidFrameCount);
+
     return NVAPI_OK;
   }
 
   if (NvAPI_D3D_Sleep_Original != nullptr)
   {
-    lastSleepFrame = SK_GetFramesDrawn ();
+    lastSleepFrameId = ReadULong64Acquire (&SK_Reflex_LastFrameId);
+
+    reshade::UnwrapObject (&pDev);
 
     SK_ComPtr <ID3D12Device>                     pDev12;
     if (SK_slGetNativeInterface (pDev, (void **)&pDev12.p) == sl::Result::eOk)
@@ -125,22 +144,95 @@ NvAPI_D3D_Sleep_Detour (__in IUnknown *pDev)
 
   SK_LOG_FIRST_CALL
 
+  NvAPI_Status ret = NVAPI_OK;
+
   SK_Reflex_LastNativeSleepFrame =
     SK_GetFramesDrawn ();
 
-  if (SK_IsCurrentGame (SK_GAME_ID::MonsterHunterWilds))
+  SK_Reflex_LastNativeSleepTime =
+    SK_timeGetTime ();
+
+  reshade::UnwrapObject (&pDev);
+
+  SK_ComPtr <ID3D12Device>                     pNativeDev;
+  if (SK_slGetNativeInterface (pDev, (void **)&pNativeDev.p) != sl::Result::eOk)
+                                               pNativeDev = (ID3D12Device *)pDev;
+
+  auto& rb =
+    SK_GetCurrentRenderBackend ();
+
+  if (__SK_IsDLSSGActive && config.render.framerate.streamline.wantNativePacing ())
   {
-    return NVAPI_OK;
+    auto pLimiter =
+      SK::Framerate::GetLimiter (SK_Streamline_ProxyChain);
+
+    static UINT64
+        lastSleepFrameId = MAXUINT64;
+    if (lastSleepFrameId != ReadULong64Acquire (&SK_Reflex_LastFrameId))
+    {   lastSleepFrameId  = ReadULong64Acquire (&SK_Reflex_LastFrameId);
+      if (pLimiter != nullptr)
+          pLimiter->wait ();
+    }
+
+    if (config.render.framerate.streamline.pacing_mode >= 3)
+    {
+      ret =
+        SK_NvAPI_D3D_Sleep (pNativeDev);
+    }
+
+    SK_Reflex_SkipLowLatencyFrameTick =
+      SK_Reflex_LastNativeSleepFrame;
+
+    auto                                tNow = SK_QueryPerf ();
+    SK::Framerate::TickEx (false, -1.0, tNow, rb.swapchain.p);
+
+    return ret;
   }
 
-  if (config.nvidia.reflex.disable_native)
-    return NVAPI_OK;
+#if 1
+  if (config.render.framerate.enforcement_policy == 2 && (!__SK_IsDLSSGActive))
+  {
+    auto pLimiter =
+      SK::Framerate::GetLimiter (rb.swapchain);
 
-  SK_ComPtr <ID3D12Device>                     pDev12;
-  if (SK_slGetNativeInterface (pDev, (void **)&pDev12.p) == sl::Result::eOk)
-    return SK_NvAPI_D3D_Sleep (                pDev12);
-  else
-    return SK_NvAPI_D3D_Sleep (pDev);
+    if (! config.nvidia.reflex.use_limiter)
+    {
+      static UINT64
+          lastSleepFrameId = MAXUINT64;
+      if (lastSleepFrameId != ReadULong64Acquire (&SK_Reflex_LastFrameId))
+      {   lastSleepFrameId  = ReadULong64Acquire (&SK_Reflex_LastFrameId);
+        if (pLimiter != nullptr)
+            pLimiter->wait ();
+      }
+    }
+
+    if (! config.nvidia.reflex.disable_native)
+    {
+      ret =
+        SK_NvAPI_D3D_Sleep (pNativeDev);
+    }
+
+    SK_Reflex_SkipLowLatencyFrameTick =
+      SK_Reflex_LastNativeSleepFrame;
+
+    if (config.fps.getTimingMethod () == SK_FrametimeMeasures_LimiterPacing)
+    {
+      auto                                tNow = SK_QueryPerf ();
+      SK::Framerate::TickEx (false, -1.0, tNow, rb.swapchain.p);
+    }
+
+
+    return ret;
+  }
+#endif
+
+  if (! config.nvidia.reflex.disable_native)
+  {
+    return
+      SK_NvAPI_D3D_Sleep (pNativeDev);
+  }
+
+  return ret;
 }
 
 NVAPI_INTERFACE
@@ -153,10 +245,25 @@ SK_NvAPI_D3D_SetSleepMode ( __in IUnknown                 *pDev,
   if (params.minimumIntervalUs != 0 &&         params.minimumIntervalUs > 50)
       params.minimumIntervalUs = pSetSleepModeParams->minimumIntervalUs - 2;
 
+  // Avoid redundant calls
+  static NV_SET_SLEEP_MODE_PARAMS oldParams = {};
+  static IUnknown*                oldDevice = nullptr;
+
+  if (oldDevice == pDev)
+  {
+    if (! memcmp (&oldParams, pSetSleepModeParams, sizeof (NV_SET_SLEEP_MODE_PARAMS)))
+      return NVAPI_OK;
+  }
+
+  oldDevice = pDev;
+  oldParams = *pSetSleepModeParams;
+
   SK_PROFILE_SCOPED_TASK 
      (NvAPI_D3D_SetSleepMode)
   if (NvAPI_D3D_SetSleepMode_Original != nullptr)
   {
+    reshade::UnwrapObject (&pDev);
+
     SK_ComPtr <ID3D12Device>                     pDev12;
     if (SK_slGetNativeInterface (pDev, (void **)&pDev12.p) == sl::Result::eOk)
       return NvAPI_D3D_SetSleepMode_Original (   pDev12, &params);
@@ -180,7 +287,7 @@ SK_Reflex_FixOutOfBandInput (NV_LATENCY_MARKER_PARAMS& markerParams, IUnknown* p
 
   static std::atomic_bool bQueueInput    = false;
   static std::atomic_long lastMarkerType = OUT_OF_BAND_PRESENT_END;
-  
+
   if (markerParams.markerType == INPUT_SAMPLE)
   {
     // bQueueInput=true denotes an invalid place to put an input latency marker,
@@ -210,7 +317,7 @@ SK_Reflex_FixOutOfBandInput (NV_LATENCY_MARKER_PARAMS& markerParams, IUnknown* p
     {
          NvAPI_D3D_SetLatencyMarker_Original == nullptr ? NVAPI_OK :
       SK_NvAPI_D3D_SetLatencyMarker (pDevice, &marker);
-  
+
       if (! bNative)
         SK_PCL_Heartbeat (markerParams);
     };
@@ -220,14 +327,14 @@ SK_Reflex_FixOutOfBandInput (NV_LATENCY_MARKER_PARAMS& markerParams, IUnknown* p
 
     // Submit our generated input marker in-between the possible real markers
     _SubmitMarker (input_params);
-  
+
     if (! bPreSubmit)
       _SubmitMarker (markerParams);
 
     // We're fixing a game's native Reflex... make note of its internal frame id
     if (bNative)
       SK_Reflex_LastInputFrameId = markerParams.frameID;
-  
+
     bFixed = true;
   }
 
@@ -239,7 +346,14 @@ SK_Reflex_FixOutOfBandInput (NV_LATENCY_MARKER_PARAMS& markerParams, IUnknown* p
   }
 
   if (bNative)
+  {
     SK_Reflex_LastNativeMarkerFrame = SK_GetFramesDrawn ();
+
+    if (bFixed)
+    {
+      InterlockedIncrement (&SK_Reflex_InvalidFrameCount);
+    }
+  }
 
   return
     bFixed;
@@ -287,12 +401,6 @@ NV_LATENCY_MARKER_PARAMS SK_Reflex_LastLatencyMarkerParams;
 bool                     SK_Reflex_AllowPresentEndMarker   = true;
 bool                     SK_Reflex_AllowPresentStartMarker = true;
 
-extern UINT            __SK_DLSSGMultiFrameCount;
-extern IDXGISwapChain   *SK_Streamline_ProxyChain;
-
-extern void   SK_SpawnPresentMonWorker (void);
-extern HANDLE SK_ImGui_SignalBackupInputThread;
-
 NVAPI_INTERFACE
 NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
                                     __in NV_LATENCY_MARKER_PARAMS *pSetLatencyMarkerParams )
@@ -309,10 +417,14 @@ NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
   if (        hModRTSS && SK_GetCallingDLL () == hModRTSS)
     return NVAPI_OK;
 
+  if ( pSetLatencyMarkerParams != nullptr  &&
+       pSetLatencyMarkerParams->markerType == SIMULATION_START )
+  {
+    SK_Reflex_LastFrameId = pSetLatencyMarkerParams->frameID;
+  }
 
   if ( SK_Streamline_ProxyChain != nullptr                          &&
-         config.render.framerate.streamline.enable_native_limit     &&
-         config.render.framerate.streamline.target_fps > 0.0f       &&
+         config.render.framerate.streamline.wantNativePacing ()     &&
                                                  __SK_IsDLSSGActive &&
                                  pSetLatencyMarkerParams != nullptr )
   {
@@ -332,46 +444,6 @@ NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
           bSkipCall = true;
       }
     }
-
-#if 1
-    if (pSetLatencyMarkerParams->markerType == SIMULATION_START ||
-        pSetLatencyMarkerParams->markerType == INPUT_SAMPLE)
-    {  
-      auto pLimiter =
-        SK::Framerate::GetLimiter (SK_Streamline_ProxyChain, false);
-
-      if (pLimiter != nullptr && __SK_IsDLSSGActive)
-      {
-        if (SK_IsCurrentGame (SK_GAME_ID::MonsterHunterWilds))
-        {
-          config.render.framerate.streamline.enforcement_policy = 2;
-        }
-
-        auto& rb =
-          SK_GetCurrentRenderBackend ();
-
-        if ( config.render.framerate.streamline.enforcement_policy == 2 &&
-                               pSetLatencyMarkerParams->markerType == INPUT_SAMPLE )
-        {
-          pLimiter->wait ();
-
-          auto                                tNow = SK_QueryPerf ();
-          SK::Framerate::TickEx (false, -1.0, tNow, rb.swapchain.p);
-        }
-
-        // Fallback to normal mode if the game has no latency markers
-        //
-        else if ( ( config.render.framerate.streamline.enforcement_policy == 4 || SK_Reflex_LastInputFrameId == 0 ) &&
-                                      pSetLatencyMarkerParams->markerType == SIMULATION_START )
-        {
-          pLimiter->wait ();
-
-          auto                                tNow = SK_QueryPerf ();
-          SK::Framerate::TickEx (false, -1.0, tNow, rb.swapchain.p);
-        }
-      }
-    }
-#endif
   }
 
 #ifdef _DEBUG
@@ -403,6 +475,32 @@ NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
       SK_Reflex_LastNativeMarkerFrame =
         SK_GetFramesDrawn ();
     }
+
+#if 0
+    if (pSetLatencyMarkerParams->markerType == SIMULATION_START && config.render.framerate.enforcement_policy == 2 && (!__SK_IsDLSSGActive))
+    {
+      auto pLimiter =
+        SK::Framerate::GetLimiter (SK_GetCurrentRenderBackend ().swapchain);
+
+      SK_Reflex_LastNativeSleepTime =
+        SK_timeGetTime ();
+
+      if (pLimiter != nullptr)
+          pLimiter->wait ();
+
+      SK_Reflex_LastNativeSleepTime =
+        SK_timeGetTime ();
+
+      SK_Reflex_SkipLowLatencyFrameTick =
+        SK_GetFramesDrawn ();
+
+      if (config.fps.getTimingMethod () == SK_FrametimeMeasures_LimiterPacing)
+      {
+        auto                                tNow = SK_QueryPerf ();
+        SK::Framerate::TickEx (false, -1.0, tNow, SK_GetCurrentRenderBackend ().swapchain);
+      }
+    }
+#endif
   }
 
   if (pSetLatencyMarkerParams != nullptr)
@@ -412,8 +510,8 @@ NvAPI_D3D_SetLatencyMarker_Detour ( __in IUnknown                 *pDev,
     );
 
     const bool bWantAccuratePresentTiming = false;
-      //( config.render.framerate.target_fps > 0.0f ||
-      //                        __target_fps > 0.0f ) && config.nvidia.reflex.native && (! config.nvidia.reflex.disable_native);
+      //( config.render.framerate.target_fps     > 0.0f ||
+      //                        __target_fps_now > 0.0f ) && config.nvidia.reflex.native && (! config.nvidia.reflex.disable_native);
 
     if ( pSetLatencyMarkerParams->markerType == PRESENT_START ||
          pSetLatencyMarkerParams->markerType == PRESENT_END )
@@ -470,33 +568,63 @@ NvAPI_D3D_SetSleepMode_Detour ( __in IUnknown                 *pDev,
   }
 
   bool applyOverride =
-    (__SK_ForceDLSSGPacing && __target_fps > 10.0f) || config.nvidia.reflex.override;
+    (__SK_ForceDLSSGPacing && (__target_fps_now > 10.0f || config.render.framerate.streamline.enable_native_limit)) || config.nvidia.reflex.override || config.nvidia.reflex.use_limiter || (config.render.framerate.enforcement_policy == 2 && __target_fps_now > 10.0f);
 
   if (applyOverride)
   {
-    pSetSleepModeParams->bLowLatencyBoost      = config.nvidia.reflex.low_latency_boost;
-    pSetSleepModeParams->bLowLatencyMode       = config.nvidia.reflex.low_latency;
-    pSetSleepModeParams->bUseMarkersToOptimize = config.nvidia.reflex.marker_optimization;
+    if (config.nvidia.reflex.override)
+    {
+      pSetSleepModeParams->bLowLatencyBoost      = config.nvidia.reflex.low_latency_boost;
+      pSetSleepModeParams->bLowLatencyMode       = config.nvidia.reflex.low_latency;
+      pSetSleepModeParams->bUseMarkersToOptimize = config.nvidia.reflex.marker_optimization;
+    }
 
-    if ((__SK_ForceDLSSGPacing && __target_fps > 10.0f) || config.nvidia.reflex.use_limiter)
+    if ((__SK_ForceDLSSGPacing && __target_fps_now > 10.0f) || config.nvidia.reflex.use_limiter)
     {
       config.nvidia.reflex.frame_interval_us =
-            (UINT)(round (1000000.0 / __target_fps)) + ( __SK_ForceDLSSGPacing ? 6
-                                                                               : 0 );
+            (UINT)(round (1000000.0 / __target_fps_now)) + ( __SK_ForceDLSSGPacing ? 6
+                                                                                   : 0 );
     }
     else
       config.nvidia.reflex.frame_interval_us = 0;
 
+    // Native Pacing overrides
+    if (config.render.framerate.streamline.enable_native_limit && __SK_IsDLSSGActive)
+    {
+      if (config.render.framerate.streamline.pacing_mode == 0)
+          config.render.framerate.streamline.pacing_mode  = 3;
+
+      if (config.render.framerate.streamline.pacing_mode >= 2 || __target_fps_now < 10.0f)
+        pSetSleepModeParams->bLowLatencyMode = true;
+      else
+        pSetSleepModeParams->bLowLatencyMode = false;
+
+      config.nvidia.reflex.frame_interval_us = 0;
+    }
+
     pSetSleepModeParams->minimumIntervalUs     = config.nvidia.reflex.frame_interval_us;
   }
 
-  if (! pSetSleepModeParams->bLowLatencyMode)
+  else if (! pSetSleepModeParams->bLowLatencyMode)
   {
     pSetSleepModeParams->minimumIntervalUs = 0;
   }
 
   return
     SK_NvAPI_D3D_SetSleepMode (pDev, pSetSleepModeParams);
+}
+
+void
+SK_Reflex_SetSleepModeOverrides (void)
+{
+  if (SK_Reflex_NativeSleepModeParams.version == 0)
+    return;
+
+  auto& rb =
+    SK_GetCurrentRenderBackend ();
+
+  if (rb.device.p != nullptr)
+    NvAPI_D3D_SetSleepMode_Detour (rb.device.p, &SK_Reflex_NativeSleepModeParams);
 }
 
 void
@@ -739,8 +867,8 @@ SK_RenderBackend_V2::setLatencyMarkerNV (NV_LATENCY_MARKER_TYPE marker) const
       return true;
 
     const bool bWantAccuratePresentTiming = false;
-      //( config.render.framerate.target_fps > 0.0f ||
-      //                        __target_fps > 0.0f ) && config.nvidia.reflex.native && (! config.nvidia.reflex.disable_native);
+      //( config.render.framerate.target_fps     > 0.0f ||
+      //                        __target_fps_now > 0.0f ) && config.nvidia.reflex.native && (! config.nvidia.reflex.disable_native);
 
     // Only do this if game is not Reflex native, or if the marker is a flash
     if ((! config.nvidia.reflex.native) || marker == TRIGGER_FLASH || (bWantAccuratePresentTiming && (marker == PRESENT_START || marker == PRESENT_END)))
@@ -847,7 +975,7 @@ SK_RenderBackend_V2::driverSleepNV (int site) const
     SK_Reflex_LastNativeSleepFrame > SK_GetFramesDrawn () - 10;
 
   bool applyOverride =
-    (__SK_ForceDLSSGPacing && __target_fps > 10.0f) || config.nvidia.reflex.override;
+    (__SK_ForceDLSSGPacing && __target_fps_now > 10.0f) || config.nvidia.reflex.override;
 
   // Game has native Reflex, we should bail out (unles overriding it).
   if (config.nvidia.reflex.native && (! applyOverride))
@@ -870,9 +998,11 @@ SK_RenderBackend_V2::driverSleepNV (int site) const
                  NvAPI_D3D_GetSleepStatus (device.p, &sleepStatusParams)
              )
           {
-            SK_Reflex_NativeSleepModeParams.bLowLatencyMode  =
+            SK_Reflex_NativeSleepModeParams.bLowLatencyMode   =
               sleepStatusParams.bLowLatencyMode;
-            SK_Reflex_NativeSleepModeParams.version          =
+            SK_Reflex_NativeSleepModeParams.minimumIntervalUs =
+              sleepStatusParams.sleepIntervalUs;
+            SK_Reflex_NativeSleepModeParams.version           =
               NV_SET_SLEEP_MODE_PARAMS_VER;
           }
         }
@@ -909,11 +1039,16 @@ SK_RenderBackend_V2::driverSleepNV (int site) const
 
     if (config.nvidia.reflex.use_limiter || __SK_ForceDLSSGPacing)
     {
-      if (__target_fps > 10.0f)
+      config.nvidia.reflex.frame_interval_us = 0;
+
+      if (__target_fps_now > 10.0f)
       {
-        config.nvidia.reflex.frame_interval_us =
-          (UINT)(round (1000000.0 / __target_fps)) + ( __SK_ForceDLSSGPacing ? 24
-                                                                             : 0 );
+        if (config.nvidia.reflex.use_limiter || !config.render.framerate.streamline.enable_native_limit)
+        {
+          config.nvidia.reflex.frame_interval_us =
+            (UINT)(round (1000000.0 / __target_fps_now)) + ( __SK_ForceDLSSGPacing ? 24
+                                                                                   : 0 );
+        }
       }
     }
 
@@ -1134,7 +1269,7 @@ SK_NV_AdaptiveSyncControl (void)
             // If we are counting native frames, then multiply those by the current
             //   multi-framegen rate before trying to calculate LFC rate.
             const float fFrameGenRate =      SK_NGX_IsUsingDLSS_G () &&
-              config.render.framerate.streamline.enable_native_limit && __target_fps > 0.0f ?
+              config.render.framerate.streamline.wantNativePacing () ?
                 static_cast <float> (SK_NGX_DLSSG_GetMultiFrameCount ()) + 1.0f
                                                                      :     1.0f;
 
@@ -1380,7 +1515,15 @@ NvLL_VK_SetSleepMode_Detour (VkDevice device, NVLL_VK_SET_SLEEP_MODE_PARAMS* sle
       }
     }
 
-  const auto reflex_interval_us =
+    // Having Low Latency Mode enabled will cause native pacing to run at unlimited
+    //   framerate... NV's drivers are stupendously messed up after ~581.94
+    if (__SK_IsDLSSGActive && config.render.framerate.streamline.wantNativePacing ())
+    {
+      sleepModeParams->bLowLatencyMode  = false;
+      sleepModeParams->bLowLatencyBoost = false;
+    }
+
+    const auto reflex_interval_us =
       SK_Reflex_CalculateSleepMinIntervalForVulkan (sleepModeParams->bLowLatencyMode);
 
     sleepModeParams->minimumIntervalUs =
@@ -1403,6 +1546,12 @@ NvLL_VK_SetLatencyMarker_Detour (VkDevice vkDevice, NVLL_VK_LATENCY_MARKER_PARAM
 
   if (pSetLatencyMarkerParams != nullptr)
   {
+    if ( pSetLatencyMarkerParams != nullptr  &&
+         pSetLatencyMarkerParams->markerType == VK_SIMULATION_START )
+    {
+      SK_Reflex_LastFrameId = pSetLatencyMarkerParams->frameID;
+    }
+
     // The game's frameID, SK has a different running counter...
     SK_VK_Reflex.last_frame = pSetLatencyMarkerParams->frameID;
   }
@@ -1423,6 +1572,54 @@ NvLL_VK_Sleep_Detour (VkDevice device, uint64_t signalValue)
   {
     NvLL_VK_SetSleepMode_Detour (device, &SK_NVLL_LastSleepParams);
   }
+
+  if (__SK_IsDLSSGActive)// && config.render.framerate.streamline.wantNativePacing ())
+  {
+  ////config.render.framerate.streamline.enable_native_limit = true;
+
+    auto pLimiter =
+      SK::Framerate::GetLimiter ((IUnknown *)-1);
+
+    static UINT64
+        lastSleepFrameId = MAXUINT64;
+    if (lastSleepFrameId != ReadULong64Acquire (&SK_Reflex_LastFrameId))
+    {   lastSleepFrameId  = ReadULong64Acquire (&SK_Reflex_LastFrameId);
+      extern float
+          __target_fps_now;
+      if (__target_fps_now > 0.0f)
+      {
+        config.render.framerate.streamline.target_fps =
+                                        (__target_fps_now / ((float)SK_NGX_DLSSG_GetMultiFrameCount () + 1.0f) - 0.01f);
+      }
+
+      else
+      {
+        config.render.framerate.streamline.target_fps =
+          -abs (config.render.framerate.streamline.target_fps);
+      }
+
+      if (pLimiter != nullptr) {
+          pLimiter->standalone = true;
+          pLimiter->set_limit (config.render.framerate.streamline.target_fps);
+          pLimiter->wait ();
+      }
+    }
+
+    NvLL_VK_Status ret =
+      NvLL_VK_Sleep_Original (device, signalValue);
+
+    SK_Reflex_SkipLowLatencyFrameTick =
+      SK_Reflex_LastNativeSleepFrame;
+
+    auto& rb =
+      SK_GetCurrentRenderBackend ();
+
+    auto                                tNow = SK_QueryPerf ();
+    SK::Framerate::TickEx (false, -1.0, tNow, rb.swapchain.p);
+
+    return ret;
+  }
+
 
   auto ret =
     NvLL_VK_Sleep_Original (device, signalValue);
@@ -1674,6 +1871,23 @@ SK_RenderBackend_V2::vk_reflex_s::needsFallbackSleep (void) const
 UINT
 SK_Reflex_CalculateSleepMinIntervalForVulkan (bool bLowLatency)
 {
+  if (config.render.framerate.streamline.wantNativePacing ())
+  {
+    extern float
+        __target_fps_now;
+    if (__target_fps_now > 0.0f)
+    {
+      config.render.framerate.streamline.target_fps =
+                                      (__target_fps_now / ((float)SK_NGX_DLSSG_GetMultiFrameCount () + 1.0f) - 0.01f);
+    }
+
+    else
+    {
+      config.render.framerate.streamline.target_fps =
+        -abs (config.render.framerate.streamline.target_fps);
+    }
+  }
+
   UINT reflex_interval = 0UL;
 
   const auto& rb =
@@ -1701,24 +1915,37 @@ SK_Reflex_CalculateSleepMinIntervalForVulkan (bool bLowLatency)
   }
 
   const bool applyUserOverride =
-    (__target_fps > 10.0f && (__SK_ForceDLSSGPacing || config.nvidia.reflex.use_limiter));
+    (__target_fps_now > 10.0f && (__SK_ForceDLSSGPacing || config.nvidia.reflex.use_limiter));
 
   if (applyUserOverride)
   {
     UINT interval =
-      (UINT)(round (1000000.0 / __target_fps)) + ( __SK_ForceDLSSGPacing ? 6 : 0 );
+      (UINT)(round (1000000.0 / __target_fps_now)) + ( __SK_ForceDLSSGPacing ? 6 : 0 );
+
+    static bool bIsBrokenDriver =
+      _wtof (sk::NVAPI::GetDriverVersion ().c_str ()) <= 581.94;
 
     // Vulkan Reflex is too primitive to perform this on its own, so we need to
     //   pre-adjust the limit.
     if (__SK_IsDLSSGActive)
-      interval *= (__SK_DLSSGMultiFrameCount + 1);
+    {
+      if (bIsBrokenDriver)
+      {
+        interval *= (__SK_DLSSGMultiFrameCount + 1);
+      }
+
+      else
+      {
+        reflex_interval = 0;
+      }
+    }
 
     reflex_interval =
       reflex_interval == 0 ?           interval
                            : std::max (interval, reflex_interval);
   }
 
-  // Throw away any intervals > 100 ms, parameters are suspect.
+  //// Throw away any intervals > 100 ms, parameters are suspect.
   if (reflex_interval > 100000)
       reflex_interval = 0;
 
