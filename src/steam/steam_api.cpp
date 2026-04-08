@@ -6835,7 +6835,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
 
   if (SteamInternal_CreateInterface_Original != nullptr)
   {
-    for (i = INTERNAL_STEAMCLIENT_INTERFACE_VERSION+5; i > 0 ; --i)
+    for (i = INTERNAL_STEAMCLIENT_INTERFACE_VERSION; i > 0 ; --i)
     {
       auto client =
         SteamInternal_CreateInterface_Original (
@@ -6859,7 +6859,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
     }
   }
 
-  for (i = INTERNAL_STEAMUSER_INTERFACE_VERSION+5; i > 0; --i)
+  for (i = INTERNAL_STEAMUSER_INTERFACE_VERSION; i > 0; --i)
   {
     user_ =
       client_->GetISteamUser (
@@ -6912,7 +6912,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
     }
   }
 
-  for (i = INTERNAL_STEAMINPUT_INTERFACE_VERSION+1; i > 0; --i)
+  for (i = INTERNAL_STEAMINPUT_INTERFACE_VERSION; i > 0; --i)
   {
     input_ = (ISteamInput *)
       client_->GetISteamGenericInterface (
@@ -7019,7 +7019,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
     return false;
   }
 
-  for (i = INTERNAL_STEAMUTILS_INTERFACE_VERSION+5; i > 0; --i)
+  for (i = INTERNAL_STEAMUTILS_INTERFACE_VERSION; i > 0; --i)
   {
     utils_ =
       client_->GetISteamUtils (
@@ -7096,7 +7096,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
         "SteamController005"
     );
 
-  for (i = INTERNAL_STEAMREMOTESTORAGE_INTERFACE_VERSION+2; i > 0; --i)
+  for (i = INTERNAL_STEAMREMOTESTORAGE_INTERFACE_VERSION; i > 0; --i)
   {
     remote_storage_ =
       SAFE_GetISteamRemoteStorage ( client_,
@@ -7122,7 +7122,7 @@ SK_SteamAPIContext::InitSteamAPI (HMODULE hSteamDLL)
 
   if (i != INTERNAL_STEAMREMOTESTORAGE_INTERFACE_VERSION) remote_storage_ = nullptr;
 
-  for (i = INTERNAL_STEAMUGC_INTERFACE_VERSION+1; i > 0; --i)
+  for (i = INTERNAL_STEAMUGC_INTERFACE_VERSION; i > 0; --i)
   {
     ugc_ =
       SAFE_GetISteamUGC ( client_,
