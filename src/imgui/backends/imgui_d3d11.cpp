@@ -291,6 +291,39 @@ ImGui_ImplDX11_RenderDrawData (ImDrawData* draw_data)
 #endif
   }
 
+
+  //
+  // XXX: This needs to be reworked to store frame contexts per-device,
+  //        because Smooth Motion alternates between different D3D11 devices
+  //          on every Present if you run code from the pacer's SwapChain.
+  //
+  static bool device_swap_mismatch = false;
+
+  SK_ComPtr <ID3D11Device> pSwapDev;
+  pSwapChain->GetDevice (IID_ID3D11Device, (void **)&pSwapDev.p);
+
+  if (pSwapDev.p != pDevice)
+  {
+    device_swap_mismatch = true;
+
+    SK_RunOnce (
+      SK_ImGui_Warning (
+        L"Unexpected D3D11 Device encountered during ImGui Draw"
+      )
+    );
+
+    SK_ComPtr <ID3D11DeviceContext>   pDevCtx_;
+    pSwapDev.p->GetImmediateContext (&pDevCtx_.p);
+
+    ImGui_ImplDX11_CreateDeviceObjects (pSwapChain, pSwapDev, pDevCtx_);
+
+    pDevice = pSwapDev;
+    pDevCtx = pDevCtx_;
+
+    if (! _P->pBackBuffer.p)
+      return;
+  }
+
   // This thread and all commands coming from it are currently related to the
   //   UI, we don't want to track the majority of our own state changes
   //     (and more importantly, resources created on any D3D11 device).
@@ -704,9 +737,39 @@ ImGui_ImplDX11_RenderDrawData (ImDrawData* draw_data)
             static_cast <LONG> (clip_max.x), static_cast <LONG> (clip_max.y)
           };
 
+
+          auto tex_id = pcmd->GetTexID ();
+
+          // Ensure the pointer is valid if the SwapChain has different devices every frame (Smooth Motion)
+          if (device_swap_mismatch && tex_id != 0)
+          {
+            SK_ComPtr <ID3D11Device>    pTexDev;
+            SK_ComPtr <ID3D11Resource>  pTexRes;
+            SK_ComPtr <ID3D11Texture2D> pTex2D;
+
+            ((ID3D11ShaderResourceView *)tex_id)->GetDevice   (&pTexDev.p);
+            ((ID3D11ShaderResourceView *)tex_id)->GetResource (&pTexRes.p);
+
+            D3D11_TEXTURE2D_DESC texDesc = {};
+
+            if (pTexRes != nullptr)
+            {
+              pTexRes->QueryInterface (IID_ID3D11Texture2D, (void **)&pTex2D.p);
+
+              if (pTex2D != nullptr)
+                  pTex2D->GetDesc (&texDesc);
+            }
+
+            if (pTexDev.p != pDevice.p && (texDesc.MiscFlags & D3D11_RESOURCE_MISC_SHARED) == 0)
+            {
+              tex_id = 0;
+            }
+          }
+
+
           ID3D11ShaderResourceView* views [2] =
           {
-            (ID3D11ShaderResourceView *)pcmd->GetTexID (),
+            (ID3D11ShaderResourceView *)tex_id,
             SK_HDR_GetUnderlayResourceView ()
           };
 
@@ -795,6 +858,7 @@ ImGui_ImplDX11_CreateFontsTexture ( IDXGISwapChain* /*pSwapChain*/,
       tex_desc.Usage                = D3D11_USAGE_DEFAULT;
       tex_desc.BindFlags            = D3D11_BIND_SHADER_RESOURCE;
       tex_desc.CPUAccessFlags       = 0;
+      tex_desc.MiscFlags            = D3D11_RESOURCE_MISC_SHARED;
 
     SK_ComPtr <ID3D11Texture2D>       pStagingTexture = nullptr;
     SK_ComPtr <ID3D11Texture2D>       pFontTexture    = nullptr;
@@ -1765,7 +1829,7 @@ ImGui_ImplDX11_Shutdown (void)
 #include <SpecialK/window.h>
 
 void
-ImGui_ImplDX11_NewFrame (void)
+ImGui_ImplDX11_NewFrame (void) noexcept
 {
   auto& io =
     ImGui::GetIO ();

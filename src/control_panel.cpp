@@ -1357,9 +1357,18 @@ SK_Display_ResolutionSelectUI (bool bMarkDirty)
       ) == SK_NoPreference
     );
 
+    bool        dlssg_changing = (__SK_IsDLSSGActive && config.render.framerate.present_interval != 0 && __target_fps_now > 0.0f);
+    static bool last_dlssg     = false;
+
+    if (std::exchange (last_dlssg, __SK_IsDLSSGActive) != __SK_IsDLSSGActive)
+    {
+      dlssg_changing = true;
+    }
+
     // Re-populate the list if the current state changes
     if ( rb_interval_changed ||
          sk_interval_no_pref ||
+         dlssg_changing      ||
          vsync_list.empty () )
     {
       const char* current_no_override_state =
@@ -1369,6 +1378,12 @@ SK_Display_ResolutionSelectUI (bool bMarkDirty)
         rb.present_interval == 3 ? "  1/3 (No VRR)\0" :
         rb.present_interval == 4 ? "  1/4 (No VRR)\0" :
                                    "  ??? (Invalid)\0";
+
+      if (__SK_IsDLSSGActive && rb.present_interval == 0 && config.render.framerate.present_interval != 0 &&
+                                rb.displays [rb.active_display].nvapi.vrr_enabled && __target_fps_now > 0.0f)
+      {
+        current_no_override_state = "  Forced ON (FG Pacing)\0";
+      }
 
       static constexpr char* no_override_label = "  No Override\0";
       static constexpr char  override_list []  =
@@ -2839,14 +2854,14 @@ DisplayModeMenu (bool windowed)
 
         SK_ComPtr <IDXGIOutput> pContainer;
 
-        if (SUCCEEDED (pSwapChain->GetContainingOutput (&pContainer)))
+        if ( SUCCEEDED ( pSwapChain->GetContainingOutput (&pContainer) ) )
         {
-          pContainer->GetDisplayModeList ( swapDesc1.Format, 0x0,
+          SK_DXGI_GetDisplayModeList ( pContainer, swapDesc1.Format, 0x0,
                                            &num_modes, nullptr );
 
           dxgi_modes.resize (num_modes);
 
-          if ( SUCCEEDED ( pContainer->GetDisplayModeList ( swapDesc1.Format, 0x0,
+          if ( SUCCEEDED ( SK_DXGI_GetDisplayModeList ( pContainer, swapDesc1.Format, 0x0,
                                                             &num_modes, dxgi_modes.data () ) ) )
           {
             int idx = 1;
@@ -2870,7 +2885,7 @@ DisplayModeMenu (bool windowed)
 
                 UINT integer_refresh =
                   sk::narrow_cast <UINT> (
-                    std::ceil (
+                    std::round (
                         sk::narrow_cast <long double> (dxgi_mode.RefreshRate.Numerator) /
                         sk::narrow_cast <long double> (dxgi_mode.RefreshRate.Denominator)
                                           )
@@ -2902,7 +2917,7 @@ DisplayModeMenu (bool windowed)
 
             // No Exact Match, but we can probably find something close...
             if ( -1 == current_item &&
-                 -1 != sk::narrow_cast <INT> (ceilf (config.render.framerate.refresh_rate)) )
+                 -1 != sk::narrow_cast <INT> (roundf (config.render.framerate.refresh_rate)) )
             {
               int lvl2_idx = 1;
 
@@ -3203,8 +3218,7 @@ SK_NV_LatencyControlPanel (void)
     return;
   }
 
-  if ((! rb.displays [rb.active_display].primary) && config.nvidia.reflex.low_latency
-                                                  && config.nvidia.reflex.enable)
+  if (SK_Reflex_IsFramerateLimitIncorrect ())
   {
     ImGui::SameLine    (                                 );
     ImGui::BeginGroup  (                                 );
@@ -3216,7 +3230,7 @@ SK_NV_LatencyControlPanel (void)
                          " monitors."                    );
     ImGui::EndGroup    (                                 );
 
-    ImGui::SetItemTooltip ("Use the Display menu to assign Primary monitors");
+    SK_ImGui_DrawReflexNonPrimaryWarning ();
   }
 
   SK_ImGui_DrawConfig_Latency ();
@@ -4483,7 +4497,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
         }
 
         bool bDisable =
-          ( config.apis.NvAPI.disable_hdr &&
+          ( config.apis.NvAPI.disable_hdr ||
             config.render.dxgi.hide_hdr_support );
 
         static bool bOriginal = bDisable;
@@ -5486,11 +5500,20 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
         if ( display.vrr.max_refresh > 1 &&
              display.vrr.min_refresh != display.vrr.max_refresh )
         {
-          ImGui::Text ( "%hs Range:  %d-%d Hz",
-            display.vrr.type, display.vrr.min_refresh,
-                   std::min ( display.vrr.max_refresh,
-                      sk::narrow_cast <uint16_t> (ceilf (fFixedRefreshHz)) )
-          );
+          if (display.vrr.max_refresh > sk::narrow_cast <uint16_t> (roundf (fFixedRefreshHz)))
+          {
+            ImGui::Text ( "Active %hs Range:  %d-%d Hz,  Max: %d Hz",
+              display.vrr.type, display.vrr.min_refresh,
+                sk::narrow_cast <uint16_t> (roundf (fFixedRefreshHz)),
+                                display.vrr.max_refresh );
+          }
+
+          else
+          {
+            ImGui::Text ( "%hs Range:  %d-%d Hz",
+              display.vrr.type, display.vrr.min_refresh,
+                                display.vrr.max_refresh );
+          }
 
           ImGui::Separator ();
         }
@@ -5506,7 +5529,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
             ImGui::Separator ();
             ImGui::BulletText (
               "Presentation Model Tracking is not working, %hs status in D3D12 is "
-              "unknown without it.", display.vrr.type
+              "unknown without it."
             );
           }
 
@@ -5525,7 +5548,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
           {
             ImGui::Separator ();
             ImGui::BulletText (
-              "The active framerate is too high for %hs; cap to %5.2f FPS "
+              "The active framerate is not optimal for %hs; cap to %5.2f FPS "
               "or lower for minimum latency.", display.vrr.type, fMaxHzForVRR
             );
           }
@@ -5581,11 +5604,21 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
           if ( display.vrr.min_refresh > 1 &&
                display.vrr.min_refresh != display.vrr.max_refresh )
           {
-            ImGui::Text ( "%hs Range:  %d-%d Hz",
-              display.vrr.type, display.vrr.min_refresh,
-                     std::min ( display.vrr.max_refresh,
-                        sk::narrow_cast <uint16_t> (ceilf (fFixedRefreshHz)) )
-            );
+            if (display.vrr.max_refresh > sk::narrow_cast <uint16_t> (roundf (fFixedRefreshHz)))
+            {
+              ImGui::Text ( "Active %hs Range:  %d-%d Hz,  Max: %d Hz",
+                display.vrr.type, display.vrr.min_refresh,
+                  sk::narrow_cast <uint16_t> (roundf (fFixedRefreshHz)),
+                                  display.vrr.max_refresh );
+            }
+
+            else
+            {
+              ImGui::Text ( "%hs Range:  %d-%d Hz",
+                display.vrr.type, display.vrr.min_refresh,
+                                  display.vrr.max_refresh );
+            }
+
             ImGui::Separator ();
           }
 
@@ -5619,7 +5652,7 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
             {
               ImGui::Separator ();
               ImGui::BulletText (
-                "The active framerate is too high for %hs; cap to %5.2f FPS "
+                "The active framerate is not optimal for %hs; cap to %5.2f FPS "
                 "or lower for minimum latency.", display.vrr.type, fMaxHzForVRR
               );
               ImGui::Separator ();
@@ -5812,6 +5845,13 @@ static constexpr uint32_t UPLAY_OVERLAY_PS_CRC32C  { 0x35ae281c };
             "Your active display device is different than when you last set this framerate limit, confirm the limit is correct by setting a new value."
                                  );
           ImGui::SameLine       ();
+        }
+
+        else if (SK_Reflex_IsFramerateLimitIncorrect () && __target_fps_now <= 0.0f)
+        {
+          ImGui::TextColored (ImVec4 (1.f, .9f, .1f, 1.f), ICON_FA_QUESTION_CIRCLE);
+          SK_ImGui_DrawReflexNonPrimaryWarning ();
+          ImGui::SameLine    ();
         }
 
         if (ImGui::Checkbox ("Framerate Limit", &limit))

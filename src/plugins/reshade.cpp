@@ -29,7 +29,7 @@ BOOL SK_Framerate_ValidateSwapChain (IUnknown *pSwapChain_);
 
 HMODULE
 __stdcall
-SK_ReShade_GetDLL (void)
+SK_ReShade_GetDLL (void) noexcept
 {
   static HMODULE hModReShade =
     sk::narrow_cast <HMODULE> (nullptr);
@@ -244,6 +244,13 @@ SK_ReShadeAddOn_InitRuntime (reshade::api::effect_runtime *runtime)
   if (ReadAcquire (&__SK_DLL_Ending) || runtime == nullptr)
     return;
 
+  bool bSmoothMotion =
+    SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
+                           SK_IsModuleLoaded (L"NvPresent.dll"));
+  if (bSmoothMotion){
+    SK_LOGs0 (L"ReShadeExt", L"NVIDIA Smooth Motion Detected, ReShade May Crash");
+  }
+
   static SK_Thread_HybridSpinlock                   _init_lock;
   std::scoped_lock <SK_Thread_HybridSpinlock> lock (_init_lock);
 
@@ -361,7 +368,7 @@ struct dxgi_rtv_s {
 Concurrency::concurrent_queue <dxgi_rtv_s> dxgi_rtvs;
 
 reshade::api::effect_runtime*
-SK_ReShadeAddOn_GetRuntimeForHWND (HWND hWnd)
+SK_ReShadeAddOn_GetRuntimeForHWND (HWND hWnd) noexcept
 {
   if (hWnd != 0)
   {
@@ -373,7 +380,7 @@ SK_ReShadeAddOn_GetRuntimeForHWND (HWND hWnd)
 }
 
 reshade::api::effect_runtime*
-SK_ReShadeAddOn_GetRuntimeForSwapChain (IDXGISwapChain* pSwapChain)
+SK_ReShadeAddOn_GetRuntimeForSwapChain (IDXGISwapChain* pSwapChain) noexcept
 {
   if (ReadAcquire (&__SK_DLL_Ending) || pSwapChain == nullptr)
     return nullptr;
@@ -1090,9 +1097,10 @@ SK_ReShadeAddOn_RenderEffectsD3D11Ex ( IDXGISwapChain1        *pSwapChain,
       }
 
       runtime->render_effects (
-        cmd_list, reshade::api::resource_view { (uint64_t) pRTV                      },
+        cmd_list, reshade::api::resource_view { (uint64_t)(uintptr_t)
+                                                           pRTV                          },
                                               { (uint64_t)(pRTV_sRGB != nullptr ?
-                                                           pRTV_sRGB            : 0) }
+                                                (uintptr_t)pRTV_sRGB            : 0ui64) }
       );
 
       cmd_queue->flush_immediate_command_list ();
@@ -1173,10 +1181,10 @@ SK_ReShadeAddOn_RenderEffectsD3D12 ( IDXGISwapChain1             *pSwapChain,
 
     if (has_effects)
     {
-            auto buffer   = reshade::api::resource      { reinterpret_cast <uint64_t> (pResource)     };
-      const auto rtv      = reshade::api::resource_view { static_cast      <uint64_t> (hRTV.     ptr) };
-      const auto rtv_srgb = reshade::api::resource_view { static_cast      <uint64_t> (hRTV_sRGB.ptr) };
-      const auto fence    = reshade::api::fence         { reinterpret_cast <uint64_t> (pFence)        };
+            auto buffer   = reshade::api::resource      { static_cast <uint64_t> (reinterpret_cast <uintptr_t> (pResource)   ) };
+      const auto rtv      = reshade::api::resource_view { static_cast <uint64_t> (                              hRTV.     ptr) };
+      const auto rtv_srgb = reshade::api::resource_view { static_cast <uint64_t> (                              hRTV_sRGB.ptr) };
+      const auto fence    = reshade::api::fence         { static_cast <uint64_t> (reinterpret_cast <uintptr_t> (pFence)      ) };
       const auto device   = runtime->get_device ();
 
       if (pResource == nullptr && device != nullptr)
@@ -1508,8 +1516,24 @@ SK_ReShadeAddOn_Init (HMODULE reshade_module)
         (!(SK_ReShade_HasRenoDX () || has_renodx) || config.reshade.allow_addon_with_reno);
 
       reshade::register_event <reshade::addon_event::present>                (SK_ReShadeAddOn_Present);
-      reshade::register_event <reshade::addon_event::init_effect_runtime>    (SK_ReShadeAddOn_InitRuntime);
-      reshade::register_event <reshade::addon_event::destroy_effect_runtime> (SK_ReShadeAddOn_DestroyRuntime);
+
+      bool bSmoothMotion =
+        SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
+                               SK_IsModuleLoaded (L"NvPresent.dll"));
+
+      if (config.reshade.allow_runtime_tracking)
+      {
+        if (! bSmoothMotion){
+          reshade::register_event <reshade::addon_event::init_effect_runtime>    (SK_ReShadeAddOn_InitRuntime);
+          reshade::register_event <reshade::addon_event::destroy_effect_runtime> (SK_ReShadeAddOn_DestroyRuntime);
+        }
+
+        else
+        {
+          SK_LOGs0 (L"ReShadeExt", L"NVIDIA Smooth Motion Detected, Init/Destroy Runtime Events Disabled");
+        }
+      }
+
       reshade::register_event <reshade::addon_event::destroy_device>         (SK_ReShadeAddOn_DestroyDevice);
       reshade::register_event <reshade::addon_event::destroy_swapchain>      (SK_ReShadeAddOn_DestroySwapChain);
       reshade::register_event <reshade::addon_event::destroy_command_queue>  (SK_ReShadeAddOn_DestroyCmdQueue);
@@ -1524,7 +1548,7 @@ SK_ReShadeAddOn_Init (HMODULE reshade_module)
 
 
 void
-SK_ReShadeAddOn_UpdateAndPresentEffectRuntime (reshade::api::effect_runtime *runtime)
+SK_ReShadeAddOn_UpdateAndPresentEffectRuntime (reshade::api::effect_runtime *runtime) noexcept
 {
   if (ReadAcquire (&__SK_DLL_Ending) || runtime == nullptr)
     return;

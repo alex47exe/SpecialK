@@ -217,6 +217,8 @@ SK_slGetNativeInterface (void *proxyInterface, void **baseInterface)
 
   if (FAILED (pUnk->QueryInterface (__uuidof (IStreamlineBaseInterface), baseInterface)))
     return sl::Result::eErrorUnsupportedInterface;
+
+  return sl::Result::eOk;
 #else
   sl::Result result;
 
@@ -230,6 +232,20 @@ SK_slGetNativeInterface (void *proxyInterface, void **baseInterface)
       slGetNativeInterface != nullptr                      ?
       slGetNativeInterface (proxyInterface, baseInterface) :
                           sl::Result::eErrorNotInitialized ;
+
+  if (result == sl::Result::eErrorNotInitialized)
+  {
+    if (proxyInterface == nullptr || baseInterface == nullptr)
+      return sl::Result::eErrorMissingInputParameter;
+
+    IUnknown* pUnk =
+      static_cast <IUnknown *> (proxyInterface);
+
+    if (FAILED (pUnk->QueryInterface (__uuidof (IStreamlineBaseInterface), baseInterface)))
+      return sl::Result::eErrorUnsupportedInterface;
+
+    result = sl::Result::eOk;
+  }
 
   return result;
 #endif

@@ -245,8 +245,10 @@ NVSDK_NGX_D3D11_DestroyParameters_Detour (NVSDK_NGX_Parameter* InParameters)
   std::lock_guard
     lock (SK_NGX_Threading->locks.Params);
 
-  NVSDK_NGX_Result ret =
-    NVSDK_NGX_D3D11_DestroyParameters_Original (InParameters);
+  NVSDK_NGX_Result ret = NVSDK_NGX_Result_Success;
+
+  // Let it leak to maintain lock-free operation elsewhere.
+  //NVSDK_NGX_D3D11_DestroyParameters_Original (InParameters);
 
   if (ret == NVSDK_NGX_Result_Success)
   {
@@ -294,7 +296,7 @@ NVSDK_NGX_D3D11_CreateFeature_Detour ( ID3D11DeviceContext       *InDevCtx,
 
   if (InFeatureID == NVSDK_NGX_Feature_SuperSampling)
   {
-    SK_NGX_DLSS_CreateFeatureOverrideParams (InParameters);
+    SK_NGX_DLSS_CreateFeatureOverrideParams (InParameters, InFeatureID);
   }
 
   NVSDK_NGX_Result ret =
@@ -305,10 +307,13 @@ NVSDK_NGX_D3D11_CreateFeature_Detour ( ID3D11DeviceContext       *InDevCtx,
   if ( ret == NVSDK_NGX_Result_Success ||
        ret == NVSDK_NGX_Result_FAIL_FeatureAlreadyExists )
   {
+    if (InFeatureID == NVSDK_NGX_Feature_SuperSampling)
+    {
+      SK_NGX_DLSS_CreateFeatureOverrideParams (InParameters, InFeatureID);
+    }
+
     if (InFeatureID == NVSDK_NGX_Feature_FrameGeneration)
     {
-      SK_NGX_EstablishDLSSGVersion (L"nvngx_dlssg.dll");
-
       SK_DLSS_Context::dlssg_s::instance_s instance;
 
       instance.Handle     = *OutHandle;

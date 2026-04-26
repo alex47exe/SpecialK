@@ -305,7 +305,7 @@ struct SK_HDR_FIXUP
       desc.Usage              = D3D11_USAGE_DEFAULT;
       desc.BindFlags          = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_UNORDERED_ACCESS;
       desc.CPUAccessFlags     = 0x0;
-      desc.MiscFlags          = 0x0;
+      desc.MiscFlags          = D3D11_RESOURCE_MISC_SHARED;
 
       SK_ComPtr <ID3D11Texture2D> pHDRTexture;
       SK_ComPtr <ID3D11Texture2D> pCopyTexture;
@@ -376,6 +376,7 @@ struct SK_HDR_FIXUP
         texDesc.SampleDesc.Count = 1;  // Avoid a copy so we can show the contents of this
         texDesc.MipLevels        = 1;
         texDesc.ArraySize        = 1;
+        texDesc.MiscFlags        = D3D11_RESOURCE_MISC_SHARED;
 
       D3D11_UNORDERED_ACCESS_VIEW_DESC
         uavDesc                    = {  };
@@ -402,6 +403,7 @@ struct SK_HDR_FIXUP
         texDesc.SampleDesc.Count   = 1;
         texDesc.MipLevels          = 1;
         texDesc.ArraySize          = 1;
+        texDesc.MiscFlags          = D3D11_RESOURCE_MISC_SHARED;
 
         uavDesc                    = {  };
         uavDesc.ViewDimension      = D3D11_UAV_DIMENSION_TEXTURE2D;
@@ -543,6 +545,7 @@ SK_HDR_SanitizeFP16SwapChain (void)
 
       D3D11_TEXTURE2D_DESC    texDesc = { };
       pDst->GetDesc         (&texDesc);
+                              texDesc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
       pDev->CreateTexture2D (&texDesc, nullptr, &pSrc.p);
 
       if (texDesc.SampleDesc.Count > 1)
@@ -791,6 +794,13 @@ SK_HDR_SnapshotSwapchain (void)
       return;
     }
 
+    SK_ComPtr <ID3D11Device> pImmediateContextDevice;
+    pDevCtx->GetDevice     (&pImmediateContextDevice.p);
+
+    if (! SK_D3D11_EnsureMatchingDevices (pSwapChain, pImmediateContextDevice))
+    {
+      return;
+    }
 
     //
     // Optimization: Only create timer queries when the HDR widget is open

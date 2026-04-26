@@ -551,7 +551,7 @@ volatile LONG                               resolve_idx   = 0;
 volatile LONG                               resolve_mutex = 0;
 
 LONG
-SK_D3D11_GetDeviceContextHandle ( ID3D11DeviceContext *pDevCtx )
+SK_D3D11_GetDeviceContextHandle ( ID3D11DeviceContext *pDevCtx ) noexcept
 {
   if (pDevCtx == nullptr) return SK_D3D11_MAX_DEV_CONTEXTS;
 
@@ -654,7 +654,7 @@ SK_D3D11_GetDeviceContextHandle ( ID3D11DeviceContext *pDevCtx )
 
 void
 SK_D3D11_CopyContextHandle ( ID3D11DeviceContext *pSrcCtx,
-                             ID3D11DeviceContext *pDstCtx )
+                             ID3D11DeviceContext *pDstCtx ) noexcept
 {
   LONG src_handle =
     SK_D3D11_GetDeviceContextHandle (pSrcCtx);
@@ -758,7 +758,7 @@ void WaitForInitD3D11 (void)
 
 uint32_t
 __stdcall
-SK_D3D11_TextureHashFromCache (ID3D11Texture2D* pTex);
+SK_D3D11_TextureHashFromCache (ID3D11Texture2D* pTex) noexcept;
 
 struct d3d11_caps_t {
   struct {
@@ -773,7 +773,7 @@ D3D11CreateDevice_pfn             D3D11CreateDevice_Import             = nullptr
 
 void
 SK_D3D11_SetDevice ( ID3D11Device           **ppDevice,
-                     D3D_FEATURE_LEVEL        FeatureLevel )
+                     D3D_FEATURE_LEVEL        FeatureLevel ) noexcept
 {
   if (ppDevice != nullptr)
   {
@@ -1037,7 +1037,7 @@ SK_D3D11Dev_CreateRenderTargetView_Impl (
   _In_            ID3D11Resource                 *pResource,
   _In_opt_  const D3D11_RENDER_TARGET_VIEW_DESC  *pDesc,
   _Out_opt_       ID3D11RenderTargetView        **ppRTView,
-                  BOOL                            bWrapped )
+                  BOOL                            bWrapped ) noexcept
 {
 #if 0
   if (! SK_D3D11_EnsureMatchingDevices (pResource, pDev))
@@ -1297,7 +1297,7 @@ SK_D3D11Dev_CreateRenderTargetView1_Impl (
   _In_            ID3D11Resource                 *pResource,
   _In_opt_  const D3D11_RENDER_TARGET_VIEW_DESC1 *pDesc,
   _Out_opt_       ID3D11RenderTargetView1       **ppRTView,
-                  BOOL                            bWrapped )
+                  BOOL                            bWrapped ) noexcept
 {
 #if 0
   if (! SK_D3D11_EnsureMatchingDevices (pResource, pDev))
@@ -1561,7 +1561,7 @@ SK_D3D11_UpdateSubresource_Impl (
   _In_           UINT                 SrcRowPitch,
   _In_           UINT                 SrcDepthPitch,
                  BOOL                 bWrapped,
-                 LPCVOID              pCallerAddr )
+                 LPCVOID              pCallerAddr ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -1946,7 +1946,7 @@ SK_D3D11_UpdateSubresource_Impl (
 }
 
 bool
-SK_D3D11_IsDirectCopyCompatible (DXGI_FORMAT src, DXGI_FORMAT dst)
+SK_D3D11_IsDirectCopyCompatible (DXGI_FORMAT src, DXGI_FORMAT dst) noexcept
 {
   if (                        src  ==                        dst ||
                                   DirectX::MakeSRGB (src) == dst ||
@@ -2040,7 +2040,7 @@ SK_D3D11_CopySubresourceRegion_Impl (
   _In_           ID3D11Resource *pSrcResource,
   _In_           UINT            SrcSubresource,
   _In_opt_ const D3D11_BOX      *pSrcBox,
-                 BOOL            bWrapped )
+                 BOOL            bWrapped ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -2348,7 +2348,7 @@ SK_D3D11_ResolveSubresource_Impl (
   _In_ ID3D11Resource      *pSrcResource,
   _In_ UINT                 SrcSubresource,
   _In_ DXGI_FORMAT          Format,
-       BOOL                 bWrapped )
+       BOOL                 bWrapped ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -2522,7 +2522,7 @@ SK_D3D11_CopyResource_Impl (
        ID3D11DeviceContext *pDevCtx,
   _In_ ID3D11Resource      *pDstResource,
   _In_ ID3D11Resource      *pSrcResource,
-       BOOL                 bWrapped )
+       BOOL                 bWrapped ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -3898,7 +3898,7 @@ const
 void
 SK_D3D11_PostDispatch ( ID3D11DeviceContext* pDevCtx,
                         UINT&                dev_idx,
-                        SK_TLS*              pTLS )
+                        SK_TLS*              pTLS ) noexcept
 {
   if (dev_idx == UINT_MAX)
   {   dev_idx =
@@ -3938,7 +3938,7 @@ SK_D3D11_PostDispatch ( ID3D11DeviceContext* pDevCtx,
 bool
 SK_D3D11_DispatchHandler ( ID3D11DeviceContext* pDevCtx,
                            UINT&                dev_idx,
-                           SK_TLS**             ppTLS )
+                           SK_TLS**             ppTLS ) noexcept
 {
   if (ppTLS == nullptr)
     return false;
@@ -4208,7 +4208,7 @@ SK_D3D11_Dispatch_Impl (
   _In_ UINT                 ThreadGroupCountY,
   _In_ UINT                 ThreadGroupCountZ,
        BOOL                 bWrapped,
-       UINT                 dev_idx )
+       UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4265,7 +4265,7 @@ SK_D3D11_DispatchIndirect_Impl (
   _In_ ID3D11Buffer        *pBufferForArgs,
   _In_ UINT                 AlignedByteOffsetForArgs,
        BOOL                 bWrapped,
-       UINT                 dev_idx )
+       UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4315,7 +4315,7 @@ SK_D3D11_DispatchIndirect_Impl (
 
 void
 STDMETHODCALLTYPE
-SK_D3D11_DrawAuto_Impl (_In_ ID3D11DeviceContext *pDevCtx, BOOL bWrapped, UINT dev_idx)
+SK_D3D11_DrawAuto_Impl (_In_ ID3D11DeviceContext *pDevCtx, BOOL bWrapped, UINT dev_idx) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4359,7 +4359,7 @@ SK_D3D11_Draw_Impl (ID3D11DeviceContext* pDevCtx,
                     UINT                 VertexCount,
                     UINT                 StartVertexLocation,
                     bool                 bWrapped,
-                    UINT                 dev_idx )
+                    UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4626,7 +4626,7 @@ SK_D3D11_DrawIndexed_Impl (
   _In_ UINT                 StartIndexLocation,
   _In_ INT                  BaseVertexLocation,
        BOOL                 bWrapped,
-       UINT                 dev_idx )
+       UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4767,7 +4767,7 @@ SK_D3D11_DrawIndexedInstanced_Impl (
   _In_ INT                  BaseVertexLocation,
   _In_ UINT                 StartInstanceLocation,
        BOOL                 bWrapped,
-       UINT                 dev_idx )
+       UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4817,7 +4817,7 @@ SK_D3D11_DrawIndexedInstancedIndirect_Impl (
   _In_ ID3D11Buffer        *pBufferForArgs,
   _In_ UINT                 AlignedByteOffsetForArgs,
        BOOL                 bWrapped,
-       UINT                 dev_idx )
+       UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4867,7 +4867,7 @@ SK_D3D11_DrawInstanced_Impl (
   _In_ UINT                 StartVertexLocation,
   _In_ UINT                 StartInstanceLocation,
        BOOL                 bWrapped,
-       UINT                 dev_idx )
+       UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4917,7 +4917,7 @@ SK_D3D11_DrawInstancedIndirect_Impl (
   _In_ ID3D11Buffer        *pBufferForArgs,
   _In_ UINT                 AlignedByteOffsetForArgs,
        BOOL                 bWrapped,
-       UINT                 dev_idx )
+       UINT                 dev_idx ) noexcept
 {
   SK_WRAP_AND_HOOK
 
@@ -4969,7 +4969,7 @@ SK_D3D11_OMSetRenderTargetsAndUnorderedAccessViews_Impl (
   _In_reads_opt_ (NumUAVs)                    ID3D11UnorderedAccessView *const *ppUnorderedAccessViews,
   _In_reads_opt_ (NumUAVs)              const UINT                             *pUAVInitialCounts,
                                               BOOL                              bWrapped,
-                                              UINT                              dev_idx )
+                                              UINT                              dev_idx ) noexcept
 {
   ID3D11DepthStencilView *pDSV =
        pDepthStencilView;
@@ -5108,7 +5108,7 @@ _In_     UINT                           NumViews,
 _In_opt_ ID3D11RenderTargetView *const *ppRenderTargetViews,
 _In_opt_ ID3D11DepthStencilView        *pDepthStencilView,
          BOOL                           bWrapped,
-         UINT                           dev_idx )
+         UINT                           dev_idx ) noexcept
 {
   ID3D11DepthStencilView *pDSV =
        pDepthStencilView;
@@ -5357,7 +5357,7 @@ D3D11Dev_CreateTexture2DCore_Impl (
   _Out_opt_         ID3D11Texture2D        **ppTexture2D0,
   _Out_opt_         ID3D11Texture2D1       **ppTexture2D1,
                     LPVOID                   lpCallerAddr,
-                    SK_TLS                  *pTLS )
+                    SK_TLS                  *pTLS ) noexcept
 {
   // Necessary hack to keep Ys X from crashing if forcefully minimized;
   //   it would attempt to create a 0x0 texture, but that's invalid.
@@ -5761,13 +5761,13 @@ D3D11Dev_CreateTexture2DCore_Impl (
             if (bpc == 11)
             {
               bytes_added = (void*)(uintptr_t)(4LL * pDesc->Width * pDesc->Height);
-              InterlockedAdd64     (&p11BitTargetManager->BytesAllocated, (uint64_t)bytes_added);
+              InterlockedAdd64     (&p11BitTargetManager->BytesAllocated, (uint64_t)(uintptr_t)bytes_added);
               InterlockedIncrement (&p11BitTargetManager->TargetsUpgraded);
             }
             else if (bpc == 10)
             {
               bytes_added = (void*)(uintptr_t)(4LL * pDesc->Width * pDesc->Height);
-              InterlockedAdd64     (&p10BitTargetManager->BytesAllocated, (uint64_t)bytes_added);
+              InterlockedAdd64     (&p10BitTargetManager->BytesAllocated, (uint64_t)(uintptr_t)bytes_added);
               InterlockedIncrement (&p10BitTargetManager->TargetsUpgraded);
             }
 
@@ -5839,19 +5839,19 @@ D3D11Dev_CreateTexture2DCore_Impl (
                   {
                     bytes_added       = (void*)(uintptr_t)(2LL * pDesc->Width * pDesc->Height);
                     pDesc->Format     = DXGI_FORMAT_R16G16_FLOAT;
-                    InterlockedAdd64    (&p8BitTargetManager->BytesAllocated, (uint64_t)bytes_added);
+                    InterlockedAdd64    (&p8BitTargetManager->BytesAllocated, (uint64_t)(uintptr_t)bytes_added);
                   }
                   else if (_typeless == DXGI_FORMAT_R8_TYPELESS)
                   {
                     bytes_added       = (void*)(uintptr_t)(1LL * pDesc->Width * pDesc->Height);
                     pDesc->Format     = DXGI_FORMAT_R16_FLOAT;
-                    InterlockedAdd64    (&p8BitTargetManager->BytesAllocated, (uint64_t)bytes_added);
+                    InterlockedAdd64    (&p8BitTargetManager->BytesAllocated, (uint64_t)(uintptr_t)bytes_added);
                   }
                   else
                   {
                     // 32-bit total -> 64-bit
                     bytes_added       = (void*)(uintptr_t)(4LL * pDesc->Width * pDesc->Height);
-                    InterlockedAdd64    (&p8BitTargetManager->BytesAllocated, (uint64_t)bytes_added);
+                    InterlockedAdd64    (&p8BitTargetManager->BytesAllocated, (uint64_t)(uintptr_t)bytes_added);
 
                     //
                     // Sometimes rendering into an FP RenderTarget is going to produce invalid blend results,
@@ -6415,7 +6415,7 @@ D3D11Dev_CreateTexture2DCore_Impl (
       resample_job_s resample = { };
                      resample.time.preprocess = SK_QueryPerf ().QuadPart;
 
-      auto* image = new DirectX::ScratchImage;
+      auto* image = new (std::nothrow) DirectX::ScratchImage;
             image->Initialize (mdata);
 
       bool error = false;
@@ -6482,10 +6482,11 @@ D3D11Dev_CreateTexture2DCore_Impl (
       if (config.textures.d3d11.uncompressed_mips && compressed)
       {
         auto* decompressed =
-          new DirectX::ScratchImage;
+          new (std::nothrow) DirectX::ScratchImage;
 
-        ret =
-          DirectX::Decompress (orig_img, 1, image->GetMetadata (), DXGI_FORMAT_UNKNOWN, *decompressed);
+        ret = image != nullptr && decompressed != nullptr ?
+          DirectX::Decompress (orig_img, 1, image->GetMetadata (), DXGI_FORMAT_UNKNOWN, *decompressed)
+                                                          : E_OUTOFMEMORY;
 
         if (SUCCEEDED (ret))
         {
@@ -8791,7 +8792,7 @@ STDMETHODCALLTYPE
 D3D11Dev_CreateDeferredContext_Override (
   _In_            ID3D11Device         *This,
   _In_            UINT                  ContextFlags,
-  _Out_opt_       ID3D11DeviceContext **ppDeferredContext )
+  _Out_opt_       ID3D11DeviceContext **ppDeferredContext ) noexcept
 {
   static bool bACO =
     (SK_GetCurrentGameID () == SK_GAME_ID::AssassinsCreed_Odyssey);
@@ -8861,7 +8862,7 @@ STDMETHODCALLTYPE
 D3D11Dev_CreateDeferredContext1_Override (
   _In_            ID3D11Device1         *This,
   _In_            UINT                   ContextFlags,
-  _Out_opt_       ID3D11DeviceContext1 **ppDeferredContext1 )
+  _Out_opt_       ID3D11DeviceContext1 **ppDeferredContext1 ) noexcept
 {
   DXGI_LOG_CALL_2 ( L"ID3D11Device1::CreateDeferredContext1",
                     L"ContextFlags=0x%x, **ppDeferredContext=%p",
@@ -8907,7 +8908,7 @@ STDMETHODCALLTYPE
 D3D11Dev_CreateDeferredContext2_Override (
   _In_            ID3D11Device2         *This,
   _In_            UINT                   ContextFlags,
-  _Out_opt_       ID3D11DeviceContext2 **ppDeferredContext2 )
+  _Out_opt_       ID3D11DeviceContext2 **ppDeferredContext2 ) noexcept
 {
   DXGI_LOG_CALL_2 ( L"ID3D11Device2::CreateDeferredContext2",
                     L"ContextFlags=0x%x, **ppDeferredContext=%p",
@@ -8952,7 +8953,7 @@ STDMETHODCALLTYPE
 D3D11Dev_CreateDeferredContext3_Override (
   _In_            ID3D11Device3         *This,
   _In_            UINT                   ContextFlags,
-  _Out_opt_       ID3D11DeviceContext3 **ppDeferredContext3 )
+  _Out_opt_       ID3D11DeviceContext3 **ppDeferredContext3 ) noexcept
 {
   DXGI_LOG_CALL_2 ( L"ID3D11Device3::CreateDeferredContext3",
                     L"ContextFlags=0x%x, **ppDeferredContext=%p",
@@ -9011,7 +9012,7 @@ void
 STDMETHODCALLTYPE
 D3D11Dev_GetImmediateContext_Override (
   _In_            ID3D11Device         *This,
-  _Out_           ID3D11DeviceContext **ppImmediateContext )
+  _Out_           ID3D11DeviceContext **ppImmediateContext ) noexcept
 {
   if (config.system.log_level > 1)
   {
@@ -9050,7 +9051,7 @@ void
 STDMETHODCALLTYPE
 D3D11Dev_GetImmediateContext1_Override (
   _In_            ID3D11Device1         *This,
-  _Out_           ID3D11DeviceContext1 **ppImmediateContext1 )
+  _Out_           ID3D11DeviceContext1 **ppImmediateContext1 ) noexcept
 {
   // These versioned APIs didn't initially handle wrapped contexts, so log
   //   if a game uses it so we can identify potentially breaking behavior
@@ -9094,7 +9095,7 @@ void
 STDMETHODCALLTYPE
 D3D11Dev_GetImmediateContext2_Override (
   _In_            ID3D11Device2         *This,
-  _Out_           ID3D11DeviceContext2 **ppImmediateContext2 )
+  _Out_           ID3D11DeviceContext2 **ppImmediateContext2 ) noexcept
 {
   // These versioned APIs didn't initially handle wrapped contexts, so log
   //   if a game uses it so we can identify potentially breaking behavior
@@ -9138,7 +9139,7 @@ void
 STDMETHODCALLTYPE
 D3D11Dev_GetImmediateContext3_Override (
   _In_            ID3D11Device3         *This,
-  _Out_           ID3D11DeviceContext3 **ppImmediateContext3 )
+  _Out_           ID3D11DeviceContext3 **ppImmediateContext3 ) noexcept
 {
   // These versioned APIs didn't initially handle wrapped contexts, so log
   //   if a game uses it so we can identify potentially breaking behavior

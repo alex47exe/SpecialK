@@ -1010,7 +1010,7 @@ SK_DrawOSD (void)
 
   _DrawFrameCountIf (! (config.fps.show || config.fps.compact));
 
-  if (config.dlss.show && (SK_NGX_IsUsingDLSS () || SK_NGX_IsUsingDLSS_G ()))
+  if (config.dlss.show && (SK_NGX_IsUsingDLSS () || SK_NGX_IsUsingDLSS_G () || SK_NGX_IsUsingDLSS_D ()))
   {
     int x     = 0,
         y     = 0,
@@ -1021,7 +1021,11 @@ SK_DrawOSD (void)
 
     if (x + y != 0)
     {
-      OSD_DLSS_PRINTF "%*hsDLSS   :  %dx%d", left_padding, pad_str, x, y OSD_END
+      if (! SK_NGX_IsUsingDLSS_D ()) {
+        OSD_DLSS_PRINTF "%*hsDLSS   :  %dx%d", left_padding, pad_str, x, y OSD_END
+      } else {
+        OSD_DLSS_PRINTF "%*hsDLSS-RR:  %dx%d", left_padding, pad_str, x, y OSD_END
+      }
 
       if (config.dlss.show_output_res && out_x + out_y != 0)
       {

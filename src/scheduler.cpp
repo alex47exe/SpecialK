@@ -986,6 +986,39 @@ SK_SleepEx (DWORD dwMilliseconds, BOOL bAlertable) noexcept
   if (ReadAcquire (&__sleep_init) == FALSE)
     return SleepEx (dwMilliseconds, bAlertable);
 
+  // Crashes 32-bit versions of GOG Galaxy, so leave this OFF.
+#if 0
+  // Experimental stuff; no practical application beyond testing an alternate
+  //   higher-precision implementation of Sleep (...) that wastes A LOT of CPU
+  //     time for short waits...
+
+  if (dwMilliseconds == INFINITE || bAlertable || dwMilliseconds > 1)
+  {
+    return SleepEx_Original != nullptr                   ?
+           SleepEx_Original (dwMilliseconds, bAlertable) :
+           SleepEx          (dwMilliseconds, bAlertable);
+  }
+
+  SK_RunOnce (
+    SK_GetCommandProcessor ()->AddVariable (
+      "Scheduler.PreciseShortSleep",
+        new (std::nothrow) SK_IVarStub <bool> (&config.render.framerate.precise_short_sleep)
+    )
+  ); 
+
+  if (config.render.framerate.precise_short_sleep)
+  {
+    static thread_local HANDLE hTimer = (HANDLE)-1;
+
+    SK_Framerate_WaitUntilQPC (
+      SK_QueryPerf ().QuadPart + dwMilliseconds * SK_QpcTicksPerMs,
+        hTimer
+    );
+
+    return 0;
+  }
+#endif
+
   return
     SleepEx_Original != nullptr                   ?
     SleepEx_Original (dwMilliseconds, bAlertable) :
@@ -1043,7 +1076,17 @@ SleepEx_Detour (DWORD dwMilliseconds, BOOL bAlertable)
   if (dwMilliseconds == (DWORD)-1)
   {
     // If this assertion fails, this sleep is irreversible!
-    SK_ReleaseAssert (dwMilliseconds != (DWORD)-1 || bAlertable != FALSE);
+    //SK_ReleaseAssert (dwMilliseconds != (DWORD)-1 || bAlertable != FALSE);
+
+    if (dwMilliseconds == (DWORD)-1 && bAlertable == false)
+    {
+      SK_RunOnce (
+        SK_LOGi0 ( L"SleepEx called with INFINITE and non-alertable, which is "
+                   L"potentially irreversible!  If this is intentional, just "
+                   L"ignore this warning.  If not, this may be a bug that can "
+                   L"cause hangs during shutdown or DLL detach." );
+      );
+    }
 
     return
       SK_SleepEx (dwMilliseconds, bAlertable);

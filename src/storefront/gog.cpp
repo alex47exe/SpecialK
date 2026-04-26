@@ -564,7 +564,7 @@ public:
     int    unlock_count = 0;
     size_t num_achvs    = achievements.list.size ();
 
-    for ( size_t i = 0 ; i < num_achvs ; ++i )
+    for ( uint16_t i = 0 ; i < num_achvs ; ++i )
     {
       auto galaxy_achievement =
         achievements.list [i];

@@ -1,7 +1,7 @@
 ﻿// This is an open source non-commercial project. Dear PVS-Studio, please check it.
 // PVS-Studio Static Code Analyzer for C, C++, C#, and Java: https://pvs-studio.com
 //
-// Copyright 2025 Andon "Kaldaien" Coleman
+// Copyright 2025 - 2026 Andon "Kaldaien" Coleman
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to
@@ -24,6 +24,7 @@
 
 #include <SpecialK/stdafx.h>
 #include <SpecialK/render/d3d11/d3d11_core.h>
+#include <SpecialK/nvapi.h>
 #include <imgui/font_awesome.h>
 
 #ifdef  __SK_SUBSYSTEM__
@@ -80,10 +81,9 @@ bool  SK_Unity_CustomizableGlyphs       = false;
 float SK_Unity_OriginalFixedDeltaTime   =  0.0f;
 int   SK_Unity_GlyphEnumVal             =    -1;
 bool  SK_Unity_GlyphCacheDirty          = false;
+float SK_Unity_LatencyDelayPercent      =0.025f;
 
-HANDLE SK_Unity_GetFrameStatsWaitEvent = 0;
-bool   SK_Unity_PaceGameThread         = true;
-bool   SK_Unity_FullIl2cppEngineTime   = true; // Il2cpp may strip out setter functions from UnityEngine.Time
+bool  SK_Unity_FullIl2cppEngineTime     = true; // Il2cpp may strip out setter functions from UnityEngine.Time
 
 bool SK_Unity_HookMonoInit        (void);
 void SK_Unity_SetInputPollingFreq (float PollingHz);
@@ -105,7 +105,7 @@ SK_Unity_PlugInCfg (void)
   SK_RunOnce (SK_Unity_SetFixedDeltaTime (0.0f));
 
   const bool has_fixed_tick  = SK_Unity_OriginalFixedDeltaTime != 0.0f;
-  const bool has_game_pacing = SK_Unity_GetFrameStatsWaitEvent != 0;
+  const bool has_game_pacing = game_pace.isSupported ();
 
   if (! (show_controller_cfg || has_fixed_tick || has_game_pacing))
   {
@@ -127,58 +127,58 @@ SK_Unity_PlugInCfg (void)
 
     if (has_fixed_tick)
     {
-      if (SK_Unity_Cfg.fixed_delta_auto_sync) ImGui::BeginDisabled ();
+      if (SK_Unity_Cfg.fixed_delta_auto_sync)
+        ImGui::BeginDisabled ();
+
+      if (SK_Unity_Cfg.time_fixed_delta_time == SK_Unity_OriginalFixedDeltaTime)
       {
-        if (SK_Unity_Cfg.time_fixed_delta_time == SK_Unity_OriginalFixedDeltaTime)
-        {
-          ImGui::TextColored    (ImVec4 (0.333f, 0.666f, 0.999f, 1.f), ICON_FA_INFO_CIRCLE);
-          ImGui::SameLine       ();
-          ImGui::SetItemTooltip ("Unity games will run smoother if you match Framerate to Fixed Delta Time.");
-          ImGui::SameLine       ();
-        }
+        ImGui::TextColored    (ImVec4 (0.333f, 0.666f, 0.999f, 1.f), ICON_FA_INFO_CIRCLE);
+        ImGui::SameLine       ();
+        ImGui::SetItemTooltip ("Unity games will run smoother if you match Framerate to Fixed Delta Time.");
+        ImGui::SameLine       ();
+      }
 
-        if (! SK_Unity_FullIl2cppEngineTime)
-        {
-          ImGui::TextColored    (ImVec4 (0.666f, 0.333f, 0.0f, 1.f), ICON_FA_EXCLAMATION_TRIANGLE);
-          ImGui::SameLine       ();
-          ImGui::SetItemTooltip ("Game uses il2cpp and does not include UnityEngine.Time.set_fixedDeltaTime (...), this setting may have no effect.");
-          ImGui::SameLine       ();
-        }
+      if (! SK_Unity_FullIl2cppEngineTime)
+      {
+        ImGui::TextColored    (ImVec4 (0.666f, 0.333f, 0.0f, 1.f), ICON_FA_EXCLAMATION_TRIANGLE);
+        ImGui::SameLine       ();
+        ImGui::SetItemTooltip ("Game uses il2cpp and does not include UnityEngine.Time.set_fixedDeltaTime (...), this setting may have no effect.");
+        ImGui::SameLine       ();
+      }
 
-        if (ImGui::SliderFloat ("Unity Fixed Delta Time", &delta_hz, 1.0f, 240.0f, "%.3f Hz"))
+      if (ImGui::SliderFloat ("Unity Fixed Delta Time", &delta_hz, 1.0f, 240.0f, "%.3f Hz"))
+      {
+        SK_Unity_Cfg.time_fixed_delta_time = delta_hz > 0.0f ? 1.0f / delta_hz : SK_Unity_OriginalFixedDeltaTime;
+        SK_Unity_Cfg.time_fixed_delta_time.store ();
+
+        config.utility.save_async ();
+
+        SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
+      }
+      
+      if (SK_ImGui_IsItemRightClicked ())
+      {
+        if (__target_fps_now > 0.0f)
         {
-          SK_Unity_Cfg.time_fixed_delta_time = delta_hz > 0.0f ? 1.0f / delta_hz : SK_Unity_OriginalFixedDeltaTime;
+          SK_Unity_Cfg.time_fixed_delta_time = 1.0f / __target_fps_now;
           SK_Unity_Cfg.time_fixed_delta_time.store ();
 
           config.utility.save_async ();
 
           SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
         }
-        
-        if (SK_ImGui_IsItemRightClicked ())
-        {
-          if (__target_fps_now > 0.0f)
-          {
-            SK_Unity_Cfg.time_fixed_delta_time = 1.0f / __target_fps_now;
-            SK_Unity_Cfg.time_fixed_delta_time.store ();
-
-            config.utility.save_async ();
-
-            SK_Unity_SetFixedDeltaTime (SK_Unity_Cfg.time_fixed_delta_time);
-          }
-        }
-
-        if (ImGui::BeginItemTooltip ())
-        { ImGui::TextUnformatted    ("Set the animation rate for Unity.");
-          ImGui::Separator          ();
-          ImGui::BulletText         ("This may cause physics issues in some games if changed, but can be reset easily.");
-          if (__target_fps_now > 0.0f)
-          { ImGui::Separator        ();
-            ImGui::TextUnformatted  (" " ICON_FA_MOUSE " Right-click to Match Framerate Limit");
-          } ImGui::EndTooltip       ();
-        }
-        ImGui::SameLine ();
       }
+
+      if (ImGui::BeginItemTooltip ())
+      { ImGui::TextUnformatted    ("Set the animation rate for Unity.");
+        ImGui::Separator          ();
+        ImGui::BulletText         ("This may cause physics issues in some games if changed, but can be reset easily.");
+        if (__target_fps_now > 0.0f)
+        { ImGui::Separator        ();
+          ImGui::TextUnformatted  (" " ICON_FA_MOUSE " Right-click to Match Framerate Limit");
+        } ImGui::EndTooltip       ();
+      }
+      ImGui::SameLine ();
 
       auto _Reset = [&](void)
       {
@@ -223,19 +223,34 @@ SK_Unity_PlugInCfg (void)
       }
     }
 
-    if (has_game_pacing)
+    if (has_game_pacing && (SK_GetCurrentRenderBackend ().present_interval > 0 || config.render.framerate.present_interval == 0))
     {
-      ImGui::Checkbox ("Pace Unity Game Thread", &SK_Unity_PaceGameThread);
+      static bool show_tweaks = false;
+
+      if (ImGui::Checkbox ("Pace Unity Game Thread", &config.render.framerate.pace_game_thread))
+      {
+        config.utility.save_async ();
+      }
+
+      if (ImGui::IsItemClicked (ImGuiMouseButton_Right))
+        show_tweaks = true;
 
       if (ImGui::BeginItemTooltip ())
       {
-        ImGui::TextUnformatted ("Experimental game/render thread framerate limiting");
+        ImGui::TextUnformatted ("Apply Framerate Limiting to the Game Thread");
         ImGui::Separator       ();
-        ImGui::BulletText      ("Normal framerate limiting only limits the render thread.");
-        ImGui::BulletText      ("This mode reduces latency by one frame and should be smoother.");
-        ImGui::Separator       ();
-        ImGui::TextUnformatted ("Latency reduction is not reflected in Reflex timing diagram.");
+        ImGui::BulletText      ("SK will limit both the game and render threads, reducing animation error and latency.");
+        ImGui::BulletText      ("This feature is unique to Unity engine games (2020 or newer).");
         ImGui::EndTooltip ();
+      }
+
+      if (config.render.framerate.pace_game_thread && show_tweaks)
+      {
+        ImGui::SameLine    ();
+        ImGui::SliderFloat ("Latency Bias", &SK_Unity_LatencyDelayPercent, 0.0f, 100.0f, "%.1f%%");
+
+        SK_Unity_LatencyDelayPercent =
+          std::clamp (SK_Unity_LatencyDelayPercent, -1.5f, 50.0f);
       }
     }
 
@@ -1645,8 +1660,7 @@ SK_Mono_InvokeAndUnbox (MonoMethod* method, MonoObject* obj, void** params, Mono
 void
 SK_Unity_SetInputPollingFreq (float PollingHz)
 {
-  return;
-
+#ifdef HAVE_WORKING_INPUT_POLLING_FREQ
   if (std::exchange (SK_Unity_InputPollingFrequency, PollingHz) == PollingHz)
     return;
 
@@ -1666,6 +1680,9 @@ SK_Unity_SetInputPollingFreq (float PollingHz)
 
   // We don't want garbage collection overhead on this thread just because we called a function once!
   DetachCurrentThreadIfNotNative ();
+#else
+  std::ignore = PollingHz;
+#endif
 }
 
 using UnityEngine_Time_set_fixedDeltaTime_pfn = void (*)(MonoObject*, float deltaTime);
@@ -1822,7 +1839,7 @@ SK_Unity_SetFixedDeltaTime (float fixed_delta_time)
             }
           }
 
-          SK_ReleaseAssert (fTimeScale == 0.0f || fTimeScale == 1.0f);
+          //SK_ReleaseAssert (fTimeScale == 0.0f || fTimeScale == 1.0f);
 
           void* params [1] = { &fixed_delta_time_static };
 
@@ -2050,8 +2067,8 @@ static void SK_Unity_InControl_SetDeviceStyle (MonoObject* device)
   if (SK_Unity_GlyphEnumVal == -1)
     return;
 
-  static auto image = SK_Unity_MonoAssemblies.assemblyInControl;
-
+  static auto
+      image = SK_Unity_MonoAssemblies.assemblyInControl;
   if (image == nullptr)
     return;
 
@@ -2481,7 +2498,8 @@ SK_Unity_SetupInputHooks_il2cpp (void)
       void* pfnInControl_NativeInputDevice_Update  = nullptr;
       void* pfnInControl_InputDevice_OnAttached    = nullptr;
 
-      if (SK_Unity_il2cppClasses.InControl.InputDevice != nullptr &&
+      if (SK_Unity_il2cppClasses.InControl.InputDevice                                                           != nullptr &&
+                                                 assemblyInControl                                               != nullptr &&
                                                  assemblyInControl->get_class ("NativeInputDevice", "InControl") != nullptr)
       {
         pfnInControl_NativeInputDevice_Vibrate = assemblyInControl->get_class ("NativeInputDevice", "InControl")->get_method ("Vibrate",    2);
@@ -2950,4 +2968,65 @@ SK_Unity_SetupInputHooks (void)
   );
 
   return true;
+}
+
+HRESULT
+SK_Unity_PaceGameThreadDxgi (IDXGISwapChain *pSwapChain, DXGI_FRAME_STATISTICS *pStats)
+{
+  SK_RunOnce (
+    game_pace.event =
+      SK_CreateEvent (nullptr, FALSE, TRUE, nullptr)
+  );
+
+  game_pace.last_frame_id =
+    SK_GetFramesDrawn ();
+
+  if (game_pace.wantPacing (game_pace.last_frame_id))
+  {
+    static thread_local HANDLE hTimer = (HANDLE)-1;
+
+    auto& rb =
+      SK_GetCurrentRenderBackend ();
+
+    rb.driverSleepNV (1);
+
+    auto pLimiter =
+      SK::Framerate::GetLimiter (rb.swapchain.p, false);
+
+    if (pLimiter != nullptr)
+    {
+      SK_RunOnce (
+        SK_Thread_SetCurrentPriority (THREAD_PRIORITY_TIME_CRITICAL)
+      );
+
+      const auto next_tick =
+        pLimiter->get_next_tick ();
+
+      const auto timeNow =
+        SK_QueryPerf ().QuadPart;
+
+      // Do not sync to SwapChain thread if the game thread is already behind schedule.
+      if (timeNow < next_tick)
+      {
+        SK_Framerate_WaitUntilQPC (next_tick -
+          static_cast <LONGLONG> (
+            static_cast <double> (pLimiter->get_ticks_per_frame ()) *
+                           (SK_Unity_LatencyDelayPercent / 100.0f)), hTimer
+        );
+      }
+    }
+
+    rb.setLatencyMarkerNV (SIMULATION_START);
+
+    game_pace.last_paced_time =
+      SK_timeGetTime ();
+
+    // Unity doesn't need to see this, give it fake data...
+    //   the actual reliability of the frame stats is much lower
+    //     than Unity believes and they are better off with an error :)
+    return E_ACCESSDENIED;
+  }
+
+  return
+    pSwapChain->GetFrameStatistics (pStats);
 }

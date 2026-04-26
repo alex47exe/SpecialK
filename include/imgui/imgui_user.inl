@@ -229,7 +229,7 @@ SK_ImGui_ProcessRawInput ( _In_      HRAWINPUT hRawInput,
                            _Inout_   PUINT     pcbSize,
                            _In_      UINT      cbSizeHeader,
                                      BOOL      self,
-                                     INT       precache_size = 0 )
+                                     INT       precache_size = 0 ) noexcept
 {
   if (! hRawInput)
   {
@@ -1623,6 +1623,13 @@ SK_ImGui_ToggleEx ( bool& toggle_ui,
   // Do not allow dismissing dialogs using toggle buttons...
   if (SK_ImGuiEx_Visible)
     return SK_ImGui_Active ();
+
+  // Do not allow toggling SK's overlay while another overlay is hiding SK.
+  if ( config.platform.overlay_hides_sk_osd &&
+       SK_GetStoreOverlayState (true) )
+  {
+    return false;
+  }
 
   //
   // Only allow one toggle per-frame, even if we wind up calling
@@ -3779,9 +3786,14 @@ SK_ImGui_Util_TrackFgProcessChange (void)
 }
 
 void
-SK_ImGui_UpdateGamepadProcessingEligibility (void)
+SK_ImGui_UpdateGamepadProcessingEligibility (void) noexcept
 {
   SK_PROFILE_SCOPED_TASK (SK_ImGui_UpdateGamepadProcessingEligibility)
+
+  static HANDLE  skif_controller_change  = SK_CreateEvent (nullptr, FALSE, TRUE, nullptr);
+  static DWORD   skif_controller_support = 0;
+  static CRegKey skif_controller_reg_key;
+  SK_RunOnce    (skif_controller_reg_key.Open (HKEY_CURRENT_USER, LR"(Software\Kaldaien\Special K\Input)"));
 
   if (SK_IsGameWindowActive ())
   {
@@ -3832,14 +3844,44 @@ SK_ImGui_UpdateGamepadProcessingEligibility (void)
 
     if (process_input)
     {
-      static std::unordered_map <HWND, BOOL> injected_pid_cache;
+      // Refresh / Initialize SKIF's controller support setting
+      SK_RunOnce (SetEvent       (skif_controller_change));
+      if (SK_WaitForSingleObject (skif_controller_change, 0) != WAIT_TIMEOUT)
+      {
+        skif_controller_reg_key.QueryDWORDValue      (L"EnableControllersInApps",        skif_controller_support);
+        skif_controller_reg_key.NotifyChangeKeyValue (FALSE, REG_NOTIFY_CHANGE_LAST_SET, skif_controller_change);
+      }
 
-      bool any_injected = false;
+      struct window_record_s
+      {
+        DWORD pid        = 0;
+        bool  injected   = false;
+        bool  skif       = false;
+        bool  os_window  = false;
+        bool  start_menu = false;
+      };
+
+      static std::unordered_map <HWND, window_record_s> window_cache;
+
+      bool any_potential = false;
+
+      DWORD dwPidOfSKIF = 0;
+      HWND     hWndSKIF = 0;
+      bool  game_iconic = IsIconic (game_window.hWnd);
 
       for ( auto& window : windows_above )
       {
-        if (injected_pid_cache.find (window) == injected_pid_cache.end ())
+        if (window_cache.find (window) == window_cache.end ())
         {
+          if (hWndSKIF == 0)
+              hWndSKIF = FindWindow (L"SKIF_ImGuiWindow", nullptr);
+          if (hWndSKIF == 0)
+              hWndSKIF = (HWND)-1;
+          else if (dwPidOfSKIF == 0)
+          {
+            SK_GetWindowThreadProcessId (hWndSKIF, &dwPidOfSKIF);
+          }
+
           DWORD                                 dwPid = 0x0;
           SK_GetWindowThreadProcessId (window, &dwPid);
 
@@ -3850,15 +3892,38 @@ SK_ImGui_UpdateGamepadProcessingEligibility (void)
             OpenEventW (EVENT_ALL_ACCESS, FALSE, wszInjectionSignature)
           );
 
-          injected_pid_cache [window] =
-            hInjectionSignature.isValid ();
+          window_record_s cache_entry = {};
+          DWORD           window_band = 0;
+
+          GetWindowBand (window, &window_band);
+
+          // SKIF
+          if (dwPid == dwPidOfSKIF) {
+            cache_entry.skif =  true;
+            cache_entry.pid  = dwPid;
+          } // Another game that SK is injected into
+          else if (hInjectionSignature.isValid ()) {
+            cache_entry.injected = true;
+            cache_entry.pid      = dwPid;
+          } // Alt-Tab Switcher / Start Menu
+          else if (window_band == ZBID_IMMERSIVE_MOGO ||
+                   window_band == ZBID_SYSTEM_TOOLS) {
+            cache_entry.os_window = true;
+            cache_entry.pid       = dwPid;
+
+            // Broken
+            //if (window == FindWindow (L"Windows.UI.Core.CoreWindow", L"Start"))
+            //  cache_entry.start_menu = true;
+          }
+
+          window_cache [window] = cache_entry;
         }
 
-        if (! any_injected)
-              any_injected = injected_pid_cache [window];
+        if (! any_potential)
+              any_potential = window_cache [window].pid != 0;
       }
 
-      if (any_injected)
+      if (any_potential)
       {
         HMONITOR hMonGame =
           MonitorFromWindow (game_window.hWnd, MONITOR_DEFAULTTONEAREST);
@@ -3876,15 +3941,26 @@ SK_ImGui_UpdateGamepadProcessingEligibility (void)
           rcVisibleWindow.top    = std::max (minfo.rcWork.top,    game_window.actual.window.top);
           rcVisibleWindow.bottom = std::min (minfo.rcWork.bottom, game_window.actual.window.bottom);
 
+          HWND hWndForeground =
+            SK_GetForegroundWindow ();
+
           for ( auto& window : windows_above )
           {
-            if (IsWindowOverlapping (window, rcVisibleWindow))
+            if (! window_cache.count (window))
+              continue;
+
+            auto& cache_entry =
+              window_cache [window];
+
+            if ( cache_entry.start_menu                                                  ||
+                (cache_entry.skif      && !game_iconic && skif_controller_support  &&
+                                                          hWndForeground == window)      ||
+                (cache_entry.os_window &&                 hWndForeground == window &&
+                                          IsWindowOverlapping (window, rcVisibleWindow)) ||
+                (cache_entry.injected  && IsWindowOverlapping (window, rcVisibleWindow)))
             {
-              if (injected_pid_cache [window])
-              {
-                process_input = false;
-                break;
-              }
+              process_input = false;
+              break;
             }
           }
         }
@@ -4172,7 +4248,7 @@ SK_ImGui_User_NewFrame (void)
 
   if (game_window.mouse.inside)
   {
-    const HWND
+    HWND
       hWndMouse0 =
          hWndDevice != 0 && IsWindow (hWndDevice) ? hWndDevice : nullptr,
       hWndMouse1 =
@@ -4180,6 +4256,21 @@ SK_ImGui_User_NewFrame (void)
                         GetTopWindow (hWndFocus) == hWndDevice            ?
                                       hWndFocus   : hWndGame != hWndFocus ?
                                                     hWndGame              : nullptr;
+
+    static const bool bNeedSmoothMotionInputRedirection =
+      SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
+                             SK_IsModuleLoaded (L"NvPresent.dll"));
+
+    // Smooth Motion creates an invisible window that we need to draw into,
+    //   but that invisible window is not the same size as the visible one,
+    //     and mouse input processing should ignore it.
+    if (bNeedSmoothMotionInputRedirection)
+    {
+      game_window.child = 0;
+
+      hWndMouse0 = hWndDevice;
+      hWndMouse1 = hWndFocus;
+    }
 
     static POINT last_cursor_pos;
     static bool  last_fg_or_top;

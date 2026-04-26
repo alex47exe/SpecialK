@@ -60,7 +60,7 @@ UINT SK_RecursiveMove ( const wchar_t* wszOrigDir,
 
 bool
 __stdcall
-SK_IsCurrentGame (SK_GAME_ID game_id)
+SK_IsCurrentGame (SK_GAME_ID game_id) noexcept
 {
   return
     SK_GetCurrentGameID () == game_id;
@@ -68,7 +68,7 @@ SK_IsCurrentGame (SK_GAME_ID game_id)
 
 SK_GAME_ID
 __stdcall
-SK_GetCurrentGameID (void)
+SK_GetCurrentGameID (void) noexcept
 {
   static SK_GAME_ID current_game =
          SK_GAME_ID::UNKNOWN_GAME;
@@ -829,6 +829,7 @@ struct {
   sk::ParameterBool*      draw_first              = nullptr;
   sk::ParameterBool*      unsafe_addons           = nullptr;
   sk::ParameterBool*      allow_sk_addon_and_reno = nullptr;
+  sk::ParameterBool*      allow_runtime_tracking  = nullptr;
 } reshade_cfg;
 
 struct {
@@ -883,6 +884,8 @@ struct {
     sk::ParameterFloat*   forced_sharpness        = nullptr;
     sk::ParameterBool*    auto_redirect_dll       = nullptr;
     sk::ParameterInt*     forced_preset           = nullptr;
+    sk::ParameterInt*     forced_rr_preset        = nullptr;
+    sk::ParameterInt*     forced_rr_hw_depth      = nullptr;
     sk::ParameterInt*     forced_auto_exposure    = nullptr;
     sk::ParameterInt*     forced_alpha_upscale    = nullptr;
     sk::ParameterInt*     forced_max_multiframe   = nullptr;
@@ -980,10 +983,12 @@ struct {
     sk::ParameterBool*    apply_streamline_pacing = nullptr;
     sk::ParameterInt*     streamline_pacing_mode  = nullptr;
     sk::ParameterBool*    ignore_environment_vars = nullptr;
+    sk::ParameterBool*    boost_compositor_clock  = nullptr;
     sk::ParameterBool*    force_vk_mailbox        = nullptr;
     sk::ParameterBool*    force_vk_adaptive       = nullptr;
     sk::ParameterBool*    max_timer_resolution    = nullptr;
     sk::ParameterBool*    force_high_res_timers   = nullptr;
+    sk::ParameterBool*    pace_game_thread        = nullptr;
 
     struct
     {
@@ -1100,6 +1105,7 @@ struct {
   sk::ParameterFloat*     override_refresh        = nullptr;
   sk::ParameterBool*      force_10bpc_sdr         = nullptr;
   sk::ParameterBool*      aspect_ratio_stretch    = nullptr;
+  sk::ParameterBool*      dump_raw_edid           = nullptr;
 } display;
 
 struct {
@@ -2089,6 +2095,7 @@ auto DeclKeybind =
     ConfigEntry (display.multimonitor_focus_mode,        L"Displays black background on all except the game's monitor",dll_ini,         L"Display.Output",        L"MultiMonitorADHDRelief"),
     ConfigEntry (display.multimonitor_focus_is_focused,  L"Whenever the game loses input focus, ADHD mode turns off",  osd_ini,         L"Display.Monitor",       L"MultiMonitorFocusIsFocused"),
     ConfigEntry (display.allow_refresh_change,           L"Allow Current Game to change Refresh Rate",                 dll_ini,         L"Display.Output",        L"AllowRefreshRateChanges"),
+    ConfigEntry (display.dump_raw_edid,                  L"Dump Raw EDID data from NVAPI if supported",                dll_ini,         L"Display.Output",        L"DumpRawEDID"),
 
 
     // Framerate Limiter
@@ -2122,6 +2129,7 @@ auto DeclKeybind =
                                 streamline_pacing_mode,  L"Level of DLSS Frame Gen pacing latency reduction.",         dll_ini,         L"Render.FrameRate",      L"StreamlinePacingMode"),
     ConfigEntry (render.framerate.
                                 ignore_environment_vars, L"Ignore environment variable-defined framerate limits.",     dll_ini,         L"Render.FrameRate",      L"IgnoreEnvironmentVars"),
+    ConfigEntry (render.framerate.boost_compositor_clock,L"Boost Compositor Clock on Windows 11+ (Dynamic Refresh)",   dll_ini,         L"Render.FrameRate",      L"BoostCompositorClock"),
 
     ConfigEntry (render.framerate.control.render_ahead,  L"Maximum number of CPU-side frames to work ahead of GPU.",   dll_ini,         L"FrameRate.Engine",      L"MaxRenderAheadFrames"),
     ConfigEntry (render.framerate.engine.
@@ -2129,6 +2137,7 @@ auto DeclKeybind =
     ConfigEntry (render.framerate.override_cpu_count,    L"Number of CPU cores to tell the game about",                dll_ini,         L"FrameRate.Engine",      L"OverrideCPUCoreCount"),
     ConfigEntry (render.framerate.max_timer_resolution,  L"Set the process timer resolution to the maximum supported", dll_ini,         L"FrameRate.Engine",      L"UseMaxTimerResolution"),
     ConfigEntry (render.framerate.force_high_res_timers, L"Force Waitable Timer code to use Win10 High-Res Timers",    dll_ini,         L"FrameRate.Engine",      L"ForceHighResTimers"),
+    ConfigEntry (render.framerate.pace_game_thread,      L"Pace the game thread in supported engines (i.e. Unity)",    dll_ini,         L"FrameRate.Engine",      L"PaceGameThread"),
     ConfigEntry (render.framerate.latent_sync.offset,    L"Offset in Scanlines from Top of Screen to Steer Tearing",   dll_ini,         L"FrameRate.LatentSync",  L"TearlineOffset"),
     ConfigEntry (render.framerate.latent_sync.resync,    L"Frequency (in -frames or milliseconds) to Resync Timing",   dll_ini,         L"FrameRate.LatentSync",  L"ResyncFrequency"),
     ConfigEntry (render.framerate.latent_sync.bias,      L"Controls Distribution of Idle Time Per-Delayed Frame",      dll_ini,         L"FrameRate.LatentSync",  L"DelayBias"),
@@ -2169,9 +2178,11 @@ auto DeclKeybind =
     ConfigEntry (nvidia.dlss.forced_sharpness,           L"Sharpness Value to Use",                                    dll_ini,         L"NVIDIA.DLSS",           L"ForcedSharpness"),
     ConfigEntry (nvidia.dlss.auto_redirect_dll,          L"Always load SK's Plug-In DLSS DLL instead of the game's",   dll_ini,         L"NVIDIA.DLSS",           L"AutoRedirectDLL"),
     ConfigEntry (nvidia.dlss.forced_preset,              L"Override DLSS Perf/Quality Level's Preset",                 dll_ini,         L"NVIDIA.DLSS",           L"ForcePreset"),
+    ConfigEntry (nvidia.dlss.forced_rr_preset,           L"Override Ray Reconstruction Perf/Quality Level's Preset",   dll_ini,         L"NVIDIA.DLSS",           L"ForcePresetRR"),
     ConfigEntry (nvidia.dlss.forced_auto_exposure,       L"Override DLSS Auto Exposure",                               dll_ini,         L"NVIDIA.DLSS",           L"ForcedAutoExposure"),
     ConfigEntry (nvidia.dlss.forced_alpha_upscale,       L"Override DLSS Alpha Upscaling (3.7.0+)",                    dll_ini,         L"NVIDIA.DLSS",           L"ForceAlphaUpscale"),
     ConfigEntry (nvidia.dlss.forced_max_multiframe,      L"Allow forcing multi-frame generation on in older games.",   dll_ini,         L"NVIDIA.DLSS",           L"ForcedMaxMultiFrameCount"),
+    ConfigEntry (nvidia.dlss.forced_rr_hw_depth,         L"Override Ray Reconstruction Hardware Depth",                dll_ini,         L"NVIDIA.DLSS",           L"ForcedHardwareDepth"),
     ConfigEntry (nvidia.dlss.performance_scale,          L"Custom scale factor (if != 0.0f) to use for Performance",   dll_ini,         L"NVIDIA.DLSS",           L"CustomPerformanceScale"),
     ConfigEntry (nvidia.dlss.balanced_scale,             L"Custom scale factor (if != 0.0f) to use for Balanced",      dll_ini,         L"NVIDIA.DLSS",           L"CustomBalancedScale"),
     ConfigEntry (nvidia.dlss.quality_scale,              L"Custom scale factor (if != 0.0f) to use for Quality",       dll_ini,         L"NVIDIA.DLSS",           L"CustomQualityScale"),
@@ -2316,6 +2327,7 @@ auto DeclKeybind =
     ConfigEntry (reshade_cfg.draw_first,                 L"Draw ReShade before SK's overlay in AddOn capable versions",dll_ini,         L"ReShade.System",        L"DrawFirst"),
     ConfigEntry (reshade_cfg.unsafe_addons,              L"Supress warnings for incompatible ReShade AddOns",          dll_ini,         L"ReShade.System",        L"UnsafeAddOns"),
     ConfigEntry (reshade_cfg.allow_sk_addon_and_reno,    L"Enable Special K's ReShade Add-On when RenoDX is in use.",  dll_ini,         L"ReShade.System",        L"AllowSKAddOnWithRenoDX"),
+    ConfigEntry (reshade_cfg.allow_runtime_tracking,     L"Respond to creation and destruction of ReShade runtimes.",  dll_ini,         L"ReShade.System",        L"AllowRuntimeTracking"),
 
     ConfigEntry (imgui.show_eula,                        L"Show Software EULA",                                        dll_ini,         L"SpecialK.System",       L"ShowEULA"),
     ConfigEntry (imgui.disable_alpha,                    L"Disable Alpha Transparency (reduce flicker)",               dll_ini,         L"ImGui.Render",          L"DisableAlpha"),
@@ -4836,6 +4848,7 @@ auto DeclKeybind =
   reshade_cfg.draw_first->load              (config.reshade.draw_first);
   reshade_cfg.unsafe_addons->load           (config.reshade.allow_unsafe_addons);
   reshade_cfg.allow_sk_addon_and_reno->load (config.reshade.allow_addon_with_reno);
+  reshade_cfg.allow_runtime_tracking->load  (config.reshade.allow_runtime_tracking);
 
   notifications.location->load              (config.notifications.location);
   notifications.silent->load                (config.notifications.silent);
@@ -4868,6 +4881,7 @@ auto DeclKeybind =
 
     display.override_refresh->load          (config.display.refresh_rate);
   } display.allow_refresh_change->load      (config.display.allow_refresh_change);
+    display.dump_raw_edid->load             (config.display.dump_raw_edid);
 
   if (config.apis.NvAPI.vulkan_bridge)
   {
@@ -4934,6 +4948,8 @@ auto DeclKeybind =
                                          load (config.render.framerate.streamline.pacing_mode);
   render.framerate.ignore_environment_vars->
                                          load (config.render.framerate.ignore_env_vars);
+  render.framerate.boost_compositor_clock->
+                                         load (config.render.framerate.boost_composite_clock);
 
   // Non-native pacing codepath is broken / being phased-out,
   //   better to just force-enable native limit if pacing mode is not 0.
@@ -4954,6 +4970,7 @@ auto DeclKeybind =
   render.framerate.override_cpu_count->load   (config.render.framerate.override_num_cpus);
   render.framerate.max_timer_resolution->load (config.render.framerate.max_timer_resolution);
   render.framerate.force_high_res_timers->load(config.render.framerate.force_high_res_timers);
+  render.framerate.pace_game_thread->load     (config.render.framerate.pace_game_thread);
 
   render.framerate.latent_sync.offset->load   (config.render.framerate.latent_sync.scanline_offset);
   render.framerate.latent_sync.resync->load   (config.render.framerate.latent_sync.scanline_resync);
@@ -5012,9 +5029,12 @@ auto DeclKeybind =
   nvidia.dlss.forced_sharpness->load         (config.nvidia.dlss.forced_sharpness);
   nvidia.dlss.auto_redirect_dll->load        (config.nvidia.dlss.auto_redirect_dlss);
   nvidia.dlss.forced_preset->load            (config.nvidia.dlss.forced_preset);
+  nvidia.dlss.forced_rr_preset->load         (config.nvidia.dlss.forced_rr_preset);
   nvidia.dlss.forced_auto_exposure->load     (config.nvidia.dlss.forced_auto_exposure);
   nvidia.dlss.forced_alpha_upscale->load     (config.nvidia.dlss.forced_alpha_upscale);
   nvidia.dlss.forced_max_multiframe->load    (config.nvidia.dlss.forced_multiframe);
+  nvidia.dlss.forced_rr_preset->load         (config.nvidia.dlss.forced_rr_preset);
+  nvidia.dlss.forced_rr_hw_depth->load       (config.nvidia.dlss.forced_rr_hw_depth);
   nvidia.dlss.performance_scale->load        (config.nvidia.dlss.scale.performance);
   nvidia.dlss.balanced_scale->load           (config.nvidia.dlss.scale.balanced);
   nvidia.dlss.quality_scale->load            (config.nvidia.dlss.scale.quality);
@@ -6371,10 +6391,10 @@ auto DeclKeybind =
     (SK_Steam_GetAppID_NoAPI () != 0 && config.system.first_run) || SK_IsAdmin ();
 
   struct {
-    int          ver     = 0;
-    int          sub_ver = 0;
-    int          build   = 0;
-    int          rev     = 0;
+    unsigned int ver     = 0U;
+    unsigned int sub_ver = 0U;
+    unsigned int build   = 0U;
+    unsigned int rev     = 0U;
     std::wstring str     = L"";
   } static unity_dll;
 
@@ -7296,6 +7316,7 @@ SK_SaveConfig ( std::wstring name,
   display.save_resolution->store               (config.display.resolution.save);
   display.warn_no_mpo_planes->store            (config.display.warn_no_mpo_planes);
   display.allow_refresh_change->store          (config.display.allow_refresh_change);
+  display.dump_raw_edid->store                 (config.display.dump_raw_edid);
 
   if ((! config.display.resolution.override.isZero ()) || config.display.resolution.save)
   {
@@ -7335,12 +7356,15 @@ SK_SaveConfig ( std::wstring name,
                                        store (config.render.framerate.streamline.pacing_mode);
   render.framerate.ignore_environment_vars->
                                        store (config.render.framerate.ignore_env_vars);
+  render.framerate.boost_compositor_clock->
+                                       store (config.render.framerate.boost_composite_clock);
 
   render.framerate.override_cpu_count->store (config.render.framerate.override_num_cpus);
   render.framerate.max_timer_resolution->
                                        store (config.render.framerate.max_timer_resolution);
   render.framerate.force_high_res_timers->
                                        store (config.render.framerate.force_high_res_timers);
+  render.framerate.pace_game_thread->  store (config.render.framerate.pace_game_thread);
   render.framerate.engine.allow_latency_wait
                                      ->store (config.render.framerate.engine_overrides.allow_latency_wait);
 
@@ -7461,9 +7485,11 @@ SK_SaveConfig ( std::wstring name,
       nvidia.dlss.forced_sharpness->store         (config.nvidia.dlss.forced_sharpness);
       nvidia.dlss.auto_redirect_dll->store        (config.nvidia.dlss.auto_redirect_dlss);
       nvidia.dlss.forced_preset->store            (config.nvidia.dlss.forced_preset);
+      nvidia.dlss.forced_rr_preset->store         (config.nvidia.dlss.forced_rr_preset);
       nvidia.dlss.forced_auto_exposure->store     (config.nvidia.dlss.forced_auto_exposure);
       nvidia.dlss.forced_alpha_upscale->store     (config.nvidia.dlss.forced_alpha_upscale);
       nvidia.dlss.forced_max_multiframe->store    (config.nvidia.dlss.forced_multiframe);
+      nvidia.dlss.forced_rr_hw_depth->store       (config.nvidia.dlss.forced_rr_hw_depth);
       nvidia.dlss.performance_scale->store        (config.nvidia.dlss.scale.performance);
       nvidia.dlss.balanced_scale->store           (config.nvidia.dlss.scale.balanced);
       nvidia.dlss.quality_scale->store            (config.nvidia.dlss.scale.quality);
@@ -7626,6 +7652,7 @@ SK_SaveConfig ( std::wstring name,
   }
 
   reshade_cfg.draw_first->store               (config.reshade.draw_first);
+  reshade_cfg.allow_runtime_tracking->store   (config.reshade.allow_runtime_tracking);
 
   if (SK_ReShade_HasRenoDX ())
   {
@@ -8347,7 +8374,8 @@ SK_AppCache_Manager::loadAppCacheForExe (const wchar_t* wszExe)
                                mancpn.is_open ())
               {
                 char                     szLine [512] = { };
-                while (! mancpn.getline (szLine, 511).eof ())
+                while (! mancpn.getline (szLine, 511).eof () &&
+                       ! mancpn.fail () )
                 {
                   if (StrStrIA (szLine, "\"AppName\"") != nullptr)
                   {
@@ -8687,7 +8715,8 @@ SK_AppCache_Manager::getConfigPathFromAppPath (const wchar_t* wszPath) const
                              mancpn.is_open ())
             {
               char                     szLine [512] = { };
-              while (! mancpn.getline (szLine, 511).eof ())
+              while (! mancpn.getline (szLine, 511).eof () &&
+                     ! mancpn.fail () )
               {
                 if (StrStrIA (szLine, "\"AppName\"") != nullptr)
                 {

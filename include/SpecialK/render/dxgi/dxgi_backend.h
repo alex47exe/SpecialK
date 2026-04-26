@@ -192,6 +192,14 @@ CreateDXGIFactory2 (              UINT     Flags,
                      _COM_Outptr_ void   **ppFactory );
 
 
+HRESULT
+STDMETHODCALLTYPE
+SK_DXGI_GetDisplayModeList ( IDXGIOutput *pOutput,
+                       _In_  DXGI_FORMAT  EnumFormat,
+                       _In_  UINT         Flags,
+                    _Inout_  UINT        *pNumModes,
+     _Out_writes_to_opt_ (*pNumModes,*pNumModes)
+                          DXGI_MODE_DESC *pDesc );
 
 HRESULT
 STDMETHODCALLTYPE
@@ -340,36 +348,36 @@ static constexpr int SK_D3D11_MAX_DEV_CONTEXTS = 256;
 extern           int SK_D3D11_AllocatedDevContexts;
 
 LONG
-SK_D3D11_GetDeviceContextHandle (ID3D11DeviceContext *pDevCtx);
+SK_D3D11_GetDeviceContextHandle (ID3D11DeviceContext *pDevCtx) noexcept;
 
 // Use this when wrapping a device context, we want the wrapper and the
 //   internal pointer to agree on context handle
 void
 SK_D3D11_CopyContextHandle ( ID3D11DeviceContext *pSrcCtx,
-                             ID3D11DeviceContext *pDstCtx );
+                             ID3D11DeviceContext *pDstCtx ) noexcept;
 
 extern std::string
 SK_WideCharToUTF8 (const std::wstring& in);
 
-bool SK_DXGI_HasDebugName (       IDXGIObject* pDXGIObject );
+bool SK_DXGI_HasDebugName (       IDXGIObject* pDXGIObject )          noexcept;
 void SK_DXGI_SetDebugName (       IDXGIObject* pDXGIObject,
-                           const std::wstring& kName );
+                           const std::wstring& kName )                noexcept;
 
-bool SK_D3D11_HasDebugName (       ID3D11DeviceChild* pDevChild );
+bool SK_D3D11_HasDebugName (       ID3D11DeviceChild* pDevChild )     noexcept;
 void SK_D3D11_SetDebugName (       ID3D11DeviceChild* pDevChild,
-                             const std::wstring&      kName );
+                             const std::wstring&      kName )         noexcept;
 
-bool SK_D3D12_HasDebugName (       ID3D12Object* pD3D12Obj );
+bool SK_D3D12_HasDebugName (       ID3D12Object* pD3D12Obj )          noexcept;
 void SK_D3D12_SetDebugName (       ID3D12Object* pD3D12Obj,
-                             const std::wstring& kName );
+                             const std::wstring& kName )              noexcept;
 
-std::wstring SK_D3D12_GetDebugNameW    (ID3D12Object* pD3D12Obj);
-std::string  SK_D3D12_GetDebugNameA    (ID3D12Object* pD3D12Obj);
-std::string  SK_D3D12_GetDebugNameUTF8 (ID3D12Object* pD3D12Obj);
+std::wstring SK_D3D12_GetDebugNameW    (ID3D12Object* pD3D12Obj)      noexcept;
+std::string  SK_D3D12_GetDebugNameA    (ID3D12Object* pD3D12Obj)      noexcept;
+std::string  SK_D3D12_GetDebugNameUTF8 (ID3D12Object* pD3D12Obj)      noexcept;
 
-std::wstring SK_D3D11_GetDebugNameW    (ID3D11DeviceChild* pD3D11Obj);
-std::string  SK_D3D11_GetDebugNameA    (ID3D11DeviceChild* pD3D11Obj);
-std::string  SK_D3D11_GetDebugNameUTF8 (ID3D11DeviceChild* pD3D11Obj);
+std::wstring SK_D3D11_GetDebugNameW    (ID3D11DeviceChild* pD3D11Obj) noexcept;
+std::string  SK_D3D11_GetDebugNameA    (ID3D11DeviceChild* pD3D11Obj) noexcept;
+std::string  SK_D3D11_GetDebugNameUTF8 (ID3D11DeviceChild* pD3D11Obj) noexcept;
 
 namespace SK
 {
@@ -512,6 +520,36 @@ HRESULT SK_DXGI_GetDebugInterface (REFIID riid, void** ppDebug);
 HRESULT SK_DXGI_OutputDebugString (const std::string& str, DXGI_INFO_QUEUE_MESSAGE_SEVERITY severity);
 HRESULT SK_DXGI_ReportLiveObjects (IUnknown* pDev = nullptr);
 
+// Account for padding in the structure, and test for equality using this operator
+//   instead of using memcmp (...).
+static inline bool operator== (const DXGI_SWAP_CHAIN_DESC& lhs,
+                               const DXGI_SWAP_CHAIN_DESC& rhs) noexcept
+{
+  // Good lord! C++20 could do this automatically... but we're not using it.
+  return
+    lhs.BufferDesc.Width                   == rhs.BufferDesc.Width                   &&
+    lhs.BufferDesc.Height                  == rhs.BufferDesc.Height                  &&
+    lhs.BufferDesc.RefreshRate.Numerator   == rhs.BufferDesc.RefreshRate.Numerator   &&
+    lhs.BufferDesc.RefreshRate.Denominator == rhs.BufferDesc.RefreshRate.Denominator &&
+    lhs.BufferDesc.Format                  == rhs.BufferDesc.Format                  &&
+    lhs.BufferDesc.Scaling                 == rhs.BufferDesc.Scaling                 &&
+    lhs.BufferDesc.ScanlineOrdering        == rhs.BufferDesc.ScanlineOrdering        &&
+    lhs.SampleDesc.Count                   == rhs.SampleDesc.Count                   &&
+    lhs.SampleDesc.Quality                 == rhs.SampleDesc.Quality                 &&
+    lhs.BufferUsage                        == rhs.BufferUsage                        &&
+    lhs.BufferCount                        == rhs.BufferCount                        &&
+    lhs.OutputWindow                       == rhs.OutputWindow                       &&
+    lhs.Windowed                           == rhs.Windowed                           &&
+    lhs.SwapEffect                         == rhs.SwapEffect                         &&
+    lhs.Flags                              == rhs.Flags;
+}
+
+static inline bool operator!= (const DXGI_SWAP_CHAIN_DESC& lhs,
+                               const DXGI_SWAP_CHAIN_DESC& rhs) noexcept
+{
+  return
+    !(lhs == rhs);
+}
 
 static constexpr
 BOOL

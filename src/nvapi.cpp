@@ -316,7 +316,7 @@ NVAPI::FindGPUByDXGIName (const wchar_t* wszName)
   //"NVIDIA "
   // 01234567
 
-  wchar_t* wszFixedName = _wcsdup (wszName + 7);
+  wchar_t* wszFixedName = _wcsdup  (wszName + 7);
   int      fixed_len    = lstrlenW (wszFixedName);
 
   if (wszFixedName != nullptr)
@@ -713,7 +713,7 @@ NvAPI_Disp_HdrColorControl_Override ( NvU32              displayId,
   if (pHdrColorData->version == NV_HDR_COLOR_DATA_VER1)
   {
     NV_HDR_COLOR_DATA_V1    origData =     *((NV_HDR_COLOR_DATA_V1 *)pHdrColorData);
-    memcpy (&expandedData, &origData, sizeof (NV_HDR_COLOR_DATA_V1));
+    memcpy (&expandedData, &origData, sizeof (NV_HDR_COLOR_DATA_V1)); //-V512_UNDERFLOW_OFF
 
     expandedData.version   = NV_HDR_COLOR_DATA_VER2;
     pHdrColorData          = &expandedData;
@@ -1326,9 +1326,76 @@ SK_RenderBackend_V2::output_s::statistics_s::vblank_history_s::resetStats (void)
   last_polled_time       = 0;
 }
 
+void
+SK_DComp_UpdateStats (const SK_RenderBackend_V2& rb) noexcept
+{
+  std::ignore = rb;
+#if 0
+  if (rb.d3d11.composition != nullptr)
+  {   rb.d3d11.composition->Commit ();
+    static HMODULE dcomp_dll =
+      SK_LoadLibraryW (L"dcomp.dll");
+
+    using DCompositionGetFrameId_pfn =
+      HRESULT (WINAPI *)(COMPOSITION_FRAME_ID_TYPE,
+                         COMPOSITION_FRAME_ID*);
+
+    static DCompositionGetFrameId_pfn
+          _DCompositionGetFrameId =
+          (DCompositionGetFrameId_pfn)SK_GetProcAddress (dcomp_dll,
+          "DCompositionGetFrameId");
+
+    using DCompositionGetStatistics_pfn =
+      HRESULT (WINAPI *)(COMPOSITION_FRAME_ID,
+                         COMPOSITION_FRAME_STATS*,
+                   UINT, COMPOSITION_TARGET_ID*,
+                   UINT*);
+
+    static DCompositionGetStatistics_pfn
+          _DCompositionGetStatistics =
+          (DCompositionGetStatistics_pfn)SK_GetProcAddress (dcomp_dll,
+          "DCompositionGetStatistics");
+
+    if (_DCompositionGetStatistics != nullptr &&
+        _DCompositionGetFrameId    != nullptr)
+    {
+      COMPOSITION_FRAME_ID                                      frameId = 0;
+      _DCompositionGetFrameId (COMPOSITION_FRAME_ID_COMPLETED, &frameId);
+
+      UINT                                  targetCount =  0;
+      COMPOSITION_FRAME_STATS               frameStats  = { };
+      _DCompositionGetStatistics (frameId, &frameStats, 0, nullptr,
+                                           &targetCount);
+
+      float fLastFrameRate =
+                    1000.0f /
+        static_cast <float> (
+          static_cast <double> (frameStats.framePeriod) /
+          static_cast <double> (SK_QpcTicksPerMs)
+        );
+
+      DCOMPOSITION_FRAME_STATISTICS                             frameStatistics = {};
+      if (SUCCEEDED (rb.d3d11.composition->GetFrameStatistics (&frameStatistics)))
+      {
+        return
+          static_cast <float> (
+            static_cast <double> (frameStatistics.currentCompositionRate.Numerator) /
+            static_cast <double> (frameStatistics.currentCompositionRate.Denominator)
+          );
+      }
+    }
+  }
+#endif
+}
+
 float
 SK_RenderBackend_V2::output_s::statistics_s::vblank_history_s::getVBlankHz (NvU64 tNow) noexcept
 {
+  const auto& rb =
+    SK_GetCurrentRenderBackend ();
+
+  SK_DComp_UpdateStats (rb);
+
   NvU32 num_vblanks_in_period = 0;
 
   NvU64 vblank_count_min = UINT64_MAX,
@@ -1381,9 +1448,6 @@ SK_RenderBackend_V2::output_s::statistics_s::vblank_history_s::getVBlankHz (NvU6
   // Keep imaginary numbers out of the data set...
   if (vblank_n - vblank_t0 == 0)
     new_average = 0.0f;
-
-  const auto& rb =
-    SK_GetCurrentRenderBackend ();
 
   const auto& signal_timing =
     rb.displays [rb.active_display].signal.timing;
@@ -1756,7 +1820,7 @@ NvAPI_DRS_GetSetting_Detour (NvDRSSessionHandle hSession, NvDRSProfileHandle hPr
   NvAPI_Status status =
     NvAPI_DRS_GetSetting_Original (hSession, hProfile, settingId, pSetting);
 
-  if (NVAPI_OK == status && SK_GetCallingDLL () != SK_GetDLL ())
+  if (NVAPI_OK == status && !SK_IsModuleInCallstack (SK_GetDLL ()))
   {
     switch (settingId)
     {
@@ -2792,106 +2856,16 @@ sk::NVAPI::SetFramerateLimit (uint32_t limit)
 
 BOOL SK_NvAPI_IsSmoothingMotion (void)
 {
-  SK_RunOnce (sk::NVAPI::InitializeLibrary (SK_GetFullyQualifiedApp ()));
-
-  if (! nv_hardware)
-    return FALSE;
-
-  NvAPI_Status       ret       = NVAPI_ERROR;
-  NvDRSSessionHandle hSession  = { };
-
-  NVAPI_CALL (DRS_CreateSession (&hSession));
-  NVAPI_CALL (DRS_LoadSettings  ( hSession));
-
-               NvDRSProfileHandle hProfile       = { };
-  std::unique_ptr    <NVDRS_APPLICATION> app_ptr =
-    std::make_unique <NVDRS_APPLICATION> ();
-  NVDRS_APPLICATION&                     app     =
-                                        *app_ptr;
-
-  NVAPI_SILENT ();
-
-  app.version = NVDRS_APPLICATION_VER;
-  ret         = NVAPI_ERROR;
-
-  NVAPI_CALL2 ( DRS_FindApplicationByName ( hSession,
-                                              (NvU16 *)app_name.c_str (),
-                                                &hProfile,
-                                                  &app ),
-                ret );
-
-  // This is a status check only, if no profile exists, do not create one.
-  if (ret == NVAPI_EXECUTABLE_NOT_FOUND)
-  {
-    NVAPI_CALL (DRS_GetBaseProfile (hSession, &hProfile));
-
-    if (ret != NVAPI_OK)
-    {
-      NVAPI_CALL (DRS_DestroySession (hSession));
-      return FALSE;
-    }
-  }
-
-  NVDRS_SETTING smooth_motion_enable         = {               };
-                smooth_motion_enable.version = NVDRS_SETTING_VER;
-
-  static constexpr auto SMOOTH_MOTION_ENABLE_ID = 0xB0D384C0;
-
-  // Hack because NvAPI_DRS_GetSetting (...) is unable to read this setting for some reason...
-  //
   if (SK_GetModuleHandleW (SK_RunLHIfBitness (64, L"NvPresent64.dll",
                                                   L"NvPresent.dll")) != 0)
   {
-    //__SK_ForceDLSSGPacing = true;
-
-    smooth_motion_enable.u32CurrentValue = 1;
+    return TRUE;
   }
 
-#if 0
-  NVDRS_PROFILE profileInformation         = {               };
-                profileInformation.version = NVDRS_PROFILE_VER;
-
-  NvAPI_DRS_GetProfileInfo (hSession, hProfile,
-                                      &profileInformation);
-  std::vector <NVDRS_SETTING> settings (profileInformation.numOfSettings);
-
-  settings [0].version = NVDRS_SETTING_VER;
-
-  NvAPI_DRS_EnumSettings (hSession, hProfile, 0, &profileInformation.numOfSettings, settings.data ());
-
-  for (auto i = 0u; i < profileInformation.numOfSettings; ++i)
+  else
   {
-    if (settings [i].settingId == SMOOTH_MOTION_ENABLE_ID)
-    {
-      smooth_motion_enable = settings [i];
-      break;
-    }
+    return FALSE;
   }
-#endif
-
-  // If NVAPI were working correctly, we would call this code.
-  //
-  //// These settings may not exist, and getting back a value of 0 is okay...
-  //NVAPI_SILENT  ();
-  //NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, SMOOTH_MOTION_ENABLE_ID, &smooth_motion_enable));
-  //NVAPI_VERBOSE ();
-
-  //SK_LOGi0 (L"Smooth Motion: %x", smooth_motion_enable.u32CurrentValue);
-
-  BOOL bRet =
-   ( smooth_motion_enable.u32CurrentValue != 0 )
-                                          ? TRUE
-                                          : FALSE;
-
-  if (bRet)
-  {
-    // Smooth Motion requires this
-    config.nvidia.dlss.allow_flip_metering = true;
-  }
-
-  NVAPI_CALL (DRS_DestroySession (hSession));
-
-  return bRet;
 }
 
 BOOL SK_NvAPI_GetVRREnablement (void)
@@ -3055,7 +3029,7 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
 {
   // This is completely undefined on Linux, there is no real DXGI to interop with :)
   if (config.compatibility.using_wine)
-    return true;
+    return !bEnable;
 
 #define OGL_DX_PRESENT_DEBUG_ID       0x20324987
 #define DISABLE_FULLSCREEN_OPT        0x00000001

@@ -26,6 +26,7 @@
 #include <SpecialK/render/dxgi/dxgi_swapchain.h>
 #include <SpecialK/render/dxgi/dxgi_util.h>
 #include <SpecialK/render/d3d11/d3d11_core.h>
+#include <SpecialK/nvapi.h>
 
 #define SK_LOG_ONCE(x) { static bool logged = false; if (! logged) \
                        { dll_log->Log ((x)); logged = true; } }
@@ -85,7 +86,7 @@ SK_DXGI_ReleaseSwapChainOnHWnd (
 uint64_t SK_DXGI_SwapChainDestroyedOnFrame = 0;
 
 uint64_t
-SK_DXGI_LastFrameSwapChainDestroyed (void)
+SK_DXGI_LastFrameSwapChainDestroyed (void) noexcept
 {
   return
     SK_DXGI_SwapChainDestroyedOnFrame;
@@ -321,6 +322,26 @@ IWrapDXGISwapChain::Release (void)
   //
   if (xrefs == 0)
   {
+    auto _ClearCachedViews = [&](void)
+    {
+      for (     auto& rtv : _backbuffer_rtvs)
+        if (auto orig_rtv = std::exchange (rtv.second, nullptr);
+                 orig_rtv != nullptr)
+                 orig_rtv->Release ();
+
+      for (     auto& srv : _backbuffer_srvs)
+        if (auto orig_srv = std::exchange (srv.second, nullptr);
+                 orig_srv != nullptr)
+                 orig_srv->Release ();
+
+      _backbuffer_rtvs.clear ();
+      _backbuffer_srvs.clear ();
+    };
+
+    // Clear the persistent caches used for backbuffer proxying,
+    //   otherwise reference counts would not match up.
+    _ClearCachedViews ();
+
     // We're going to make this available for recycling
     if (hWnd_ != 0)
     {
@@ -590,7 +611,7 @@ IWrapDXGISwapChain::PresentBase (void)
         std::scoped_lock lock (_backbufferLock);
 
         std::pair <BOOL*, BOOL>
-          SK_ImGui_FlagDrawing_OnD3D11Ctx (UINT dev_idx);
+          SK_ImGui_FlagDrawing_OnD3D11Ctx (UINT dev_idx) noexcept;
 
         auto flag_result =
           SK_ImGui_FlagDrawing_OnD3D11Ctx (
@@ -997,7 +1018,8 @@ IWrapDXGISwapChain::ResizeBuffers ( UINT        BufferCount,
   DXGI_SWAP_CHAIN_DESC swapDesc = { };
   GetDesc            (&swapDesc);
 
-  if (! _backbuffer_rtvs.empty ())
+  if ((! _backbuffer_rtvs.empty () ||
+      (! _backbuffer_srvs.empty ())))
   {
     std::scoped_lock lock (_backbufferLock);
 
@@ -1011,6 +1033,17 @@ IWrapDXGISwapChain::ResizeBuffers ( UINT        BufferCount,
     }
 
     _backbuffer_rtvs.clear ();
+
+    for ( auto& srv : _backbuffer_srvs )
+    {
+      if (srv.second != nullptr)
+      {
+        srv.second->Release ();
+        srv.second = nullptr;
+      }
+    }
+
+    _backbuffer_srvs.clear ();
   }
 
   HRESULT hr =
@@ -1067,6 +1100,11 @@ IWrapDXGISwapChain::ResizeBuffers ( UINT        BufferCount,
                   _backbuffer_srvs [backbuffer.p]  = nullptr;
               }
 
+              if (_backbuffer_rtvs [backbuffer.p] != nullptr)
+              {   _backbuffer_rtvs [backbuffer.p]->Release ();
+                  _backbuffer_rtvs [backbuffer.p]  = nullptr;
+              }
+
               backbuffer.Release ();
             }
           }
@@ -1087,6 +1125,7 @@ IWrapDXGISwapChain::ResizeBuffers ( UINT        BufferCount,
         {
           SK_LOGi1 (L"ResizeBuffers => Clear");
           _backbuffers.clear ();
+          _backbuffer_rtvs.clear ();
           _backbuffer_srvs.clear ();
         }
       }
@@ -1158,42 +1197,8 @@ IWrapDXGISwapChain::GetFrameStatistics (DXGI_FRAME_STATISTICS *pStats)
 
   if (SK_GetCurrentRenderBackend ().windows.unity && SK_GetCallingDLL () == hModUnityPlayer)
   {
-    extern HANDLE SK_Unity_GetFrameStatsWaitEvent;
-    extern bool   SK_Unity_PaceGameThread;
-
-    if (SK_Unity_PaceGameThread)
-    {
-      SK_RunOnce (
-        SK_Unity_GetFrameStatsWaitEvent =
-          SK_CreateEvent (nullptr, FALSE, TRUE, nullptr)
-      );
-
-#if 0
-      static HANDLE   hTimer     = 0;
-      static LONGLONG next_frame = 0;
-
-      auto *pLimiter =
-        SK::Framerate::GetLimiter ((IUnknown *)-1);
-
-      if (pLimiter != nullptr)
-      {
-      //WaitForSingleObject (SK_Unity_GetFrameStatsWaitEvent, INFINITE);
-        pLimiter->standalone = true;
-        pLimiter->set_limit (__target_fps_now);
-        pLimiter->wait      (                );
-      }
-#endif
-
-      // Unity doesn't need to see this, give it fake data...
-      //   the actual reliability of the frame stats is much lower
-      //     than Unity believes and they are better off with an error :)
-      auto ret = E_ACCESSDENIED;
-
-      //auto ret =
-      //  pReal->GetFrameStatistics (pStats);
-
-      return ret;
-    }
+    extern HRESULT SK_Unity_PaceGameThreadDxgi (IDXGISwapChain *pSwapChain, DXGI_FRAME_STATISTICS *pStats);
+    return         SK_Unity_PaceGameThreadDxgi (pReal, pStats);
   }
 
   return
@@ -1645,11 +1650,29 @@ IWrapDXGISwapChain::SetHDRMetaData ( DXGI_HDR_METADATA_TYPE  Type,
 
       if (config.compatibility.disable_dx12_vk_interop && !__SK_HDR_UserForced)
       {
-        SK_LOGi0 (L"Turning on HDR10 for Vk Interop SwapChain...");
+        auto       desc = DXGI_SWAP_CHAIN_DESC1 {};
+        GetDesc1 (&desc);
 
-        __SK_HDR_10BitSwap = true;
+        if (desc.Format == DXGI_FORMAT_R8G8B8A8_UNORM ||
+            desc.Format == DXGI_FORMAT_R10G10B10A2_UNORM)
+        {
+          SK_LOGi0 (L"Turning on HDR10 for Vk Interop SwapChain...");
 
-        SetColorSpace1 (DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+          __SK_HDR_10BitSwap = true;
+          __SK_HDR_16BitSwap = false;
+
+          SetColorSpace1 (DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020);
+        }
+
+        else
+        {
+          SK_LOGi0 (L"Turning on scRGB for Vk Interop SwapChain...");
+
+          __SK_HDR_16BitSwap = true;
+          __SK_HDR_10BitSwap = false;
+
+          SetColorSpace1 (DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709);
+        }
       }
     }
 
@@ -2051,7 +2074,7 @@ SK_DXGI_SwapChain_SetFullscreenState_Impl (
 }
 
 bool
-SK_RenderBackend_V2::isFakeFullscreen (void) const
+SK_RenderBackend_V2::isFakeFullscreen (void) const noexcept
 {
   if (! SK_API_IsDXGIBased (api))
     return false;
@@ -2065,17 +2088,19 @@ SK_RenderBackend_V2::isFakeFullscreen (void) const
 }
 
 bool
-SK_RenderBackend_V2::isTrueFullscreen (void) const
+SK_RenderBackend_V2::isTrueFullscreen (void) const noexcept
 {
   return
     fullscreen_exclusive && (! isFakeFullscreen ());
 }
 
 bool
-SK_RenderBackend_V2::isMPODisabled (void)
+SK_RenderBackend_V2::isMPODisabled (void) const noexcept
 {
   if (! SK_API_IsDXGIBased (api))
+  {
     return false;
+  }
 
   typedef unsigned long DWMOverlayTestModeFlags;  // -> enum DWMOverlayTestModeFlags_
 
@@ -2090,51 +2115,64 @@ SK_RenderBackend_V2::isMPODisabled (void)
   };
 
   static DWMOverlayTestModeFlags flagOverlayTestMode = DWMOverlayTestModeFlags_INITIAL;
-  static int iDisableOverlay = 0;
-  static bool  isDisabled    = false;
+
+  static int   iDisableOverlay = 0;
+  static bool isDisabled       = false;
 
   if (flagOverlayTestMode != DWMOverlayTestModeFlags_INITIAL)
-    return isDisabled;
+  {
+    return
+      isDisabled;
+  }
 
   isDisabled = false;
 
-  HKEY hKey;
+  HKEY          hKey;
   unsigned long size = 1024;
 
   // Check if GraphicsDrivers's DisableOverlays has MPOs disabled
   if (ERROR_SUCCESS == RegOpenKeyExW (HKEY_LOCAL_MACHINE, LR"(SYSTEM\CurrentControlSet\Control\GraphicsDrivers\)", 0, KEY_READ | KEY_WOW64_64KEY, &hKey))
   {
-    if (ERROR_SUCCESS == RegQueryValueEx (hKey, L"DisableOverlays", NULL, NULL, (LPBYTE)&iDisableOverlay, &size))
-    { }
-    else
+    if (ERROR_SUCCESS != RegQueryValueEx (hKey, L"DisableOverlays", NULL, NULL, (LPBYTE)&iDisableOverlay, &size))
+    {
       iDisableOverlay = 0;
+    }
 
     RegCloseKey (hKey);
   }
 
   else
+  {
     iDisableOverlay = 0;
+  }
 
   // Check if DWM's OverlayTestMode has MPOs disabled
   if (ERROR_SUCCESS == RegOpenKeyExW (HKEY_LOCAL_MACHINE, LR"(SOFTWARE\Microsoft\Windows\Dwm\)", 0, KEY_READ | KEY_WOW64_64KEY, &hKey))
   {
-    if (ERROR_SUCCESS == RegQueryValueEx (hKey, L"OverlayTestMode", NULL, NULL, (LPBYTE)&flagOverlayTestMode, &size))
-    { }
-    else
-      flagOverlayTestMode = DWMOverlayTestModeFlags_None;
+    if (ERROR_SUCCESS != RegQueryValueEx (hKey, L"OverlayTestMode", NULL, NULL, (LPBYTE)&flagOverlayTestMode, &size))
+    {
+      flagOverlayTestMode =
+        DWMOverlayTestModeFlags_None;
+    }
 
     RegCloseKey (hKey);
   }
 
   else
+  {
     flagOverlayTestMode = DWMOverlayTestModeFlags_None;
+  }
 
   
-  if (iDisableOverlay || ((flagOverlayTestMode & DWMOverlayTestModeFlags_MPORelated1) == DWMOverlayTestModeFlags_MPORelated1 &&
-                          (flagOverlayTestMode & DWMOverlayTestModeFlags_MPORelated2) == DWMOverlayTestModeFlags_MPORelated2))
+  if ( iDisableOverlay ||
+          ((flagOverlayTestMode & DWMOverlayTestModeFlags_MPORelated1) == DWMOverlayTestModeFlags_MPORelated1 &&
+           (flagOverlayTestMode & DWMOverlayTestModeFlags_MPORelated2) == DWMOverlayTestModeFlags_MPORelated2) )
+  {
     isDisabled = true;
+  }
 
-  return isDisabled;
+  return
+    isDisabled;
 }
 
 bool
@@ -2220,53 +2258,9 @@ SK_DXGI_SwapChain_ResizeBuffers_Impl (
       return hr;
     };
 
-  auto _D3D12_ResetBufferIndexToZero = [&](void)
-  {
-    SK_ComPtr <ID3D12Device>                           pD3D12Dev;
-    pSwapChain->GetDevice (IID_ID3D12Device, (void **)&pD3D12Dev.p);
-
-    bool d3d12 =
-      (pD3D12Dev.p != nullptr);
-
-    SK_ComQIPtr <IDXGISwapChain3>
-             pSwap3 (pSwapChain);
-
-    // When skipping resize operations in D3D12, there's an important side-effect that
-    //   must be reproduced:
-    //
-    //    * Current Buffer Index reverts to 0 on success
-    //
-    //  --> We need to make several unsynchronized Present calls until we advance back to
-    //        backbuffer index 0.
-    if (d3d12 && pSwap3->GetCurrentBackBufferIndex () != 0)
-    {
-      int iUnsyncedPresents = 0;
-
-      HRESULT hrUnsynced =
-        pSwapChain->Present (0, DXGI_PRESENT_RESTART | DXGI_PRESENT_DO_NOT_WAIT);
-
-      while ( SUCCEEDED (hrUnsynced) ||
-                         hrUnsynced == DXGI_ERROR_WAS_STILL_DRAWING )
-      {
-        ++iUnsyncedPresents;
-
-        if (pSwap3->GetCurrentBackBufferIndex () == 0)
-          break;
-
-        hrUnsynced =
-          pSwapChain->Present (0, DXGI_PRESENT_RESTART | DXGI_PRESENT_DO_NOT_WAIT);
-      }
-
-      SK_LOGi0 (
-        L"Issued %d unsync'd Presents to reset the SwapChain's current index to 0 "
-        L"(required D3D12 ResizeBuffers behavior)", iUnsyncedPresents
-      );
-    }
-  };
-
   auto _ReleaseResourcesAndRetryResize = [&](HRESULT& ret)
   {
-    _D3D12_ResetBufferIndexToZero ();
+    SK_D3D12_ResetBufferIndexToZero (pSwapChain);
 
     if      (rb.api == SK_RenderAPI::D3D12) ResetImGui_D3D12 (pSwapChain);
     else if (rb.api == SK_RenderAPI::D3D11) ResetImGui_D3D11 (pSwapChain);
@@ -2707,17 +2701,7 @@ SK_DXGI_SwapChain_ResizeBuffers_Impl (
                                          swap_desc.Flags
     );
 
-    //extern bool __SK_HDR_UserForced;
-    //
-    //if (! __SK_HDR_UserForced)
-    //{
-    //  SK_ComQIPtr <IDXGISwapChain4>
-    //        pSwap4 (pSwapChain);
-    //    if (pSwap4 != nullptr)
-    //        pSwap4->SetColorSpace1 (DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709);
-    //}
-
-    _D3D12_ResetBufferIndexToZero ();
+    SK_D3D12_ResetBufferIndexToZero (pSwapChain);
   }
 
   // EOS Overlay May Be Broken in D3D12 Games
@@ -2942,7 +2926,7 @@ SK_DXGI_SwapChain_ResizeTarget_Impl (
         else
         {
           new_new_params.RefreshRate.Numerator   =
-            sk::narrow_cast <UINT> (ceilf (config.render.framerate.refresh_rate));
+            sk::narrow_cast <UINT> (roundf (config.render.framerate.refresh_rate));
           new_new_params.RefreshRate.Denominator = 1;
         }
       }

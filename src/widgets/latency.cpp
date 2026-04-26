@@ -554,7 +554,7 @@ SK_ImGui_DrawGraph_Latency (bool predraw)
 
        ImPlot::PlotLine ("Simulation",    &history.sample_age [head], &history.simulation    [head], elements);
        ImPlot::PlotLine ("Render Submit", &history.sample_age [head], &history.render_submit [head], elements);
-       ImPlot::PlotLine ("Composite",     &history.sample_age [head], &history.frame_total   [head], elements);
+       ImPlot::PlotLine ("Scanout",       &history.sample_age [head], &history.frame_total   [head], elements);
        ImPlot::PlotLine ("GPU Busy",      &history.sample_age [head], &history.gpu_active    [head], elements);
        ImPlot::PlotLine ("CPU Busy",      &history.sample_age [head], &history.gpu_start     [head], elements);
      };
@@ -880,8 +880,11 @@ SK_ImGui_DrawGraph_Latency (bool predraw)
 
   ImGui::EndGroup   ();
 
+  const auto frames_drawn =
+    SK_GetFramesDrawn ();
+
   if ( ReadULong64Acquire (&SK_Reflex_LastFrameMarked) <
-       ReadULong64Acquire (&SK_RenderBackend::frames_drawn) - 2 )
+                               frames_drawn - 2 && !game_pace.wantPacing (frames_drawn) )
   {
     static bool bRTSS64 =
       SK_GetModuleHandle (
@@ -908,8 +911,8 @@ SK_ImGui_DrawConfig_Latency ()
   if (! (sk::NVAPI::nv_hardware && SK_API_IsDXGIBased (rb.api)))
     return;
 
-  bool bPartialReflexSupport =
-    sk::NVAPI::nv_hardware && SK_API_IsDXGIBased (rb.api)       &&
+  bool bPartialReflexSupport = // Tested above
+  //sk::NVAPI::nv_hardware && SK_API_IsDXGIBased (rb.api)       &&
     SK_Render_GetVulkanInteropSwapChainType      (rb.swapchain) != SK_DXGI_VK_INTEROP_TYPE_AMD;
 
   if (bPartialReflexSupport)

@@ -570,6 +570,7 @@ struct sk_config_t
     bool        has_local_ini         = false;  // Using local ReShade.ini instead of SK's
     bool        allow_unsafe_addons   = false;
     bool        allow_addon_with_reno = true;   // Deprecated
+    bool        allow_runtime_tracking= true;   // Required for the draw_first setting to work
     SK_ConfigSerializedKeybind
                 toggle_overlay_keybind= {
                     SK_Keybind {
@@ -853,6 +854,9 @@ struct sk_config_t
       bool   max_timer_resolution  = true;
       bool   force_high_res_timers = true;
       bool   ignore_env_vars       = false;
+      bool   pace_game_thread      = true;
+      bool   precise_short_sleep   = false;
+      bool   boost_composite_clock = false;
     } framerate;
     struct d3d9_s {
       bool    force_d3d9ex         = false;
@@ -1013,6 +1017,7 @@ struct sk_config_t
     bool      confirm_mode_changes =  true;
     bool      save_monitor_prefs   =  true;
     bool      warn_no_mpo_planes   = false;
+    bool      dump_raw_edid        = false;
     struct resolution_s {
       bool           save          =  true;
       bool           applied       = false;
@@ -1123,8 +1128,10 @@ struct sk_config_t
       bool    show_active_features=   true;
       bool    disable_ota_updates =  false;
       int     forced_preset       = SK_NoPreference;
+      int     forced_rr_preset    = SK_NoPreference;
       int     forced_auto_exposure= SK_NoPreference;
       int     forced_alpha_upscale= SK_NoPreference;
+      int     forced_rr_hw_depth  = SK_NoPreference;
       int     use_sharpening      = SK_NoPreference;
       float   forced_sharpness    =   0.0f;
       int     forced_multiframe   = SK_NoPreference;
@@ -1147,6 +1154,7 @@ struct sk_config_t
       bool    dump_buffers        =  false;
       bool    spoof_support       =  false;
       bool    calculate_delta_ms  =  false;
+      float   dmfg_target_fps     =  -1.0f;
     } dlss;
     struct misc_s {
       int     force_rebar         = SK_NoPreference;
@@ -1956,11 +1964,11 @@ enum class SK_GAME_ID
 
 SK_GAME_ID
 __stdcall
-SK_GetCurrentGameID (void);
+SK_GetCurrentGameID (void) noexcept;
 
 bool
 __stdcall
-SK_IsCurrentGame (SK_GAME_ID game_id);
+SK_IsCurrentGame (SK_GAME_ID game_id) noexcept;
 
 const wchar_t*
 __stdcall

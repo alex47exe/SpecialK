@@ -82,7 +82,7 @@ enum class SK_LimitApplicationSite {
   EndOfFrame // = 4 (Default)
 };
 
-float fSwapWaitRatio = 3.33f;
+float fSwapWaitRatio = 1.125f;
 float fSwapWaitFract = 0.66f;
 
 float
@@ -426,11 +426,11 @@ CreateWaitableTimerW_Detour ( _In_opt_ LPSECURITY_ATTRIBUTES lpTimerAttributes,
                              sk::NVAPI::nvwgf2umx != SK_GetCallingDLL ()))
   {
     SK_LOGi1 (
-      L"Promoting Waitable Timer%hs%ws%hsto a High-Resolution %hstimer -- [ %ws, tid=%04x ]",
-        lpTimerName != nullptr ? "'"            :   "",
-        lpTimerName != nullptr ? lpTimerName    : L" ",
-        lpTimerName != nullptr ? "'"            :   "",
-                  bManualReset ? "Manual Reset" :   "",
+      L"Promoting Waitable Timer %hs%ws%hs to a High-Resolution %hstimer -- [ %ws, tid=%04x ]",
+        lpTimerName != nullptr ? "'"             :  "",
+        lpTimerName != nullptr ? lpTimerName     : L"",
+        lpTimerName != nullptr ? "' "            :  "",
+                  bManualReset ? "Manual Reset " :  "",
         SK_GetCallerName      ().c_str (),
         SK_GetCurrentThreadId ()
     );
@@ -479,11 +479,11 @@ CreateWaitableTimerA_Detour ( _In_opt_ LPSECURITY_ATTRIBUTES lpTimerAttributes,
                              sk::NVAPI::nvwgf2umx != SK_GetCallingDLL ()))
   {
     SK_LOGi1 (
-      L"Promoting Waitable Timer%hs%hs%hsto a High-Resolution %hstimer -- [ %ws, tid=%04x ]",
-        lpTimerName != nullptr ? "'"            :  "",
-        lpTimerName != nullptr ? lpTimerName    : " ",
-        lpTimerName != nullptr ? "'"            :  "",
-                  bManualReset ? "Manual Reset" :  "",
+      L"Promoting Waitable Timer %hs%ws%hsto a High-Resolution %hstimer -- [ %ws, tid=%04x ]",
+        lpTimerName != nullptr ? "'"             : "",
+        lpTimerName != nullptr ? lpTimerName     : "",
+        lpTimerName != nullptr ? "' "            : "",
+                  bManualReset ? "Manual Reset " : "",
         SK_GetCallerName      ().c_str (),
         SK_GetCurrentThreadId ()
     );
@@ -2124,8 +2124,8 @@ SK::Framerate::Limiter::init (double target, bool _tracks_window)
 }
 
 
-bool
-SK::Framerate::Limiter::try_wait (void)
+bool 
+SK::Framerate::Limiter::try_wait (void) noexcept
 {
   if (limit_behavior != LIMIT_APPLY) {
     return false;
@@ -2157,9 +2157,16 @@ extern ZwSetTimerResolution_pfn
        ZwSetTimerResolution_Original;
 
 void
-SK_Framerate_SanitizeTimerResolution (void)
+SK_Framerate_SanitizeTimerResolution (void) noexcept
 {
   if (! config.render.framerate.max_timer_resolution)
+    return;
+
+  // Only do this occasionally, it defeats the purpose to
+  //   call it frequently.
+  static int
+        tick_tock       = 0;
+  if (++tick_tock % 64 != 0)
     return;
 
   auto _SetTimerResolution =
@@ -2210,8 +2217,8 @@ extern SK_LazyGlobal <SK_ImGui_FrameHistory> SK_ImGui_Frames;
 extern bool                                  reset_frame_history;
 
 void
-SK::Framerate::Limiter::wait (void)
-{
+SK::Framerate::Limiter::wait (void) noexcept
+{  
   // This is actually counter-productive in testing... when the thread priority
   //   is lowered after this goes out of scope it may reschedule the thread.
   //SK_Thread_ScopedPriority prio_scope (THREAD_PRIORITY_TIME_CRITICAL);
@@ -2506,6 +2513,7 @@ SK::Framerate::Limiter::wait (void)
       }
     }
 
+    // Trigger a timer phase shift.
     SK_Framerate_SanitizeTimerResolution ();
 
     // Create an unnamed waitable timer.
@@ -2545,14 +2553,9 @@ SK::Framerate::Limiter::wait (void)
       LARGE_INTEGER
         liDelay
           { .QuadPart =
-              std::min (
                 static_cast <LONGLONG> (
                   to_next_in_secs * 1000.0 - timer_res_ms * fSwapWaitRatio
-                                       ),
-                static_cast <LONGLONG> (
-                  to_next_in_secs * 1000.0 * fSwapWaitFract
                                        )
-                       )
           };
 
         liDelay.QuadPart =
@@ -2597,7 +2600,7 @@ SK::Framerate::Limiter::wait (void)
           to_next_in_secs =
             std::max (0.0, SK_RecalcTimeToNextFrame ());
 
-          if (static_cast <double> (-liDelay.QuadPart) / 10000.0 > timer_res_ms * 2.0)
+          if (static_cast <double> (-liDelay.QuadPart) / 10000.0 > timer_res_ms * 1.333)
             hWaitObjs [iWaitObjs++] = timer_wait.m_h;
 
           if (iWaitObjs == 0)
@@ -4349,7 +4352,7 @@ SK::Framerate::Limiter::set_limit (float& target)
 }
 
 double
-SK::Framerate::Limiter::effective_frametime (void)
+SK::Framerate::Limiter::effective_frametime (void) noexcept
 {
   return effective_ms;
 }
@@ -4362,7 +4365,7 @@ SK_LazyGlobal <
 // Is this really a COM object?
 //  - Can QueryInterface be called?
 BOOL
-SK_Framerate_ValidateSwapChain (IUnknown *pSwapChain_)
+SK_Framerate_ValidateSwapChain (IUnknown *pSwapChain_) noexcept
 {
   IUnknown* pUnk = nullptr;
   
@@ -4471,7 +4474,7 @@ void
 SK::Framerate::TickEx ( bool     /*wait*/,
                         double         dt,
                         LARGE_INTEGER now,
-                        IUnknown*     swapchain )
+                        IUnknown*     swapchain ) noexcept
 {
   if (__SK_IsDLSSGActive && config.nvidia.reflex.vulkan && dt != -1.0)
     return;
@@ -4602,7 +4605,7 @@ SK::Framerate::TickEx ( bool     /*wait*/,
       } break;
     }
 
-    if (std::isnormal (sample) && now.QuadPart > 0)
+    if (now.QuadPart > 0 && std::isnormal (sample))
     {
       container->addSample (
         sample, now
@@ -4615,25 +4618,31 @@ SK::Framerate::TickEx ( bool     /*wait*/,
 
 int sk_config_t::fps_osd_s::getTimingMethod (void)
 {
-  if (__SK_IsDLSSGActive)
-  {      
-    if (config.render.framerate.streamline.enable_native_limit)
+  switch (timing_method)
+  {
+    case SK_FrametimeMeasures_LimiterPacing:
     {
-      if (__target_fps_now <= 0.0f && timing_method == SK_FrametimeMeasures_LimiterPacing)
+      if (__SK_IsDLSSGActive)
+      {      
+        if (config.render.framerate.streamline.enable_native_limit)
+        {
+          if (__target_fps_now <= 0.0f)
+          {
+            return SK_FrametimeMeasures_NewFrameBegin;
+          }
+        }
+
+        else if (__target_fps_now > 0.0f)
+        {
+          return SK_FrametimeMeasures_PresentSubmit;
+        }
+      }
+
+      else if (__target_fps_now <= 0.0f)
       {
         return SK_FrametimeMeasures_NewFrameBegin;
       }
-    }
-
-    else if (__target_fps_now > 0.0f && timing_method == SK_FrametimeMeasures_LimiterPacing)
-    {
-      return SK_FrametimeMeasures_PresentSubmit;
-    }
-  }
-
-  else if (__target_fps_now <= 0.0f && timing_method == SK_FrametimeMeasures_LimiterPacing)
-  {
-    return SK_FrametimeMeasures_NewFrameBegin;
+    } break;
   }
 
   return timing_method;
@@ -4649,13 +4658,13 @@ bool sk_config_t::render_s::framerate_s::streamline_s::wantNativePacing (void)
   return enable_native_limit;
 }                               
 
-extern NvU32 SK_Reflex_LastNativeSleepTime;
+extern volatile NvU32 SK_Reflex_LastNativeSleepTime;
 
 void
 SK::Framerate::Tick ( bool          wait,
                       double        dt,
                       LARGE_INTEGER now,
-                      IUnknown*     swapchain )
+                      IUnknown*     swapchain ) noexcept
 {
   auto *pLimiter =
     SK::Framerate::GetLimiter (swapchain);
@@ -4680,7 +4689,7 @@ SK::Framerate::Tick ( bool          wait,
   if (wait)
     pLimiter->wait ();
 
-  if (config.fps.getTimingMethod () == SK_FrametimeMeasures_LimiterPacing && (!__SK_IsDLSSGActive || !config.render.framerate.streamline.wantNativePacing()) && (config.render.framerate.enforcement_policy != 2 || SK_Reflex_LastNativeSleepTime == 0 || SK_Reflex_LastNativeSleepTime < SK_timeGetTime() - 250))
+  if (config.fps.getTimingMethod () == SK_FrametimeMeasures_LimiterPacing && (!__SK_IsDLSSGActive || !config.render.framerate.streamline.wantNativePacing()) && (config.render.framerate.enforcement_policy != 2 || ReadULongAcquire (&SK_Reflex_LastNativeSleepTime) == 0 || ReadULongAcquire (&SK_Reflex_LastNativeSleepTime) < SK_timeGetTime() - 250))
   {
     SK::Framerate::TickEx (false, dt, now, swapchain);
   }
@@ -4723,14 +4732,14 @@ SK::Framerate::Stats::calcMax (double seconds) noexcept
 }
 
 double
-SK::Framerate::Stats::calcOnePercentLow (double seconds)
+SK::Framerate::Stats::calcOnePercentLow (double seconds) noexcept
 {
   return
     calcOnePercentLow (SK_DeltaPerf (seconds, SK_PerfFreq));
 }
 
 double
-SK::Framerate::Stats::calcPointOnePercentLow (double seconds)
+SK::Framerate::Stats::calcPointOnePercentLow (double seconds) noexcept
 {
   return
     calcPointOnePercentLow (SK_DeltaPerf (seconds, SK_PerfFreq));
@@ -4746,14 +4755,14 @@ SK::Framerate::Stats::calcHitches ( double tolerance,
 }
 
 int
-SK::Framerate::Stats::calcNumSamples (double seconds)
+SK::Framerate::Stats::calcNumSamples (double seconds) noexcept
 {
   return
     calcNumSamples (SK_DeltaPerf (seconds, SK_PerfFreq));
 }
 
 void
-SK::Framerate::DeepFrameState::reset (void)
+SK::Framerate::DeepFrameState::reset (void) noexcept
 {
   auto _clear =
     [&](SK::Framerate::Stats* pStats, auto idx) ->
@@ -4891,11 +4900,12 @@ double SK::Framerate::Limiter::timer_res_ms = 15.0;
 
 
 void
-SK_Framerate_WaitUntilQPC (LONGLONG llQPC, HANDLE& hTimer)
+SK_Framerate_WaitUntilQPC (LONGLONG llQPC, HANDLE& hTimer) noexcept
 {
   if (llQPC < SK_QueryPerf ().QuadPart)
     return;
 
+  // Trigger a timer phase shift.
   SK_Framerate_SanitizeTimerResolution ();
 
   if ((LONG_PTR)hTimer < 0)
@@ -4923,14 +4933,9 @@ SK_Framerate_WaitUntilQPC (LONGLONG llQPC, HANDLE& hTimer)
     LARGE_INTEGER
       liDelay
         { .QuadPart =
-            std::min (
               static_cast <LONGLONG> (
                 to_next_in_secs * 1000.0 - SK::Framerate::Limiter::timer_res_ms * fSwapWaitRatio
-                                     ),
-              static_cast <LONGLONG> (
-                to_next_in_secs * 1000.0 * fSwapWaitFract
                                      )
-                     )
         };
 
       liDelay.QuadPart =
@@ -4946,7 +4951,7 @@ SK_Framerate_WaitUntilQPC (LONGLONG llQPC, HANDLE& hTimer)
                                           0, nullptr, nullptr,
                                              FALSE ) )
     { 
-      if (static_cast <double> (-liDelay.QuadPart) / 10000.0 > SK::Framerate::Limiter::timer_res_ms * 2.0)
+      if (static_cast <double> (-liDelay.QuadPart) / 10000.0 > SK::Framerate::Limiter::timer_res_ms * 1.333)
       {
         to_next_in_secs =
           static_cast <double> (llQPC - SK_QueryPerf ().QuadPart) /
@@ -5073,4 +5078,27 @@ SK_Framerate_EnergyControlPanel (void)
 
     ImGui::TreePop    ();
   }
+}
+
+bool
+game_pacer_s::wantPacing (ULONG64 frames_drawn) noexcept
+{
+  return 
+    config.render.framerate.pace_game_thread && isSupported (frames_drawn) && event != 0 && last_frame_id > frames_drawn - 2;
+}
+
+void
+game_pacer_s::signalEvent (void) noexcept
+{
+  if (event != 0)
+    SetEvent (event);
+}
+
+bool
+game_pacer_s::isSupported (ULONG64 frames_drawn) noexcept
+{
+  static constexpr auto SK_Reflex_MinimumFramesBeforeNative = 150;
+
+  return
+    last_frame_id != 0 && !config.nvidia.reflex.native && frames_drawn > SK_Reflex_MinimumFramesBeforeNative;
 }

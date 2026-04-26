@@ -198,3 +198,52 @@ SK_D3D12_UpdateRenderStats (IDXGISwapChain* pSwapChain)
   // Need more debug time with D3D12
   return;
 }
+
+
+void
+SK_D3D12_ResetBufferIndexToZero (IDXGISwapChain* pSwapChain)
+{
+  if (pSwapChain == nullptr)
+    return;
+
+  SK_ComPtr <ID3D12Device>                           pD3D12Dev;
+  pSwapChain->GetDevice (IID_ID3D12Device, (void **)&pD3D12Dev.p);
+
+  bool d3d12 =
+    (pD3D12Dev.p != nullptr);
+  
+  SK_ComQIPtr <IDXGISwapChain3>
+           pSwap3 (pSwapChain);
+  
+  // When skipping resize operations in D3D12, there's an important side-effect that
+  //   must be reproduced:
+  //
+  //    * Current Buffer Index reverts to 0 on success
+  //
+  //  --> We need to make several unsynchronized Present calls until we advance back to
+  //        backbuffer index 0.
+  if (d3d12 && pSwap3->GetCurrentBackBufferIndex () != 0)
+  {
+    int iUnsyncedPresents = 0;
+  
+    HRESULT hrUnsynced =
+      pSwap3->Present (0, DXGI_PRESENT_RESTART | DXGI_PRESENT_DO_NOT_WAIT);
+  
+    while ( SUCCEEDED (hrUnsynced) ||
+                       hrUnsynced == DXGI_ERROR_WAS_STILL_DRAWING )
+    {
+      ++iUnsyncedPresents;
+  
+      if (pSwap3->GetCurrentBackBufferIndex () == 0)
+        break;
+  
+      hrUnsynced =
+        pSwap3->Present (0, DXGI_PRESENT_RESTART | DXGI_PRESENT_DO_NOT_WAIT);
+    }
+  
+    SK_LOGi0 (
+      L"Issued %d unsync'd Presents to reset the SwapChain's current index to 0 "
+      L"(required D3D12 ResizeBuffers behavior)", iUnsyncedPresents
+    );
+  }
+}

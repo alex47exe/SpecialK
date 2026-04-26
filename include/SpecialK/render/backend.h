@@ -32,6 +32,7 @@
 
 // For NVDX_ObjectHandle to emerge as a definition, include this
 #include <d3d9.h>
+#include <dcomp.h>
 
 #include <../depends/include/nvapi/nvapi_lite_common.h>
 #include <../depends/include/nvapi/nvapi.h>
@@ -108,8 +109,8 @@ struct sk_hwnd_cache_s
     return hwnd;
   };
 
-  devcaps_s& getDevCaps (void);
-  bool       update     (HWND window);
+  devcaps_s& getDevCaps (void)        noexcept;
+  bool       update     (HWND window) noexcept;
 };
 
 constexpr
@@ -306,6 +307,7 @@ public:
     struct signal_info_s {
       char                type [32]            = { };
       UINT                connector_idx        =  0;
+      DWORD               padding              =  0;
 
       struct timing_s {
         UINT64            pixel_clock          =   0ULL;
@@ -367,6 +369,7 @@ public:
 
   BOOL                    in_present_call      = FALSE;
   int                     active_display       =  0;
+  int                     primary_display      =  0;
   int                     display_changes      =  0;
   uint32_t                display_crc
                            [_MAX_DISPLAYS]     = { };   // Quick detect for changing displays
@@ -613,21 +616,11 @@ public:
     SK_ComPtr <ID3D11Device>        device        = nullptr;
                ID3D11DeviceContext* immediate_ctx = nullptr;
     SK_ComPtr <ID3D11DeviceContext> deferred_ctx  = nullptr;
+    SK_ComPtr <IDCompositionDevice> composition   = nullptr;
 
     // Call to forcefully unbind Flip Model resources, as required
     // during SwapChain cleanup.
-    void clearState (void)
-    {
-      // We may have cached textures preventing the destruction of the original
-      //   D3D11 device associated with this SwapChain, so clear those now.
-      SK_D3D11_ResetTexCache ();
-
-      if (immediate_ctx != nullptr)
-      {
-        immediate_ctx->Flush      ();
-        immediate_ctx->ClearState ();
-      }
-    }
+    void clearState (void) noexcept;
   } d3d11;
 
   struct d3d12_s
@@ -648,42 +641,42 @@ public:
   } active_traits;
 
 
-          HRESULT       setDevice (IUnknown* pDevice);
+  HRESULT               setDevice (IUnknown* pDevice);
   template <typename Q>
-          SK_ComPtr <Q> getDevice (void) const
-          {
-            REFIID riid =
-              __uuidof (Q);
+  SK_ComPtr         <Q> getDevice (void) const noexcept
+  {
+    REFIID riid =
+      __uuidof (Q);
 
-            if ( riid == IID_IDirect3DDevice9
-            ||   riid == IID_IDirect3DDevice9Ex
-            ||   riid == IID_ID3D10Device
-            ||   riid == IID_ID3D11Device
-            ||   riid == IID_ID3D12Device      )
-            {
-              Q* pRet = nullptr;
+    if ( riid == IID_IDirect3DDevice9
+    ||   riid == IID_IDirect3DDevice9Ex
+    ||   riid == IID_ID3D10Device
+    ||   riid == IID_ID3D11Device
+    ||   riid == IID_ID3D12Device      )
+    {
+      Q* pRet = nullptr;
 
-              if (device.p != nullptr)
-              {
-                if (SUCCEEDED (SK_SafeQueryInterface (device, riid, (void **)&pRet)))
-                {
-                  return pRet;
-                }
-              }
+      if (device.p != nullptr)
+      {
+        if (SUCCEEDED (SK_SafeQueryInterface (device, riid, (void **)&pRet)))
+        {
+          return pRet;
+        }
+      }
 
-              return nullptr;
-            }
+      return nullptr;
+    }
 
-            else MessageBeep (0xFFFFFFFF);
+    else MessageBeep (0xFFFFFFFF);
 
-            ///static_assert ( riid == __uuidof (IDirect3DDevice9)   ||
-            ///                riid == __uuidof (IDirect3DDevice9Ex) ||
-            ///                riid == __uuidof (ID3D11Device)       ||
-            ///                riid == __uuidof (ID3D12Device),
-            ///  "Unknown Render Device Class Requested" );
+    ///static_assert ( riid == __uuidof (IDirect3DDevice9)   ||
+    ///                riid == __uuidof (IDirect3DDevice9Ex) ||
+    ///                riid == __uuidof (ID3D11Device)       ||
+    ///                riid == __uuidof (ID3D12Device),
+    ///  "Unknown Render Device Class Requested" );
 
-            return nullptr;
-          }
+    return nullptr;
+  }
 
   struct gsync_s
   { void update (bool force = false);
@@ -734,27 +727,30 @@ public:
   volatile ULONG64         most_frames  =  0;
   SK_Thread_HybridSpinlock res_lock;
 
-  bool canEnterFullscreen    (void) const;
+  bool   canEnterFullscreen    (void) const;
 
-  void requestFullscreenMode (bool override = false);
-  void requestWindowedMode   (bool override = false);
+  void   requestFullscreenMode (bool override = false);
+  void   requestWindowedMode   (bool override = false);
 
-  double getActiveRefreshRate (HMONITOR hMonitor = 0 /*Default to HWND's nearest*/) const;
+  double getActiveRefreshRate  (HMONITOR hMonitor = 0 /*Default to HWND's nearest*/) const;
 
   HANDLE getSwapWaitHandle     (void) const;
   void   releaseOwnedResources (void);
 
-  void            queueUpdateOutputs   (void);
-  void            updateOutputTopology (void);
-  const output_s* getContainingOutput  (const RECT& rkRect) const;
-  bool            routeAudioForDisplay (const output_s *pOutput, bool force_update = false) const;
-  void            updateWDDMCaps       (      output_s *pOutput);
-  bool            assignOutputFromHWND (HWND hWndContainer);
+  void   postNewFrameOnThread  (SK_TLS *pTLS                         = SK_TLS_Bottom (),
+                                bool    designated_thread_may_change = true) noexcept;
+  void   queueUpdateOutputs    (void) noexcept;
+  void   updateOutputTopology  (void);
+  const output_s*
+         getContainingOutput   (const RECT& rkRect)                                 const;
+  bool   routeAudioForDisplay  (const output_s *pOutput, bool force_update = false) const;
+  void   updateWDDMCaps        (      output_s *pOutput);
+  bool   assignOutputFromHWND  (HWND hWndContainer);
 
-  bool isReflexSupported  (void)                                        const;
-  bool setLatencyMarkerNV (NV_LATENCY_MARKER_TYPE    marker)            const;
-  bool getLatencyReportNV (NV_LATENCY_RESULT_PARAMS *pGetLatencyParams) const;
-  void driverSleepNV      (int site)                                    const;
+  bool   isReflexSupported     (void)                                        const noexcept;
+  bool   setLatencyMarkerNV    (NV_LATENCY_MARKER_TYPE    marker)            const noexcept;
+  bool   getLatencyReportNV    (NV_LATENCY_RESULT_PARAMS *pGetLatencyParams) const noexcept;
+  void   driverSleepNV         (int site)                                    const noexcept;
 
   std::string decodeEDIDForName      (uint8_t* edid, size_t length) const;
   POINT       decodeEDIDForNativeRes (uint8_t* edid, size_t length) const;
@@ -763,10 +759,10 @@ public:
 
   bool resetTemporaryDisplayChanges (void);
 
-  bool isFakeFullscreen (void) const;
-  bool isTrueFullscreen (void) const;
+  bool isFakeFullscreen (void) const noexcept;
+  bool isTrueFullscreen (void) const noexcept;
 
-  bool isMPODisabled (void);
+  bool isMPODisabled (void) const noexcept;
 
   bool update_outputs = false;
 };
@@ -804,10 +800,10 @@ __stdcall
 SK_InitRenderBackends (void);
 
 SK_API
-IUnknown* __stdcall SK_Render_GetDevice (void);
+IUnknown* __stdcall SK_Render_GetDevice (void) noexcept;
 
 SK_API
-IUnknown* __stdcall SK_Render_GetSwapChain (void);
+IUnknown* __stdcall SK_Render_GetSwapChain (void) noexcept;
 
 void SK_BootD3D8   (void);
 void SK_BootDDraw  (void);
@@ -818,8 +814,8 @@ void SK_BootDXGI   (void);
 void SK_BootOpenGL (void);
 void SK_BootVulkan (void);
 
-BOOL SK_DXGI_SupportsTearing    (void);
-void SK_DXGI_SignalBudgetThread (void);
+BOOL SK_DXGI_SupportsTearing    (void) noexcept;
+void SK_DXGI_SignalBudgetThread (void) noexcept;
 
 
 _Return_type_success_ (nullptr)
@@ -858,7 +854,7 @@ ComputeIntersectionArea ( int ax1, int ay1, int ax2, int ay2,
 }
 
 
-bool SK_RenderBackendUtil_IsFullscreen          (void);
+bool SK_RenderBackendUtil_IsFullscreen          (void) noexcept;
 void SK_D3D_SetupShaderCompiler                 (void);
 void SK_Display_DisableDPIScaling               (void);
 DPI_AWARENESS SK_GetThreadDpiAwareness          (void);
@@ -934,7 +930,7 @@ LONG WINAPI SK_DisplayConfigGetDeviceInfo (_In_ DISPLAYCONFIG_DEVICE_INFO_HEADER
 bool SK_ETW_EndTracing (void);
 
 uint32_t
-SK_Render_GetVulkanInteropSwapChainType (IUnknown *swapchain);
+SK_Render_GetVulkanInteropSwapChainType (IUnknown *swapchain) noexcept;
 
 // Disables Vulkan layers (i.e. if using DXGI interop, prefer software hook the D3D11 SwapChain and not Vulkan)
 void SK_Vulkan_DisableThirdPartyLayers (void); // Can only be called during application startup

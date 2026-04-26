@@ -4688,9 +4688,12 @@ GetWindowInfo_Detour (HWND hwnd, PWINDOWINFO pwi)
       pwi->cyWindowBorders = 0;
     }
 
+    static HMODULE hModSystemDXGI =
+      LoadLibraryExW (L"dxgi.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+
     // DXGI checks on this during SwapChain creation...
     //   lie to DXGI if we have to, so that SwapChain creation succeeds.
-    if (StrStrIW (SK_GetCallerName ().c_str (), L"dxgi.dll"))
+    if (SK_IsCallingDLL (hModSystemDXGI))
     {
       pwi->dwExStyle &= ~WS_EX_TOPMOST;
 
@@ -5608,22 +5611,8 @@ BringWindowToTop_Detour (HWND hWnd)
 {
   SK_LOG_FIRST_CALL;
 
-  // This breaks alt-tab and window activation in some cases
-#if 0
-  DWORD                            dwPid = 0x0;
-  GetWindowThreadProcessId (hWnd, &dwPid);
-
-  if (GetCurrentProcessId () == dwPid)
-  {
-    return
-      BringWindowToTop_Original (hWnd);
-  }
-
-  return FALSE;
-#else
   return
     BringWindowToTop_Original (hWnd);
-#endif
 }
 
 BOOL
@@ -5632,30 +5621,31 @@ SetForegroundWindow_Detour (HWND hWnd)
 {
   SK_LOG_FIRST_CALL;
 
-  // Fix problems with Crimson Sands bringing itself to the foreground constantly
+  // Fix problems with Crimson Desert bringing itself to the foreground constantly
   //   when using background rendering
   if ( hWnd == game_window.hWnd && config.window.background_render
                                 && !SK_IsGameWindowActive () )
   {
-    return TRUE;
+    // First one's always free.
+    SK_RunOnce (return SetForegroundWindow_Original (hWnd));
+
+    DWORD                                                    dwFgPid = 0x0;
+    SK_GetWindowThreadProcessId (SK_GetForegroundWindow (), &dwFgPid);
+
+    // If software has multiple windows, and one of them is foreground,
+    //   then let it do this. Otherwise ignore the call...
+    if (dwFgPid != GetCurrentProcessId ())
+    {
+      SK_RunOnce (
+        SK_LOGi0 (L"SetForegroundWindow (...) blocked because Continue "
+                  L"Rendering is enabled.")
+      );
+      return TRUE;
+    }
   }
 
-  // This breaks alt-tab and window activation in some cases
-#if 0
-  DWORD                            dwPid = 0x0;
-  GetWindowThreadProcessId (hWnd, &dwPid);
-
-  if (GetCurrentProcessId () == dwPid)
-  {
-    return
-      SetForegroundWindow_Original (hWnd);
-  }
-
-  return FALSE;
-#else
   return
     SetForegroundWindow_Original (hWnd);
-#endif
 }
 
 void
@@ -7387,7 +7377,7 @@ SK_Win32_IsDummyWindowClass (WNDCLASSEXW* pWindowClass)
     (!_wcsicmp (pWindowClass->lpszClassName, L"TestDX11WindowClass"))                   || // X-Ray Oxygen
     (!_wcsicmp (pWindowClass->lpszClassName, L"static"))                                || // AMD's stupid OpenGL interop
     (!_wcsicmp (pWindowClass->lpszClassName, L"SKIV_NotificationIcon"))                 || // SKIV's thingy...
-    (!_wcsicmp (pWindowClass->lpszClassName, L"InvisibleWindowClassNvPresent"))         || // NVIDIA SmoothMotion
+  //(!_wcsicmp (pWindowClass->lpszClassName, L"InvisibleWindowClassNvPresent"))         || // NVIDIA SmoothMotion
     (!_wcsicmp (pWindowClass->lpszClassName, L"TempDirect3D11OverlayWindow"))           || // Steam version of Titan Quest
     (!_wcsicmp (pWindowClass->lpszClassName, L"TempWindowClass"))                       || // Some kind of snake oil app called smart game booster
 
@@ -8968,9 +8958,9 @@ SK_ClipCursor (const RECT *lpRect)
   if ((! game_window.active) || (game_window.size_move)) // Or being moved
     lpRect = nullptr;
 
-  if (auto fixup = SK_ClipCursor_GameSpecificFixes (lpRect);
-           fixup.has_value ())
-    return fixup.    value ();
+  if ( auto fixup = SK_ClipCursor_GameSpecificFixes (lpRect);
+            fixup.has_value () )
+    return *fixup;
 
   //
   // Avoid unnecessary OS calls, since we have the base function hooked already
@@ -9181,8 +9171,6 @@ SK_Win32_BringBackgroundWindowToTop (void)
         //   ! EqualRect (&wndRect, &mi.rcMonitor))
        )
     {
-      HWND hWndAfter = hWndGame;
-
       if ( config.display.aspect_ratio_stretch ||
          !(config.display.aspect_ratio_stretch || config.display.focus_mode) )
       {
@@ -9191,9 +9179,7 @@ SK_Win32_BringBackgroundWindowToTop (void)
                             mi.rcMonitor.top,
                               mi.rcMonitor.right  - mi.rcMonitor.left,
                               mi.rcMonitor.bottom - mi.rcMonitor.top,
-        (hWndAfter != hWndGame) ? SWP_NOREPOSITION
-                                : 0x0
-                                | SWP_NOSENDCHANGING | SWP_NOACTIVATE |
+                                SWP_NOSENDCHANGING | SWP_NOACTIVATE |
         
         ( config.display.aspect_ratio_stretch ? SWP_SHOWWINDOW
                                               : SWP_HIDEWINDOW ) );
@@ -9263,9 +9249,7 @@ SK_Win32_BringBackgroundWindowToTop (void)
                             minX, minY,
                             totalWidth,
                             totalHeight,
-        (hWndAfter != hWndGame) ? SWP_NOREPOSITION
-                                : 0x0
-                                | SWP_NOSENDCHANGING | SWP_NOACTIVATE |
+                                SWP_NOSENDCHANGING | SWP_NOACTIVATE |
                                 dwVisibilityFlags );
         }
       }
@@ -10567,6 +10551,7 @@ SK_ImGui_InitDragAndDrop (void)
         if (! SK_GetCurrentRenderBackend ().windows.unreal)
         {
           SK_LOGi0 (L"OLE Drop Target for HWND: %x already registered!", game_window.hWnd);
+          incompatible = true;
         }
 
         else

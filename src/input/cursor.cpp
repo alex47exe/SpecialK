@@ -595,7 +595,7 @@ sk_window_s::wantBackgroundRender (void) const
 }
 
 bool
-SK_ImGui_WantMouseCaptureEx (DWORD dwReasonMask, POINT *pptCursor)
+SK_ImGui_WantMouseCaptureEx (DWORD dwReasonMask, POINT *pptCursor) noexcept
 {
   if (! SK_GImDefaultContext ())
     return false;
@@ -678,14 +678,14 @@ SK_ImGui_WantMouseCaptureEx (DWORD dwReasonMask, POINT *pptCursor)
 
 
 bool
-SK_ImGui_WantHWCursor (void)
+SK_ImGui_WantHWCursor (void) noexcept
 {
   return
     ( config.input.ui.use_hw_cursor );
 }
 
 bool
-SK_ImGui_WantMouseButtonCapture (void)
+SK_ImGui_WantMouseButtonCapture (void) noexcept
 {
   bool capture = SK_ImGui_WantMouseCapture ();
   if ( capture )
@@ -706,7 +706,7 @@ SK_ImGui_WantMouseButtonCapture (void)
 }
 
 bool
-SK_ImGui_WantMouseCapture (bool update, POINT* ptCursor)
+SK_ImGui_WantMouseCapture (bool update, POINT* ptCursor) noexcept
 {
   SK_PROFILE_SCOPED_TASK (SK_ImGui_WantMouseCapture)
 
@@ -736,8 +736,9 @@ SK_ImGui_WantMouseCapture (bool update, POINT* ptCursor)
 
 HCURSOR GetGameCursor (void)
 {
+#if 1
   return SK_GetCursor ();
-
+#else // This was the original code, but it tends to permanently change the game's cursor
   static HCURSOR sk_imgui_arrow = LoadCursor (SK_GetDLL (), (LPCWSTR)IDC_CURSOR_POINTER);
   static HCURSOR sk_imgui_horz  = LoadCursor (SK_GetDLL (), (LPCWSTR)IDC_CURSOR_HORZ);
   static HCURSOR sk_imgui_ibeam = LoadCursor (nullptr, IDC_IBEAM);
@@ -754,6 +755,7 @@ HCURSOR GetGameCursor (void)
   }
 
   return hCurLast;
+#endif
 }
 
 bool
@@ -1204,9 +1206,9 @@ GetCursorPos_Detour (LPPOINT lpPoint)
   if (lpPoint == nullptr)
     return FALSE;
 
-  if ( auto fixed_return = GetCursorPos_GameSpecificFixes (lpPoint);
-            fixed_return.has_value () )
-     return fixed_return.    value ();
+  if ( auto  fixed_return = GetCursorPos_GameSpecificFixes (lpPoint);
+             fixed_return.has_value () )
+     return *fixed_return;
 
   //
   // Allow games running as a background window with Continue Rendering enabled
@@ -1510,7 +1512,7 @@ SK_Window_DeactivateCursor (bool ignore_imgui)
 };
 
 void
-SK_ImGui_UpdateMouseTracker (void)
+SK_ImGui_UpdateMouseTracker (void) noexcept
 {
   bool bWasInside =
     game_window.mouse.inside;

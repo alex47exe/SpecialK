@@ -24,6 +24,11 @@
 #include <SpecialK/stdafx.h>
 #include <SpecialK/resource.h>
 
+#ifdef  __SK_SUBSYSTEM__
+#undef  __SK_SUBSYSTEM__
+#endif
+#define __SK_SUBSYSTEM__ L"   Core   "
+
 #include <SpecialK/render/backend.h>
 #include <SpecialK/render/d3d9/d3d9_backend.h>
 #include <SpecialK/render/d3d11/d3d11_core.h>
@@ -2109,6 +2114,11 @@ SK_StartupCore (const wchar_t* backend, void* callback)
   }
 
 
+  if (SK_Inject_GetInjectionDelayInSeconds () > 0.0f) {
+    SK_LOGi0 ( L"Injection delayed %.2f seconds...",
+      SK_Inject_GetInjectionDelayInSeconds () );
+  }
+
   budget_log->init ( LR"(logs\dxgi_budget.log)", L"wc+,ccs=UTF-8" );
 
   dll_log->LogEx (false,
@@ -2894,8 +2904,18 @@ SK_Inject_PostHeartbeatToSKIF (void)
     //   but alt-tab can still flicker.
     if (hWndSKIF != game_window.hWnd && IsWindow (hWndSKIF))
     {
-      DWORD                                   dwPid = 0x0;
-      SK_GetWindowThreadProcessId (hWndSKIF, &dwPid);
+      static HWND   hWndLast = 0;
+      static DWORD dwPidLast = 0;
+
+      DWORD dwPid = 0x0;
+
+      if (hWndLast == hWndSKIF)
+              dwPid = dwPidLast;
+      else
+      {      
+        SK_GetWindowThreadProcessId (hWndSKIF, &dwPid);
+                          hWndLast = hWndSKIF;  dwPidLast = dwPid;
+      }
     
       if ( dwPid != 0x0 &&
            dwPid != GetCurrentProcessId () )
@@ -4127,7 +4147,7 @@ SK_BackgroundRender_EndFrame (void)
     if (std::exchange (first_frame, false))
     {
      if (PathFileExistsW (L"REFramework.dll"))
-             LoadLibraryW (L"REFramework.dll");
+            LoadLibraryW (L"REFramework.dll");
 
       if (SK_GetCurrentGameID () == SK_GAME_ID::Hello_Kitty_Island_Adventure)
       {
@@ -4656,14 +4676,17 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
         rb.api
   );
 
-  rb.driverSleepNV (1);
+  // Pacing the game's thread is unsupported or unwanted, so use traditional
+  //   SwapChain sync instead...
+  if (! game_pace.wantPacing ())
+    rb.driverSleepNV (1);
 
   if ((config.render.framerate.enforcement_policy == 2 && !rb.vulkan_reflex.isPacingEligible ()) || rb.vulkan_reflex.needsFallbackSleep ())
   {
-    extern NvU32 SK_Reflex_LastNativeSleepTime;
+    extern volatile NvU32 SK_Reflex_LastNativeSleepTime;
 
     bool should_wait = 
-      !(__SK_IsDLSSGActive && config.render.framerate.streamline.wantNativePacing ()) && (SK_Reflex_LastNativeSleepTime == 0 || SK_Reflex_LastNativeSleepTime < SK_timeGetTime () - 250) && !config.nvidia.reflex.use_limiter;
+      !(__SK_IsDLSSGActive && config.render.framerate.streamline.wantNativePacing ()) && (ReadULongAcquire (&SK_Reflex_LastNativeSleepTime) == 0 || ReadULongAcquire (&SK_Reflex_LastNativeSleepTime) < SK_timeGetTime () - 250) && !config.nvidia.reflex.use_limiter;
 
     if (rb.swapchain.p != nullptr)
       _FrameTick (should_wait);
@@ -4686,6 +4709,7 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
 
   SK_ScePad_PaceMaker ();
 
+  game_pace.last_paced_time = SK_timeGetTime () + 65536UL;
 
   InterlockedIncrementAcquire (
     &SK_RenderBackend::frames_drawn
@@ -4709,30 +4733,8 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
       pTLS =
     SK_TLS_Bottom ();
 
-  ULONG64 ullFramesPresented =
-    InterlockedIncrement (&pTLS->render->frames_presented);
-
-#ifdef _RENDER_THREAD_TRANSIENCE
-  if (ullFramesPresented > rb.most_frames)
-  {
-    InterlockedExchange ( &rb.most_frames,
-                       ullFramesPresented );
-    InterlockedExchange ( &rb.thread,
-                           SK_Thread_GetCurrentId () );
-  }
-
-  InterlockedExchange ( &rb.last_thread,
-                              SK_Thread_GetCurrentId () );
-#else
-  (void)ullFramesPresented;
-
-  if (! ReadULongAcquire (&rb.thread))
-  {
-    InterlockedExchange ( &rb.thread,
-                            SK_Thread_GetCurrentId () );
-  }
-#endif
-
+  // Record a frame presented on this thread.
+  rb.postNewFrameOnThread (pTLS);
 
   if (__SK_LatentSyncPostDelay > 1LL)
   {
@@ -4740,13 +4742,11 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
     if ( config.render.framerate.present_interval == 0 &&
          config.render.framerate.target_fps        > 0.0f )
     {
-      SK_AutoHandle hTimer (
-        INVALID_HANDLE_VALUE
-      );
+      static thread_local HANDLE hTimer = (HANDLE)-1;
 
       SK_Framerate_WaitUntilQPC (
         qpcTimeOfSwap.QuadPart + __SK_LatentSyncPostDelay,
-                    hTimer.m_h  );
+                        hTimer  );
     }
   }
 
@@ -4784,6 +4784,26 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
     }
   }
 #endif
+
+  if (config.window.activate_at_start || SK_IsCurrentGame (SK_GAME_ID::CrimsonDesert))
+  {
+    if (game_window.hWnd != 0 && SK_GetFramesDrawn () > 1)
+    {
+      SK_RunOnce (
+        AllowSetForegroundWindow (0);
+
+        bool background_render =
+          std::exchange (config.window.background_render, false);
+
+        SetForegroundWindow        (game_window.hWnd);
+        SK_RealizeForegroundWindow (game_window.hWnd);
+        SetForegroundWindow        (game_window.hWnd);
+        ActivateWindow             (game_window.hWnd, true);
+
+        config.window.background_render = background_render;
+      );
+    }
+  }
 
 
 #if 0
@@ -4913,11 +4933,11 @@ SK_EndBufferSwap (HRESULT hr, IUnknown* device, SK_TLS* pTLS)
     SK_Window_RepositionIfNeeded ();
   }
 
-  extern HANDLE SK_Unity_GetFrameStatsWaitEvent;
-  if (          SK_Unity_GetFrameStatsWaitEvent != 0)
-  {
-    SetEvent (SK_Unity_GetFrameStatsWaitEvent);
-  }
+  game_pace.signalEvent ();
+
+  if (SK_API_IsDirect3D9 (rb.api) || SK_API_IsDXGIBased (rb.api))
+    SK_Reflex_SetupReflexSync (device);
+
 
   SK_GetCurrentRenderBackend ().in_present_call = false;
 
@@ -5211,7 +5231,7 @@ void
 };
 
 bool
-SK_API_IsDXGIBased (SK_RenderAPI api)
+SK_API_IsDXGIBased (SK_RenderAPI api) noexcept
 {
   switch (api)
   {
@@ -5232,7 +5252,7 @@ SK_API_IsDXGIBased (SK_RenderAPI api)
 }
 
 bool
-SK_API_IsLayeredOnD3D10 (SK_RenderAPI api)
+SK_API_IsLayeredOnD3D10 (SK_RenderAPI api) noexcept
 {
   switch (api)
   {
@@ -5247,7 +5267,7 @@ SK_API_IsLayeredOnD3D10 (SK_RenderAPI api)
 }
 
 bool
-SK_API_IsLayeredOnD3D11 (SK_RenderAPI api)
+SK_API_IsLayeredOnD3D11 (SK_RenderAPI api) noexcept
 {
   switch (api)
   {
@@ -5266,7 +5286,7 @@ SK_API_IsLayeredOnD3D11 (SK_RenderAPI api)
 }
 
 bool
-SK_API_IsLayeredOnD3D12 (SK_RenderAPI api)
+SK_API_IsLayeredOnD3D12 (SK_RenderAPI api) noexcept
 {
   switch (api)
   {
@@ -5286,7 +5306,7 @@ SK_API_IsLayeredOnD3D12 (SK_RenderAPI api)
 }
 
 bool
-SK_API_IsDirect3D9 (SK_RenderAPI api)
+SK_API_IsDirect3D9 (SK_RenderAPI api) noexcept
 {
   switch (api)
   {
@@ -5299,7 +5319,7 @@ SK_API_IsDirect3D9 (SK_RenderAPI api)
 }
 
 bool
-SK_API_IsGDIBased (SK_RenderAPI api)
+SK_API_IsGDIBased (SK_RenderAPI api) noexcept
 {
   switch (api)
   {
@@ -5311,7 +5331,7 @@ SK_API_IsGDIBased (SK_RenderAPI api)
 }
 
 bool
-SK_API_IsPlugInBased (SK_RenderAPI api)
+SK_API_IsPlugInBased (SK_RenderAPI api) noexcept
 {
   switch (api)
   {
@@ -5331,7 +5351,7 @@ SK_API_IsPlugInBased (SK_RenderAPI api)
 }
 
 bool
-SK_GetStoreOverlayState (bool bReal)
+SK_GetStoreOverlayState (bool bReal) noexcept
 {
   static std::atomic_bool     s_LastState = false;
   static std::atomic<ULONG64> s_LastFrame = 0;
@@ -5341,6 +5361,14 @@ SK_GetStoreOverlayState (bool bReal)
     bool ret =
       SK_Platform_GetOverlayState (bReal) ||
       SK_ReShadeAddOn_IsOverlayActive ();
+
+    // The Xbox overlay cannot block PlayStation controller input to games,
+    //   but Special K can... so if it's open, update gamepad capture state.
+    //
+    //  Normally we would want the eopposite behavior, because most overlays
+    //    run inside the game process, but Xbox's overlay is external.
+    if (ret && SK_Xbox_GetOverlayState (true))
+           SK_ImGui_WantGamepadCapture (true);
 
     s_LastState.store (ret);
     s_LastFrame.store (SK_GetFramesDrawn ());

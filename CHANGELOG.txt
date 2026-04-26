@@ -1,4 +1,270 @@
-﻿26.4.5
+﻿26.4.25
+=======
+ + Improved support for NVIDIA Smooth Motion in D3D11 games.
+
+   * GlobalInjectionDelay is generally unnecessary now in D3D11, but may
+       still be needed in D3D12 games.
+   * Reflex is not supported in D3D11 games when Smooth Motion is active.
+   * ReShade AddOns may cause problems with Smooth Motion, consider adding
+       AllowRuntimeTracking=false to [ReShade.System].
+
+26.4.24.2
+=========
+ + Accidentally left SwapChain resize functions nop'd out (!!)
+
+26.4.24.1
+=========
+ + Allow ReShade to be used while NVIDIA Smooth Motion is active, though the
+     option to draw ReShade before/after SK will not work.
+   * GlobalInjectionDelay=5.0 works pretty reliably in D3D11/12 + ReShade.
+
+26.4.24
+=======
+ + Disabled NVIDIA Smooth Motion until compatibility can be resolved.
+    * A GlobalInjectionDelay=<number_of_seconds> may help with compat., but it
+        will not allow HDR retrodfits.
+
+26.4.22.4
+=========
+ + Changed Smooth Motion warning to an ImGui popup rather than Win32 MessageBox
+ + Added new method to walk the callstack and find DLLs earlier in a hook chain
+     for highly-hooked functions when all the DLLs that are modifying the API
+       need to be known.
+
+26.4.22.3
+=========
+ + Fixed NvAPI driver profile API problems in some games like Elden Ring and
+     Sekiro that were introduced in 26.4.22.
+
+26.4.22.2
+=========
+ + Warn if Smooth Motion is detected.
+ + Add support for Smooth Motion in D3D12 games.
+
+26.4.22.1
+=========
+ + Allow games to set the foreground window to themselves one time during
+     launch when Continue Rendering is enabled; subsequent attempts blocked.
+   * Needed because Crimson Desert sets the foreground window once per-frame,
+       and it would be impossible to use your PC while it is doing that.
+
+26.4.22
+=======
+ + Added support for NVIDIA Smooth Motion, provided you do not try to change a
+     game's resolution; Smooth Motion leaks resources and this always fails.
+
+26.4.20
+=======
+ + Fixed SK's Reflex Sleep checking native frame IDs in non-native Reflex games
+
+26.4.19.2
+=========
+ + Restored support for Windows 10.
+ + Use standard rounding for integer representations of refresh rates.
+
+26.4.19.1
+=========
+ + Changed how Maximum VRR Range is calculated and reported in order to deal
+     with EDID 1.3 limitations on displays faster than 255 Hz and displays
+       using an active signal slower than their peak refresh rate.
+
+26.4.19
+=======
+ + Added INI setting to control new Windows 11 Compositor Clock Boost feature,
+     mostly intended for Dynamic Refresh Rate (not gaming related). Raises
+       the desktop composition rate when the mouse cursor moves...
+
+    [Render.FrameRate]
+    BoostCompositorClock={true|false}  Default: false
+
+ + Added INI setting to dump display EDIDs to config directories for debugging.
+
+    [Display.Output]
+    DumpRawEDID={true|false}           Default: false
+
+  (Only works on NVIDIA GPUs and data are read from the display, not registry)
+
+26.4.18.4
+=========
+ + Various optimizations to per-frame work when SK's overlay is not drawing.
+ + Gave Unity Game Thread Pacing a thread-local timer to ensure it does not
+     use the wrong timer if the primary thread changes.
+
+26.4.18.3
+=========
++ Block gamepad input to games while the Windows/Xbox Game Bar is active,
+    since it cannot do so itself.
++ Prevent toggling SK's control panel while another overlay is active and
+    SK is hiding itself.
+
+26.4.18.2
+=========
+ + Fixed weird problem with Galaxy's DRM (not an April Fool's joke this time);
+     gog_1_112::UnauthorizedAccessError would continuously throw exceptions if
+       SK's hook on SleepEx (...) was enabled.
+
+26.4.18.1
+=========
+ + Switch ImGui's ImHash (...) function to use Special K's SSE4.2 crc32c
+     algorithm instead of its slower lookup table.
+ + Various static analysis fix-ups applied. (Hopefully nothing broke!)
+
+26.4.18
+=======
+ + Block gamepad input to games while the Alt-Tab application switcher
+     is visible and covering the game (since gamepads now control it).
+ + Only block input to games when SKIF is the foreground if SKIF is configured
+     to use gamepad input.
+
+26.4.17.3
+=========
+ + Stop processing background gamepad input if SKIF is in the foreground.
+
+26.4.17.2
+=========
+ + Reduced the amount of time SK's framerate limiter spends busy-waiting for
+     common FPS targets (very high framerates always require busy-wait).
+
+26.4.17.1
+=========
+ + Fixed Reflex Low Latency mode not working to limit VRR
+     framerate in Unity games.
+ + Changed "Render Thread" status assignment logic:
+
+     D3D11 = Thread that most recently Presented a frame
+     D3D12 = Thread that has Presented the most frames
+     Other = Same as D3D12
+     -----
+       Old = First thread to Present a frame
+
+    * This affects certain functionality such as "Sleepless Render Thread"
+         and framerate limiting's command queue flushing behavior in D3D11.
+
+26.4.17
+=======
+ + Allow non-NVIDIA users to enable Unity Game Thread Pacing,
+     minus Reflex integration (rather marginal benefit loss).
+
+26.4.16.1
+=========
+ + Only show Unity Game Thread Pacing setting when VSYNC is on.
+ + Rename "Composite" to "Scanout" in Latency Widget.
+
+26.4.16
+=======
+ + Detect and handle older Unity games that do not support Game Thread Pacing.
+    * Game Thread Pacing only works when Unity's in-game VSYNC setting is ON.
+ + Handle case where VSYNC state changes in Unity and fallback to older Reflex
+     implementation is necessary.
+
+26.4.15.5
+=========
+ + Open up Unity Game Thread Pacing to Normal and Latent Sync limiter modes,
+     with reduced effectiveness.
+ + Only show Unity Game Thread Pacing option on NVIDIA GPUs for now.
+ + Fixed Reflex timeline when using Game Thread Pacing.
+
+26.4.15.4
+=========
+ + Do not synchronize Unity game thread to SwapChain thread if the game thread
+     is already running behind schedule.
+
+26.4.15.3
+=========
+ + Eliminate potential hitch during asset loads when Unity Game Thread Pacing
+     is enabled.
+
+26.4.15.2
+=========
+ + Made Pace Unity Game Thread a persistent setting available through the
+     Unity control panel in supported modern Unity (2019+) games.
+   * This will decrease latency and make the game smoother, if VRR Optimized
+       framerate limit mode is active; Reflex timeline graph is half-broken.
+
+26.4.15.1
+=========
+ + Eliminated primary display assertion when checking for broken Reflex VRR.
+
+26.4.15
+=======
+ + Added experimental implementation of NvAPI_D3D_SetReflexSync (...) when FG
+     is active, or when SK's framerate limiter mode is set to Low-Latency.
+ + Added DLSS Frame Generation DMFG slider for testing (settings not saved).
+     * Need RTX 5xxx GPU owners to test this.
+
+26.4.14.4
+=========
+ + Correctly show DLSS status text in the OSD if Ray Reconstruction is active
+     and Frame Generation is not.
+
+26.4.14.3
+=========
+ + Improve window activation at start setting.
+ + Defer destruction of NGX parameters to allow lock-free DLSS get / set.
+ + Added Ray Reconstruction settings to DLSS Control Panel.
+ + Correctly report Ray Reconstruction preset in text OSD.
+
+26.4.14.2
+=========
+ + Added DLSS-D DLL version to DLSS control panel.
+
+26.4.14.1
+=========
+ + Improved DLSS/DLSS-D/DLSS-G version detection by delaying version checks
+     until a .dll (normal / OTA update) or .bin (driver override) calls one
+       of SK's hooked NGX API functions.
+ + Started work on separating DLSS Super Sampling and DLSS Ray Reconstruction
+     settings; eventually Ray Reconstruction-specific settings will be shown
+       in the DLSS control panel.
+
+26.4.14
+=======
+ + Added automatic workaround for NVIDIA Reflex limiting framerate to primary
+     monitor's refresh rate when running on secondary monitors if primary is
+       VRR capable and VSYNC is enabled.
+ + Enabling a framerate limit greater than primary monitor's VRR refresh rate
+     while Reflex Low-Latency Mode is active will now disable VSYNC in order
+       to escape the LONG STANDING Reflex bug mentioned above.
+
+26.4.13
+=======
+ + Revert to old behavior for screen tearing when DLSS Frame Gen is active
+     on VRR; tearing is disabled whenever SK's limiter is enabled.
+   * Tooltips explaining this have been updated.
+
+26.4.12.3
+=========
+ + Allow enabling screen tearing when using DLSS Frame Generation on VRR.
+    * You must select VSYNC Forced OFF from the Display menu; SK disables
+        tearing for framegen on VRR screens for obvious reasons.
+
+26.4.12.2
+=========
+ + Log when HDR colorspace support is being hidden from games in calls to
+     IDXGIOutput6::GetDesc1.
+
+26.4.12.1
+=========
+ + Show HDR as disabled in the control panel if NVAPI or DXGI HDR are disabled,
+     rather than BOTH having to be disabled.
+ + Added support for scRGB HDR in Vulkan.
+
+26.4.12
+=======
+ + Fixed problem caused by 26.3.16.1 optimization of D3D11 Proxy BackBuffers,
+     that was preventing native HDR from working in Vulkan games.
+
+26.4.8.1
+========
+ + Disable non-compatibility mode ReShade plug-ins for late injection (D3D12).
+
+26.4.8
+======
+ + Add safeguards in Streamline games with late injection to use pacer.cmdQueue
+ + Add logging for delayed global injection.
+ + Do not enable Vulkan Bridge in games running through Proton.
+
+26.4.5
 ======
  + Fixed previous Reflex and HDR-related issues in DOOM: The Dark Ages.
  + Removed RenoDX warning for Crimson Desert; statically linking fixes the mod.

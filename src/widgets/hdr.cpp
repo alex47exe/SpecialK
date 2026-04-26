@@ -24,6 +24,7 @@
 #include <SpecialK/stdafx.h>
 #include <SpecialK/render/dxgi/dxgi_hdr.h>
 #include <SpecialK/render/dxgi/dxgi_util.h>
+#include <SpecialK/nvapi.h>
 #include <imgui/font_awesome.h>
 
 #ifndef __SK_SUBSYSTEM__

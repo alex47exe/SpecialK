@@ -66,7 +66,7 @@ volatile LONG
      SK_D3D11_CBufferTrackingReqs = 0L;
 
 bool
-SK_ImGui_IsDrawing_OnD3D11Ctx (UINT& dev_idx, ID3D11DeviceContext* pDevCtx)
+SK_ImGui_IsDrawing_OnD3D11Ctx (UINT& dev_idx, ID3D11DeviceContext* pDevCtx) noexcept
 {
   if (pDevCtx == nullptr || dev_idx == UINT_MAX)
   {
@@ -96,7 +96,7 @@ SK_ImGui_IsDrawing_OnD3D11Ctx (UINT& dev_idx, ID3D11DeviceContext* pDevCtx)
 }
 
 std::pair <BOOL*, BOOL>
-SK_ImGui_FlagDrawing_OnD3D11Ctx (UINT dev_idx)
+SK_ImGui_FlagDrawing_OnD3D11Ctx (UINT dev_idx) noexcept
 {
   const SK_RenderBackend& rb =
     SK_GetCurrentRenderBackend ();
@@ -125,7 +125,7 @@ SK_ImGui_FlagDrawing_OnD3D11Ctx (UINT dev_idx)
 
 bool
 SK_D3D11_ShouldTrackSetShaderResources ( ID3D11DeviceContext* pDevCtx,
-                                         UINT                 dev_idx )
+                                         UINT                 dev_idx ) noexcept
 {
   if (pDevCtx == nullptr)
     return false;
@@ -159,7 +159,7 @@ SK_D3D11_ShouldTrackSetShaderResources ( ID3D11DeviceContext* pDevCtx,
 
 bool
 SK_D3D11_ShouldTrackMMIO ( ID3D11DeviceContext* pDevCtx,
-                           SK_TLS**             ppTLS )
+                           SK_TLS**             ppTLS ) noexcept
 {
   UNREFERENCED_PARAMETER (pDevCtx); UNREFERENCED_PARAMETER (ppTLS);
 
@@ -173,7 +173,7 @@ HMODULE hModReShade = (HMODULE)-2;
 
 bool& SK_D3D11_DontTrackUnlessModToolsAreOpen = config.render.dxgi.low_spec_mode;
 
-bool SK_D3D11_IsTrackingRequired (void)
+bool SK_D3D11_IsTrackingRequired (void) noexcept
 {
   static auto& _shaders =
     SK_D3D11_Shaders.get();
@@ -186,7 +186,7 @@ bool SK_D3D11_IsTrackingRequired (void)
 
 bool
 SK_D3D11_ShouldTrackRenderOp ( ID3D11DeviceContext* pDevCtx,
-                               UINT                 dev_idx )
+                               UINT                 dev_idx ) noexcept
 {
   if (pDevCtx == nullptr)
     return false;
@@ -201,14 +201,17 @@ SK_D3D11_ShouldTrackRenderOp ( ID3D11DeviceContext* pDevCtx,
     const auto frame_id =
       SK_GetFramesDrawn ();
 
-    static ULONG64
-        last_frame = 0;
-    if (std::exchange (last_frame, frame_id) < frame_id)
+    if (!game_pace.wantPacing (frame_id) || game_pace.last_paced_time < SK::ControlPanel::current_time)
     {
-      if (InterlockedExchange (&SK_Reflex_LastFrameMarked, frame_id) < frame_id)
+      static ULONG64
+          last_frame = 0;
+      if (std::exchange (last_frame, frame_id) < frame_id)
       {
-        rb.setLatencyMarkerNV (SIMULATION_END);
-        rb.setLatencyMarkerNV (RENDERSUBMIT_START);
+        if (InterlockedExchange (&SK_Reflex_LastFrameMarked, frame_id) < frame_id)
+        {
+          rb.setLatencyMarkerNV (SIMULATION_END);
+          rb.setLatencyMarkerNV (RENDERSUBMIT_START);
+        }
       }
     }
   }
@@ -251,7 +254,7 @@ SK_LazyGlobal <std::vector <SK_ComPtr <ID3D11View>> >                           
 SK_LazyGlobal <std::array <SK_D3D11_KnownTargets, SK_D3D11_MAX_DEV_CONTEXTS + 1> > SK_D3D11_RenderTargets;
 
 void
-SK_D3D11_KnownThreads::clear_all (void)
+SK_D3D11_KnownThreads::clear_all (void) noexcept
 {
   if (use_lock)
   {
@@ -267,7 +270,7 @@ SK_D3D11_KnownThreads::clear_all (void)
 }
 
 size_t
-SK_D3D11_KnownThreads::count_all (void)
+SK_D3D11_KnownThreads::count_all (void) noexcept
 {
   if (use_lock)
   {
@@ -281,7 +284,7 @@ SK_D3D11_KnownThreads::count_all (void)
 }
 
 void
-SK_D3D11_KnownThreads::mark (void)
+SK_D3D11_KnownThreads::mark (void) noexcept
 {
   //#ifndef _DEBUG
 #if 1
@@ -320,7 +323,7 @@ void
 d3d11_shader_tracking_s::activate ( ID3D11DeviceContext        *pDevContext,
                                     ID3D11ClassInstance *const *ppClassInstances,
                                     UINT                        NumClassInstances,
-                                    UINT                        dev_idx )
+                                    UINT                        dev_idx ) noexcept
 {
   if (pDevContext == nullptr) return;
 
@@ -430,7 +433,7 @@ d3d11_shader_tracking_s::activate ( ID3D11DeviceContext        *pDevContext,
 }
 
 void
-d3d11_shader_tracking_s::deactivate (ID3D11DeviceContext* pDevCtx, UINT dev_idx)
+d3d11_shader_tracking_s::deactivate (ID3D11DeviceContext* pDevCtx, UINT dev_idx) noexcept
 {
   const SK_RenderBackend& rb =
     SK_GetCurrentRenderBackend ();
@@ -520,7 +523,7 @@ d3d11_shader_tracking_s::deactivate (ID3D11DeviceContext* pDevCtx, UINT dev_idx)
 }
 
 void
-d3d11_shader_tracking_s::use (ID3D11DeviceContext* pDevCtx)
+d3d11_shader_tracking_s::use (ID3D11DeviceContext* pDevCtx) noexcept
 {
   if (pDevCtx != nullptr && first_rtv.Format == DXGI_FORMAT_UNKNOWN)
   {
@@ -552,7 +555,7 @@ d3d11_shader_tracking_s::use (ID3D11DeviceContext* pDevCtx)
 }
 
 void
-d3d11_shader_tracking_s::use_cmdlist (ID3D11DeviceContext* pDevCtx)
+d3d11_shader_tracking_s::use_cmdlist (ID3D11DeviceContext* pDevCtx) noexcept
 {
   if (pDevCtx != nullptr && first_rtv.Format == DXGI_FORMAT_UNKNOWN)
   {
@@ -586,7 +589,7 @@ d3d11_shader_tracking_s::use_cmdlist (ID3D11DeviceContext* pDevCtx)
 bool
 SK_D3D11_ShouldTrackComputeDispatch ( ID3D11DeviceContext* pDevCtx,
                                const  SK_D3D11DispatchType dispatch_type,
-                                      UINT                 dev_idx )
+                                      UINT                 dev_idx ) noexcept
 {
   UNREFERENCED_PARAMETER (dispatch_type);
 
@@ -603,7 +606,7 @@ SK_D3D11_ShouldTrackComputeDispatch ( ID3D11DeviceContext* pDevCtx,
 bool
 SK_D3D11_ShouldTrackDrawCall ( ID3D11DeviceContext* pDevCtx,
                          const SK_D3D11DrawType     draw_type,
-                               UINT                 dev_idx )
+                               UINT                 dev_idx ) noexcept
 {
   // If ReShade (custom version) is loaded, state tracking is non-optional
   if ( (intptr_t)hModReShade < (intptr_t)nullptr )
@@ -650,7 +653,7 @@ SK_LazyGlobal <SK_D3D11_KnownThreads> SK_D3D11_ShaderThreads;
 
 
 
-bool SKX_D3D11_IsVtxShaderLoaded (ID3D11Device* pDevice, uint32_t crc32c)
+bool SKX_D3D11_IsVtxShaderLoaded (ID3D11Device* pDevice, uint32_t crc32c) noexcept
 {
   std::scoped_lock <SK_Thread_HybridSpinlock> _lock (
     *cs_shader_vs.get ()
@@ -662,7 +665,7 @@ bool SKX_D3D11_IsVtxShaderLoaded (ID3D11Device* pDevice, uint32_t crc32c)
   return bRet;
 }
 
-bool SKX_D3D11_IsPixShaderLoaded (ID3D11Device* pDevice, uint32_t crc32c)
+bool SKX_D3D11_IsPixShaderLoaded (ID3D11Device* pDevice, uint32_t crc32c) noexcept
 {
   std::scoped_lock <SK_Thread_HybridSpinlock> _lock(
     *cs_shader_ps.get()

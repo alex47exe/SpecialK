@@ -42,7 +42,7 @@
 volatile ULONG64 SK_RenderBackend::frames_drawn = 0ULL;
 
 double
-SK_Display_GetDefaultRefreshRate (HMONITOR hMonitor)
+SK_Display_GetDefaultRefreshRate (HMONITOR hMonitor) noexcept
 {
   static double   dRefresh      = 0.0;
   static DWORD    dwLastChecked = 0;
@@ -2097,7 +2097,7 @@ SK_RenderBackend_V2::gsync_s::update (bool force)
 }
 
 bool
-SK_RenderBackendUtil_IsFullscreen (void)
+SK_RenderBackendUtil_IsFullscreen (void) noexcept
 {
   SK_RenderBackend& rb =
     SK_GetCurrentRenderBackend ();
@@ -2395,17 +2395,8 @@ SK_RenderBackend_V2::releaseOwnedResources (void)
     SK_HDR_ReleaseResources       ();
     SK_DXGI_ReleaseSRGBLinearizer ();
 
-///#define _USE_FLUSH
-
-    // Flushing at shutdown may cause deadlocks
-#ifdef _USE_FLUSH
-    if (d3d11.immediate_ctx != nullptr) {
-        d3d11.immediate_ctx->Flush      ();
-        d3d11.immediate_ctx->ClearState ();
-    }
-#endif
-    swapchain = nullptr;//.Reset();
-    device    = nullptr;//.Reset();
+    swapchain = nullptr;
+    device    = nullptr;
     factory   = nullptr;
 
     if (surface.d3d9 != nullptr)
@@ -2420,6 +2411,8 @@ SK_RenderBackend_V2::releaseOwnedResources (void)
       surface.nvapi = nullptr;
     }
 
+    d3d11.clearState ();
+    d3d11.composition   = nullptr;
     d3d11.immediate_ctx = nullptr;
     d3d12.command_queue = nullptr;
 
@@ -2466,7 +2459,7 @@ mode_change_request_e request_mode_change (mode_change_request_e::None);
 SK_API
 IUnknown*
 __stdcall
-SK_Render_GetDevice (void)
+SK_Render_GetDevice (void) noexcept
 {
   return
     SK_GetCurrentRenderBackend ().device;
@@ -2476,7 +2469,7 @@ SK_Render_GetDevice (void)
 SK_API
 IUnknown*
 __stdcall
-SK_Render_GetSwapChain (void)
+SK_Render_GetSwapChain (void) noexcept
 {
   return
     SK_GetCurrentRenderBackend ().swapchain;
@@ -2592,7 +2585,7 @@ SK_RenderBackend_V2::scan_out_s::getEOTF (void) const
 
 
 sk_hwnd_cache_s::devcaps_s&
-sk_hwnd_cache_s::getDevCaps (void)
+sk_hwnd_cache_s::getDevCaps (void) noexcept
 {
   const DWORD dwNow = SK_timeGetTime ();
 
@@ -2737,7 +2730,7 @@ SK_Render_GetAPIName (SK_RenderAPI api)
 }
 
 uint32_t
-SK_Render_GetVulkanInteropSwapChainType (IUnknown *swapchain)
+SK_Render_GetVulkanInteropSwapChainType (IUnknown *swapchain) noexcept
 {
   uint32_t  bVkInterop     = 0;
   UINT     uiVkInteropSize = 4;
@@ -2975,7 +2968,7 @@ sk_hwnd_cache_s::sk_hwnd_cache_s (HWND wnd)
   update (wnd);
 }
 
-bool sk_hwnd_cache_s::update (HWND wnd)
+bool sk_hwnd_cache_s::update (HWND wnd) noexcept
 {
   if (hwnd != wnd || last_changed == 0UL)
   {
@@ -3661,6 +3654,28 @@ SK_RenderBackend_V2::setDevice (IUnknown *pDevice)
         //d3d11.device = pDevice11;
                 device = pDevice;//pDevice11;
                 api    = SK_RenderAPI::D3D11;
+
+          SK_ComQIPtr <IDXGIDevice>
+                       pDXGIDevice (pDevice);
+          if (         pDXGIDevice != nullptr)
+          {
+            static HMODULE dcomp_dll =
+              SK_LoadLibraryW (L"dcomp.dll");
+
+            using DCompositionCreateDevice_pfn =
+              HRESULT (WINAPI *)(IDXGIDevice*, REFIID, void**);
+
+            static DCompositionCreateDevice_pfn
+                  _DCompositionCreateDevice =
+                  (DCompositionCreateDevice_pfn)SK_GetProcAddress (dcomp_dll,
+                  "DCompositionCreateDevice");
+
+            if (_DCompositionCreateDevice != nullptr) {
+                _DCompositionCreateDevice (pDXGIDevice,
+                         __uuidof (IDCompositionDevice),
+                     (void **)&d3d11.composition.p);
+            }
+          }
         }
       }
 
@@ -4376,8 +4391,7 @@ SK_RBkEnd_UpdateMonitorName ( SK_RenderBackend_V2::output_s& display,
           }
 
           edid_name =
-            rb.decodeEDIDForName (EDID_Data.get (), sizeofEDID);
-
+            rb.decodeEDIDForName      (EDID_Data.get (), sizeofEDID);
           auto nativeRes =
             rb.decodeEDIDForNativeRes (EDID_Data.get (), sizeofEDID);
 
@@ -4387,18 +4401,23 @@ SK_RBkEnd_UpdateMonitorName ( SK_RenderBackend_V2::output_s& display,
             display.native.height = nativeRes.y;
           }
 
-#if 0
-          if (! edid_name.empty ())
+          if (config.display.dump_raw_edid)
           {
-            nvSuppliedEDID = true;
-
-            FILE* fEDID = _wfopen (L"edid_nvapi.dat", L"wb");
-            if (  fEDID != nullptr)
+            if (! edid_name.empty ())
             {
-              fwrite (EDID_Data.get (), sizeofEDID, 1, fEDID);
+              nvSuppliedEDID = true;
+
+              std::wstring fname =
+                SK_FormatStringW (LR"(%ws\edid_%hs_nvapi.dat)", SK_GetConfigPath (),
+                                 edid_name.c_str ());
+              FILE* fEDID = _wfopen (fname.c_str (), L"wb");
+              if (  fEDID != nullptr)
+              {
+                fwrite (EDID_Data.get (), sizeofEDID, 1, fEDID);
+                fclose (fEDID);
+              }
             }
           }
-#endif
         }
       }
     }
@@ -4568,7 +4587,7 @@ SK_WDDM_CAPS::init (D3DKMT_HANDLE hAdapter)
 }
 
 void
-SK_RenderBackend_V2::queueUpdateOutputs (void)
+SK_RenderBackend_V2::queueUpdateOutputs (void) noexcept
 {
   update_outputs = true;
 }
@@ -5312,6 +5331,43 @@ SK_RenderBackend_V2::updateOutputTopology (void)
             }
           }
         }
+
+        constexpr auto                                      fmt = DXGI_FORMAT_R8G8B8A8_UNORM;
+        UINT                                                           num_modes = 0U;
+        if (SUCCEEDED (SK_DXGI_GetDisplayModeList (pOutput, fmt, 0x0, &num_modes, nullptr)))
+        {
+          std::vector <DXGI_MODE_DESC> dxgi_modes;
+                                       dxgi_modes.resize (num_modes);
+
+          if (SUCCEEDED (SK_DXGI_GetDisplayModeList (pOutput, fmt, 0x0,
+                                       &num_modes, dxgi_modes.data ())))
+          {
+            DXGI_RATIONAL max_exact_rate  = { 0, 0 };
+            double        dMaxRefreshRate =   0.0;
+
+            for (auto& mode : dxgi_modes)
+            {
+              const double dRefreshRate =
+                static_cast <double> (mode.RefreshRate.Numerator) /
+                static_cast <double> (mode.RefreshRate.Denominator);
+
+              if (dMaxRefreshRate < dRefreshRate)
+              {   dMaxRefreshRate = dRefreshRate;
+                  max_exact_rate  = mode.RefreshRate;
+              }
+            }
+
+            if (max_exact_rate.Denominator != 0)
+            {
+              display.native.refresh  = max_exact_rate;
+              display.vrr.max_refresh =
+                static_cast <uint16_t> (
+                  round (static_cast <double> (max_exact_rate.Numerator)/
+                         static_cast <double> (max_exact_rate.Denominator))
+                );
+            }
+          }
+        }
       }
 
       pOutput.Release ();
@@ -5320,6 +5376,8 @@ SK_RenderBackend_V2::updateOutputTopology (void)
 
   UINT        enum_count = idx;
   static UINT last_count = idx;
+
+  primary_display = 0;
 
   for ( auto& disp : displays )
   {
@@ -5355,6 +5413,9 @@ SK_RenderBackend_V2::updateOutputTopology (void)
 
     display.primary =
       ( minfo.dwFlags & MONITORINFOF_PRIMARY );
+
+    if (display.primary)
+      primary_display = idx;
 
     float bestIntersectArea = -1.0f;
 
@@ -5576,10 +5637,11 @@ SK_RenderBackend_V2::updateOutputTopology (void)
             display.native.width   = getPreferredMode.width;
             display.native.height  = getPreferredMode.height;
 
-            display.native.refresh = {
-              getPreferredMode.targetMode.targetVideoSignalInfo.vSyncFreq.Numerator,
-              getPreferredMode.targetMode.targetVideoSignalInfo.vSyncFreq.Denominator
-            };
+            //  This is -NOT- native, it is not clear why the OS uses this as default...
+            /*display.native.refresh = {
+                getPreferredMode.targetMode.targetVideoSignalInfo.vSyncFreq.Numerator,
+                getPreferredMode.targetMode.targetVideoSignalInfo.vSyncFreq.Denominator
+              };*/
           }
 
           DISPLAYCONFIG_TARGET_DEVICE_NAME
@@ -6325,7 +6387,7 @@ SK_Display_ApplyDesktopResolution (MONITORINFOEX& mi)
     {
       devmode.dmFields           |= DM_DISPLAYFREQUENCY;
       devmode.dmDisplayFrequency  =
-        static_cast <DWORD> (std::ceilf (config.display.refresh_rate));
+        static_cast <DWORD> (std::roundf (config.display.refresh_rate));
     }
 
     if ( DISP_CHANGE_SUCCESSFUL ==
@@ -6456,12 +6518,33 @@ SK_RenderBackend_V2::output_s::setSDRWhiteLevel (float fNits)
 
 
 void
+SK_DComp_SetupCompositorClock (void)
+{
+  if (config.render.framerate.boost_composite_clock)
+  {
+    static HMODULE dcomp_dll =
+      SK_LoadLibraryW (L"dcomp.dll");
+  
+    using  DCompositionBoostCompositorClock_pfn = HRESULT (WINAPI *)(BOOL);
+    static DCompositionBoostCompositorClock_pfn
+          _DCompositionBoostCompositorClock =
+          (DCompositionBoostCompositorClock_pfn)SK_GetProcAddress (dcomp_dll,
+          "DCompositionBoostCompositorClock");
+  
+    if (_DCompositionBoostCompositorClock != nullptr)
+        _DCompositionBoostCompositorClock (TRUE);
+  }
+}
+
+void
 SK_Render_CountVBlanks ()
 {
   SK_PROFILE_SCOPED_TASK (SK_Render_CountVBlanks)
 
   static HANDLE hVRREvent =
     SK_CreateEvent (nullptr, FALSE, FALSE, nullptr);
+
+  SK_RunOnce (SK_DComp_SetupCompositorClock ());
 
   static HANDLE hVBlankThread =
     SK_Thread_CreateEx ([](LPVOID) -> DWORD
@@ -6589,4 +6672,85 @@ SK_Render_CountVBlanks ()
     }, L"[SK] VBlank Counter", nullptr);
 
   SetEvent (hVRREvent);
+}
+
+void
+SK_RenderBackend_V2::postNewFrameOnThread (SK_TLS *pTLS, bool designated_thread_may_change) noexcept
+{
+  ULONG64 ullFramesPresented =
+    InterlockedIncrement (&pTLS->render->frames_presented);
+
+  static DWORD last_render_thread_ = 0U;
+
+  // D3D11 should always use the most recently active thread
+  //   as the "render thread," D3D12 should use the thread
+  //     that has presented the most frames.
+  const bool render_thread_popularity_based =
+                  nullptr != d3d11.immediate_ctx ||
+    SK_API_IsLayeredOnD3D11 (api);
+
+
+  if (designated_thread_may_change)
+  {
+    if (render_thread_popularity_based)
+    {
+      if (ullFramesPresented > most_frames)
+      {
+        InterlockedExchange ( &most_frames,
+                                 ullFramesPresented );
+      }
+
+      InterlockedExchange ( &thread,
+                          SK_Thread_GetCurrentId () );
+
+      InterlockedExchange ( &last_thread,
+                               SK_Thread_GetCurrentId () );
+    }
+  }
+
+  // One and done, this thread designation is never allowed to change
+  //   after we establish it on the first frame presented...
+  else if (! ReadULongAcquire (&thread))
+  {
+    InterlockedExchange ( &thread,
+                        SK_Thread_GetCurrentId () );
+  }
+
+  if (thread != last_render_thread_)
+  {
+    static            int render_thread_changes = 0;
+    static auto constexpr MaxThreadChangesToLog = 5;
+
+    if (last_render_thread_ != 0 &&
+             render_thread_changes++ < MaxThreadChangesToLog)
+    {
+      SK_LOGi0 (L"Render thread has changed to %zu", thread);
+    }
+
+    last_render_thread_ = thread;
+  }
+
+  // Unused on various codepaths
+  std::ignore = ullFramesPresented;
+};
+
+// Call to forcefully unbind Flip Model resources, as required
+// during SwapChain cleanup.
+void
+SK_RenderBackend_V2::d3d11_s::clearState (void) noexcept
+{
+  // We may have cached textures preventing the destruction of the original
+  //   D3D11 device associated with this SwapChain, so clear those now.
+  SK_D3D11_ResetTexCache ();
+
+  const auto& parent =
+    SK_GetCurrentRenderBackend ();
+
+  // Only attempt this on the thread actively presenting frames.
+  if (immediate_ctx != nullptr &&
+      parent.thread == SK_GetCurrentThreadId ())
+  {
+    immediate_ctx->ClearState ();
+    immediate_ctx->Flush      ();
+  }
 }
