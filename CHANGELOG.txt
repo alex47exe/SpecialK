@@ -1,4 +1,43 @@
-﻿26.4.25
+﻿26.5.3
+======
+ + Added support for NVIDIA driver profile creation for Microsoft Store games.
+ + Remove orphaned applications assigned to the 'Base Profile' driver profile
+     that otherwise makes it impossible to set driver settings using NVIDIA
+       Profile Inspector or NVIDIA's own apps in Microsoft Store games.
+
+   * To have SK generate driver profiles for Microsoft Store games, it is easiest
+       to right-click the VRR status text in SK's control panel and toggle
+         one of the options (i.e. turn Smooth Motion on and back off)...
+
+26.4.31
+=======
+ + Remove SK version number from HTTPS user agent string for all non-PCGW requests,
+     because various existing services do not expect that additional info.
+ + Use gamesdb.gog.com instead of PCGW to resolve Steam AppIDs for Epic games.
+ + Use a more complicated PCGW query for non-Epic/non-GOG games to avoid HTTP 500.
+
+26.4.30.2
+=========
+ + Added support for NVIDIA's undocumented NvAPI_DRS_SetSettingEx and
+     NvAPI_DRS_GetSettingEx functions.
+ + Added option to enable/disable Smooth Motion in a game by right-clicking the
+     section of the control panel dedicated to VRR/FastSync.
+    * Sorry, no idea where else to put this setting, lol.
+
+26.4.30.1
+=========
+ + Add Special K's version number to the user agent for HTTPS requests.
+
+26.4.30
+=======
+ + Avoid sending empty search queries to PCGW when searching for equivalent Steam
+     app for a given named title.
+
+26.4.26
+=======
+ + Hide NVIDIA Reflex settings when NVIDIA Smooth Motion is active in D3D11.
+
+26.4.25
 =======
  + Improved support for NVIDIA Smooth Motion in D3D11 games.
 

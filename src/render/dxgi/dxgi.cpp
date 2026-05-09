@@ -8911,10 +8911,10 @@ WINAPI CreateDXGIFactory2 (UINT     Flags,
   {
     SK_RunOnce (
       SK_ImGui_WarningWithTitle (
-        SK_ReShade_IsLocalDLLPresent () && config.reshade.allow_runtime_tracking &&
-                                          !config.reshade.allow_unsafe_addons     ?
-          L"Smooth Motion support is experimental in the current version of Special K\n\n"
-            L"You may need to set AllowRuntimeTracking=false in [ReShade.System]" :
+        //SK_ReShade_IsLocalDLLPresent () && config.reshade.allow_runtime_tracking &&
+        //                                  !config.reshade.allow_unsafe_addons     ?
+        //  L"Smooth Motion support is experimental in the current version of Special K\n\n"
+        //    L"You may need to set AllowRuntimeTracking=false in [ReShade.System]" :
           L"Smooth Motion support is experimental in the current version of Special K",
         L"NVIDIA Smooth Motion Detected"
       );
@@ -10019,9 +10019,7 @@ SK_DXGI_HookSwapChain (IDXGISwapChain* pProxySwapChain)
   if (ReadAcquire (&hooked) != FALSE)
     return;
 
-  const bool bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll") ||
-       SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
-                              SK_IsModuleLoaded (L"NvPresent.dll"));
+  const bool bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll");
 
   SK_ComPtr <IDXGISwapChain> pSwapChain;
 
@@ -10234,9 +10232,7 @@ SK_DXGI_HookDevice1 (IDXGIDevice1* pProxyDevice)
   if (ReadAcquire (&hooked) != FALSE)
     return;
 
-  const bool bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll") ||
-       SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
-                              SK_IsModuleLoaded (L"NvPresent.dll"));
+  const bool bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll");
 
   SK_ComPtr <IDXGIDevice1> pDevice;
 
@@ -10392,9 +10388,7 @@ SK_DXGI_HookFactory (IDXGIFactory* pProxyFactory)
 
   SK_GetDXGIFactoryInterfaceVer (pProxyFactory);
 
-  const bool bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll") ||
-       SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
-                              SK_IsModuleLoaded (L"NvPresent.dll"));
+  const bool bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll");
 
   SK_ComPtr <IDXGIFactory> pFactory;
 
@@ -10735,9 +10729,7 @@ HookDXGI (LPVOID user)
 
 
     bool    bHookSuccess   = false;
-    bool    bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll") ||
-      SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
-                             SK_IsModuleLoaded (L"NvPresent.dll"));
+    bool    bHasStreamline = SK_IsModuleLoaded (L"sl.interposer.dll");
     HRESULT hr             = E_NOTIMPL;
 
     SK_ComPtr <IDXGIAdapter>
@@ -10824,8 +10816,7 @@ HookDXGI (LPVOID user)
 
     // Probably better named Nixxes mode, what a pain :(
     const bool bStreamlineMode =
-      config.compatibility.init_sync_for_streamline || SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
-                                                                              SK_IsModuleLoaded (L"NvPresent.dll"));
+      config.compatibility.init_sync_for_streamline;
 
     const bool bReShadeMode =
       (config.compatibility.reshade_mode && (! config.compatibility.using_wine));
@@ -10851,8 +10842,7 @@ HookDXGI (LPVOID user)
       //// Favor this codepath because it bypasses many things like ReShade, but
       ////   it's necessary to skip this path if NVIDIA's Vk/DXGI interop layer is active
       if (D3D11CoreCreateDevice != nullptr && ((! ( SK_IsModuleLoaded (L"vulkan-1.dll") ||
-                                                   (SK_IsModuleLoaded (L"OpenGL32.dll") && !SK_IsModuleLoaded ((L"EOSOVH-Win64-Shipping.dll"))))) || SK_RunLHIfBitness (64, SK_IsModuleLoaded (L"NvPresent64.dll"),
-                                                                                                                                                                            SK_IsModuleLoaded (L"NvPresent.dll"))))
+                                                   (SK_IsModuleLoaded (L"OpenGL32.dll") && !SK_IsModuleLoaded ((L"EOSOVH-Win64-Shipping.dll")))))))
       {
         hr =
           D3D11CoreCreateDevice (

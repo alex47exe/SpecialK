@@ -74,6 +74,139 @@ struct NVAPI_ThreadSafety {
 SK_LazyGlobal <NVAPI_ThreadSafety> SK_NvAPI_Threading;
 
 
+//NvAPI_DRS_SetSetting
+//
+using NvAPI_DRS_SetSettingEx_pfn                   = NvAPI_Status (__cdecl *)(NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile,                  NVDRS_SETTING *pSetting, uintptr_t unknown0, uintptr_t unknown1);
+using NvAPI_DRS_GetSettingEx_pfn                   = NvAPI_Status (__cdecl *)(NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 settingId, NVDRS_SETTING *pSetting, uintptr_t unknown0);
+using NvAPI_DRS_EnumAvailableSettingIdsEx_pfn      = NvAPI_Status (__cdecl *)(NvU32 *pSettingIds, NvU32 *pMaxCount);
+using NvAPI_DRS_EnumSettingsEx_pfn                 = NvAPI_Status (__cdecl *)(NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 startIndex, NvU32 *settingsCount, NVDRS_SETTING *pSetting);
+using NvAPI_DRS_EnumAvailableSettingValuesEx_pfn   = NvAPI_Status (__cdecl *)(NvU32 settingId, NvU32* pMaxNumValues, NVDRS_SETTING_VALUES* pSettingValues);
+using NvAPI_DRS_GetSettingNameFromIdEx_pfn         = NvAPI_Status (__cdecl *)(NvU32 settingId, NvAPI_UnicodeString* pSettingName);
+using NvAPI_DRS_DeleteProfileSettingEx_pfn         = NvAPI_Status (__cdecl *)(NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 settingId);
+using NvAPI_DRS_RestoreProfileDefaultSettingEx_pfn = NvAPI_Status (__cdecl *)(NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 settingId);
+
+static NvAPI_DRS_SetSettingEx_pfn                   NvAPI_DRS_SetSettingEx                   = nullptr;
+static NvAPI_DRS_GetSettingEx_pfn                   NvAPI_DRS_GetSettingEx                   = nullptr;
+static NvAPI_DRS_EnumAvailableSettingIdsEx_pfn      NvAPI_DRS_EnumAvailableSettingIdsEx      = nullptr;
+static NvAPI_DRS_EnumSettingsEx_pfn                 NvAPI_DRS_EnumSettingsEx                 = nullptr;
+static NvAPI_DRS_EnumAvailableSettingValuesEx_pfn   NvAPI_DRS_EnumAvailableSettingValuesEx   = nullptr;
+static NvAPI_DRS_GetSettingNameFromIdEx_pfn         NvAPI_DRS_GetSettingNameFromIdEx         = nullptr;
+static NvAPI_DRS_DeleteProfileSettingEx_pfn         NvAPI_DRS_DeleteProfileSettingEx         = nullptr;
+static NvAPI_DRS_RestoreProfileDefaultSettingEx_pfn NvAPI_DRS_RestoreProfileDefaultSettingEx = nullptr;
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_SetSetting (NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NVDRS_SETTING *pSetting)
+{
+  if (NvAPI_DRS_SetSettingEx != nullptr)
+  {
+    return
+      NvAPI_DRS_SetSettingEx (hSession, hProfile, pSetting, (uintptr_t)0, (uintptr_t)0);
+  }
+
+  return
+    NvAPI_DRS_SetSetting (hSession, hProfile, pSetting);
+}
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_GetSetting (NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 settingId, NVDRS_SETTING *pSetting)
+{
+  if (NvAPI_DRS_GetSettingEx != nullptr)
+  {
+    uint32_t x = 0;
+    return
+      NvAPI_DRS_GetSettingEx (hSession, hProfile, settingId, pSetting, (uintptr_t)&x);
+  }
+
+  return
+    NvAPI_DRS_GetSetting (hSession, hProfile, settingId, pSetting);
+}
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_EnumAvailableSettingIds (NvU32 *pSettingIds, NvU32 *pMaxCount)
+{
+  if (NvAPI_DRS_EnumAvailableSettingIdsEx != nullptr)
+  {
+    return
+      NvAPI_DRS_EnumAvailableSettingIdsEx (pSettingIds, pMaxCount);
+  }
+
+  return
+    NvAPI_DRS_EnumAvailableSettingIds (pSettingIds, pMaxCount);
+}
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_EnumSettings (NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 startIndex, NvU32 *settingsCount, NVDRS_SETTING *pSetting)
+{
+  if (NvAPI_DRS_EnumSettingsEx != nullptr)
+  {
+    return
+      NvAPI_DRS_EnumSettingsEx (hSession, hProfile, startIndex, settingsCount, pSetting);
+  }
+
+  return
+    NvAPI_DRS_EnumSettings (hSession, hProfile, startIndex, settingsCount, pSetting);
+}
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_EnumAvailableSettingValues (NvU32 settingId, NvU32 *pMaxNumValues, NVDRS_SETTING_VALUES *pSettingValues)
+{
+  if (NvAPI_DRS_EnumAvailableSettingValuesEx != nullptr)
+  {
+    return
+      NvAPI_DRS_EnumAvailableSettingValuesEx (settingId, pMaxNumValues, pSettingValues);
+  }
+
+  return
+    NvAPI_DRS_EnumAvailableSettingValues (settingId, pMaxNumValues, pSettingValues);
+}
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_GetSettingNameFromId (NvU32 settingId, NvAPI_UnicodeString* pSettingName)
+{
+  if (NvAPI_DRS_GetSettingNameFromIdEx != nullptr)
+  {
+    return
+      NvAPI_DRS_GetSettingNameFromIdEx (settingId, pSettingName);
+  }
+
+  return
+    NvAPI_DRS_GetSettingNameFromId (settingId, pSettingName);
+}
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_DeleteProfileSetting (NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 settingId)
+{
+  if (NvAPI_DRS_DeleteProfileSettingEx != nullptr)
+  {
+    return
+      NvAPI_DRS_DeleteProfileSettingEx (hSession, hProfile, settingId);
+  }
+
+  return
+    NvAPI_DRS_DeleteProfileSetting (hSession, hProfile, settingId);
+}
+
+NvAPI_Status
+__cdecl
+NvAPI_SK_DRS_RestoreProfileDefaultSetting (NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile, NvU32 settingId)
+{
+  if (NvAPI_DRS_RestoreProfileDefaultSettingEx != nullptr)
+  {
+    return
+      NvAPI_DRS_RestoreProfileDefaultSettingEx (hSession, hProfile, settingId);
+  }
+
+  return
+    NvAPI_DRS_RestoreProfileDefaultSetting (hSession, hProfile, settingId);
+}
+
 using namespace sk;
 using namespace sk::NVAPI;
 
@@ -446,6 +579,13 @@ __cdecl
 NvAPI_Disp_GetHdrCapabilities_Override ( NvU32                displayId,
                                          NV_HDR_CAPABILITIES *pHdrCapabilities )
 {
+  // Don't want to deal with this before SK is fully initialized.
+  if (! __SK_Init)
+  {
+    return
+      NvAPI_Disp_GetHdrCapabilities_Original ( displayId, pHdrCapabilities );
+  }
+
   SK_LOG_FIRST_CALL
 
   SK_PROFILE_SCOPED_TASK (HOOKED_API__NvAPI_Disp_GetHdrCapabilities)
@@ -1633,6 +1773,103 @@ SK_RenderBackend_V2::scan_out_s::
 }
 
 
+// This will take care of orphaned applications that are assigned to 'Base Profile',
+//   and will add the invariant AppX package family name to the profile in order to
+//     have a valid driver profile for Microsoft Store games.
+//
+// The orphaned application profile issue is currently only auto-resolved
+//   for Microsoft Store games.
+void
+SK_NvAPI_AddMicrosoftStoreAppToProfile (NvDRSProfileHandle hProfile, NvDRSSessionHandle hSession)
+{
+  NVDRS_APPLICATION app         = {                   };
+                    app.version = NVDRS_APPLICATION_VER;
+
+  auto appx_package_family =
+    SK_AppX_GetCurrentPackageFamilyName ();
+
+  if (! appx_package_family.has_value ())
+    return;
+
+  const wchar_t* name = appx_package_family.value ();
+
+  NvDRSProfileHandle hProfileTest;
+
+  auto ret =
+    NvAPI_DRS_FindApplicationByName ( hSession,
+                                        (NvU16 *)name,
+                                          &hProfileTest,
+                                            &app );
+
+  NVDRS_PROFILE profile_info = {};
+                profile_info.version = NVDRS_PROFILE_VER;
+
+  NvAPI_DRS_GetProfileInfo (hSession, hProfileTest, &profile_info);
+
+  // Remove the app from "Base Profile" if necessary, because it's not possible to configure that.
+  if (ret == NVAPI_OK && _wcsicmp ((const wchar_t *)profile_info.profileName, L"Base Profile") == 0)
+  {
+    ret = NVAPI_EXECUTABLE_NOT_FOUND;
+
+    NvAPI_DRS_DeleteApplication (hSession, hProfileTest, (NvU16 *)name);
+
+    NVDRS_PROFILE custom_profile = {};
+
+    if (friendly_name.empty ()) // Avoid NVAPI failure: NVAPI_PROFILE_NAME_EMPTY
+        friendly_name = app_name;
+
+    custom_profile.isPredefined = FALSE;
+
+    lstrcpyW ((wchar_t *)custom_profile.profileName, friendly_name.c_str ());
+
+    custom_profile.version = NVDRS_PROFILE_VER;
+
+    NvAPI_DRS_CreateProfile  (hSession, &custom_profile, &hProfile);
+    NvAPI_DRS_GetProfileInfo (hSession,                   hProfile, &profile_info);
+
+    SK_LOGi0 (
+      L"Application removed from 'Base Profile' and added to %ws", friendly_name.c_str ()
+    );
+  }
+
+  SK_LOGi1 (L"FindApplicationByName [%ws, in %ws]: %d", name, profile_info.profileName, ret);
+
+  if (ret == NVAPI_EXECUTABLE_NOT_FOUND)
+  {
+    SK_LOGi1 (L" ? Adding Microsoft Store App to NVAPI Profile: %ws", name);
+
+    RtlZeroMemory (&app, sizeof NVDRS_APPLICATION);
+
+                  profile_info.version = NVDRS_PROFILE_VER;
+
+    NvAPI_DRS_GetProfileInfo (hSession, hProfile, &profile_info);
+
+    if (*profile_info.profileName != L'\0')
+    {
+      lstrcpyW ((wchar_t *)app.appName, name);
+
+      app.version      = NVDRS_APPLICATION_VER;
+      app.isPredefined = FALSE;
+      app.isMetro      = TRUE;
+
+      NvAPI_DRS_CreateApplication (hSession, hProfile, &app);
+      NvAPI_DRS_SaveSettings      (hSession);
+
+      SK_LOGi1 (L"Added Microsoft Store App to NVAPI Profile: %ws [%ws]", name, profile_info.profileName);
+    }
+  }
+}
+
+NvAPI_Status
+NvAPI_SK_DRS_SaveSettings (NvDRSSessionHandle hSession, NvDRSProfileHandle hProfile)
+{
+  SK_NvAPI_AddMicrosoftStoreAppToProfile (hProfile, hSession);
+
+  return
+    NvAPI_DRS_SaveSettings (hSession);
+}
+
+
 #define NGX_DLSSG_MULTI_FRAME_COUNT_ID 0x104D6667U
 #define NGX_DLSS_FG_OVERRIDE_ID        0x10E41E03U
 
@@ -1720,8 +1957,8 @@ SK_NvAPI_SetDLSSGOverride (int max_frames = -1)
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession),                 ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -1741,24 +1978,24 @@ SK_NvAPI_SetDLSSGOverride (int max_frames = -1)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT      ();
-  NVAPI_CALL        (DRS_GetSetting   (hSession, hProfile, NGX_DLSS_FG_OVERRIDE_ID, &dlssg_override_val));
-  if (               dlssg_override_val.u32CurrentValue !=                                 override_) {
-    NVAPI_SET_DWORD (dlssg_override_val,                   NGX_DLSS_FG_OVERRIDE_ID,        override_);
-    NVAPI_CALL      (DRS_SetSetting   (hSession, hProfile,                          &dlssg_override_val));
-    NVAPI_CALL      (DRS_SaveSettings (hSession));
-    NVAPI_CALL      (DRS_GetSetting   (hSession, hProfile, NGX_DLSS_FG_OVERRIDE_ID, &dlssg_override_val));
+  NVAPI_CALL        (SK_DRS_GetSetting   (hSession, hProfile, NGX_DLSS_FG_OVERRIDE_ID, &dlssg_override_val));
+  if (               dlssg_override_val.u32CurrentValue !=                                    override_) {
+    NVAPI_SET_DWORD (dlssg_override_val,                      NGX_DLSS_FG_OVERRIDE_ID,        override_);
+    NVAPI_CALL      (SK_DRS_SetSetting   (hSession, hProfile,                          &dlssg_override_val));
+    NVAPI_CALL      (SK_DRS_SaveSettings (hSession, hProfile));
+    NVAPI_CALL      (SK_DRS_GetSetting   (hSession, hProfile, NGX_DLSS_FG_OVERRIDE_ID, &dlssg_override_val));
 
     if (dlssg_override_val.u32CurrentValue != override_)
     {
       restart_required0 = true;
     }
   }
-  NVAPI_CALL        (DRS_GetSetting   (hSession, hProfile, NGX_DLSSG_MULTI_FRAME_COUNT_ID, &dlssg_frame_count_val));
-  if (               dlssg_frame_count_val.u32CurrentValue !=                                     frame_count_) {
-    NVAPI_SET_DWORD (dlssg_frame_count_val,                NGX_DLSSG_MULTI_FRAME_COUNT_ID,        frame_count_);
-    NVAPI_CALL      (DRS_SetSetting   (hSession, hProfile,                                 &dlssg_frame_count_val));
-    NVAPI_CALL      (DRS_SaveSettings (hSession));
-    NVAPI_CALL      (DRS_GetSetting   (hSession, hProfile, NGX_DLSSG_MULTI_FRAME_COUNT_ID, &dlssg_frame_count_val));
+  NVAPI_CALL        (SK_DRS_GetSetting   (hSession, hProfile, NGX_DLSSG_MULTI_FRAME_COUNT_ID, &dlssg_frame_count_val));
+  if (               dlssg_frame_count_val.u32CurrentValue !=                                        frame_count_) {
+    NVAPI_SET_DWORD (dlssg_frame_count_val,                   NGX_DLSSG_MULTI_FRAME_COUNT_ID,        frame_count_);
+    NVAPI_CALL      (SK_DRS_SetSetting   (hSession, hProfile,                                 &dlssg_frame_count_val));
+    NVAPI_CALL      (SK_DRS_SaveSettings (hSession, hProfile));
+    NVAPI_CALL      (SK_DRS_GetSetting   (hSession, hProfile, NGX_DLSSG_MULTI_FRAME_COUNT_ID, &dlssg_frame_count_val));
 
     if (dlssg_frame_count_val.u32CurrentValue != frame_count_)
     {
@@ -1767,8 +2004,8 @@ SK_NvAPI_SetDLSSGOverride (int max_frames = -1)
   }
   NVAPI_VERBOSE     ();
 
-  NVAPI_CALL (DRS_SaveSettings   (hSession));
-  NVAPI_CALL (DRS_DestroySession (hSession));
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
 
   if (   restart_required0 ||
        ( restart_required1 && override_ != 0 ) )
@@ -2067,6 +2304,172 @@ SK_NvAPI_PreInitHDR (void)
   }
 }
 
+void
+SK_NVAPI_DumpProfileSettings (void)
+{
+  NvAPI_Status       ret       = NVAPI_ERROR;
+  NvDRSSessionHandle hSession  = { };
+
+  NVAPI_CALL (DRS_CreateSession (&hSession));
+  NVAPI_CALL (DRS_LoadSettings  ( hSession));
+
+               NvDRSProfileHandle hProfile       = { };
+  std::unique_ptr    <NVDRS_APPLICATION> app_ptr =
+    std::make_unique <NVDRS_APPLICATION> ();
+  NVDRS_APPLICATION&                     app     =
+                                        *app_ptr;
+
+  NVAPI_SILENT ();
+
+  app.version = NVDRS_APPLICATION_VER;
+  ret         = NVAPI_ERROR;
+
+#if 0
+  NVAPI_CALL2 ( DRS_FindApplicationByName ( hSession,
+                                              (NvU16 *)app_name.c_str (),
+                                                &hProfile,
+                                                  &app ),
+                ret );
+
+  // If no executable exists anywhere by this name, create a profile for it
+  //   and then add the executable to it.
+  if (ret == NVAPI_EXECUTABLE_NOT_FOUND)
+  {
+    NVDRS_PROFILE custom_profile = {   };
+
+    if (friendly_name.empty ()) // Avoid NVAPI failure: NVAPI_PROFILE_NAME_EMPTY
+        friendly_name = app_name;
+
+    custom_profile.isPredefined  = FALSE;
+    lstrcpyW ((wchar_t *)custom_profile.profileName, friendly_name.c_str ());
+    custom_profile.version = NVDRS_PROFILE_VER;
+
+    // It's not necessarily wrong if this does not return NVAPI_OK, so don't
+    //   raise a fuss if it happens.
+    NVAPI_SILENT ()
+    {
+      NVAPI_CALL2 (DRS_CreateProfile (hSession, &custom_profile, &hProfile), ret);
+    }
+    NVAPI_VERBOSE ()
+
+    // Add the application name to the profile, if a profile already exists
+    if (ret == NVAPI_PROFILE_NAME_IN_USE)
+    {
+      NVAPI_CALL2 ( DRS_FindProfileByName ( hSession,
+                                              (NvU16 *)friendly_name.c_str (),
+                                                &hProfile),
+                      ret );
+    }
+
+    if (ret == NVAPI_OK)
+    {
+      RtlZeroMemory (app_ptr.get (), sizeof NVDRS_APPLICATION);
+
+      lstrcpyW ((wchar_t *)app.appName,          app_name.c_str      ());
+      lstrcpyW ((wchar_t *)app.userFriendlyName, friendly_name.c_str ());
+
+      app.version      = NVDRS_APPLICATION_VER;
+      app.isPredefined = FALSE;
+      app.isMetro      = FALSE;
+
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
+    }
+  }
+#else
+  NvAPI_DRS_GetCurrentGlobalProfile (hSession, &hProfile);
+#endif
+
+  NVDRS_PROFILE profileInformation         = {               };
+                profileInformation.version = NVDRS_PROFILE_VER;
+
+  NvAPI_DRS_GetProfileInfo ( hSession, hProfile,
+                                       &profileInformation );
+  std::vector <NVDRS_SETTING> settings (profileInformation.numOfSettings);
+
+  for (auto setting_idx = 0u; setting_idx < profileInformation.numOfSettings; ++setting_idx)
+    settings [setting_idx].version = NVDRS_SETTING_VER;
+
+  NvAPI_SK_DRS_EnumSettings (hSession, hProfile, 0, &profileInformation.numOfSettings, settings.data ());
+
+  for (auto i = 0u; i < profileInformation.numOfSettings; ++i)
+  {
+    switch (settings [i].settingType)
+    {
+      case NVDRS_DWORD_TYPE:
+        dll_log->LogEx (true, L"DWORD ");
+        break;
+      case NVDRS_BINARY_TYPE:
+        dll_log->LogEx (true, L"Binary ");
+        break;
+      case NVDRS_STRING_TYPE:
+        dll_log->LogEx (true, L"ANSI String ");
+        break;
+      case NVDRS_WSTRING_TYPE:
+        dll_log->LogEx (true, L"Wide String ");
+        break;
+      default:
+        dll_log->LogEx (true, L"Unknown DRS Setting Type (%d) ", settings [i].settingType);
+    }
+
+    static NvAPI_UnicodeString name;
+                              *name = L'\0';
+    NvAPI_SK_DRS_GetSettingNameFromId (settings [i].settingId, &name);
+
+    dll_log->LogEx (false, L"'%ws'\n", name);
+
+    NvU32                       max_settings = NVAPI_SETTING_MAX_VALUES;
+    static NVDRS_SETTING_VALUES setting_values;
+    ZeroMemory                (&setting_values,
+                         sizeof setting_values);
+                                setting_values.version = NVDRS_SETTING_VALUES_VER;
+    NvAPI_SK_DRS_EnumAvailableSettingValues (settings [i].settingId, &max_settings, &setting_values);
+
+    switch (setting_values.settingType)
+    {
+      case NVDRS_DWORD_TYPE:
+      {
+        dll_log->Log (L"\tDWORD_Value_%03d: Default = %x", i, setting_values.u32DefaultValue);
+        for (auto k = 0u; k < setting_values.numSettingValues; ++k)
+        {
+          dll_log->Log (L" Option_%d = %x", k, setting_values.settingValues [k].u32Value);
+        }
+      } break;
+
+      case NVDRS_BINARY_TYPE:
+      {
+        dll_log->Log (L"\tBinary_Value_%03d: Default = %b", i, setting_values.binaryDefaultValue);
+
+        for (auto k = 0u; k < setting_values.numSettingValues; ++k)
+        {
+          dll_log->Log (L" Option_%d = %b", k, setting_values.settingValues [k].binaryValue);
+        }
+      } break;
+
+      case NVDRS_STRING_TYPE:
+      {
+        dll_log->Log (L"\tString_Value_%03d: Default = %hs", i, setting_values.wszDefaultValue);
+
+        for (auto k = 0u; k < setting_values.numSettingValues; ++k)
+        {
+          dll_log->Log (L" Option_%d = %hs", k, setting_values.settingValues [k].wszValue);
+        }
+      } break;
+      case NVDRS_WSTRING_TYPE:
+      {
+        dll_log->Log (L"\tUnicode_Value_%03d: Default = %ws", i, setting_values.wszDefaultValue);
+
+        for (auto k = 0u; k < setting_values.numSettingValues; ++k)
+        {
+          dll_log->Log (L" Option_%d = %ws", k, setting_values.settingValues [k].wszValue);
+        }
+      } break;
+    }
+  }
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
+}
+
 BOOL
 NVAPI::InitializeLibrary (const wchar_t* wszAppName)
 {
@@ -2083,6 +2486,12 @@ NVAPI::InitializeLibrary (const wchar_t* wszAppName)
   //     again.
   if (bLibInit != FALSE)
     return FALSE;
+
+  auto appx_package_family =
+    SK_AppX_GetCurrentPackageFamilyName ();
+
+  if (appx_package_family.has_value ())
+    wszAppName = appx_package_family.value ();
 
   SK_NvAPI_SetAppName (wszAppName);
 
@@ -2133,6 +2542,25 @@ NVAPI::InitializeLibrary (const wchar_t* wszAppName)
         reinterpret_cast <NvAPI_QueryInterface_pfn> (
           SK_GetProcAddress (hLib, "nvapi_QueryInterface")
         );
+
+      NvAPI_DRS_SetSettingEx =
+        (NvAPI_DRS_SetSettingEx_pfn)NvAPI_QueryInterface              (0x8A2CF5F5u);
+      NvAPI_DRS_GetSettingEx =
+        (NvAPI_DRS_GetSettingEx_pfn)NvAPI_QueryInterface              (0xEA99498Du);
+
+      NvAPI_DRS_EnumSettingsEx =
+        (NvAPI_DRS_EnumSettingsEx_pfn)NvAPI_QueryInterface            (0xCFD6983Eu);
+      NvAPI_DRS_EnumAvailableSettingIdsEx = 
+        (NvAPI_DRS_EnumAvailableSettingIdsEx_pfn)NvAPI_QueryInterface (0xE5DE48E5u);
+
+      NvAPI_DRS_GetSettingNameFromIdEx =
+        (NvAPI_DRS_GetSettingNameFromIdEx_pfn)NvAPI_QueryInterface    (0x1EB13791u);
+
+      NvAPI_DRS_DeleteProfileSettingEx =
+        (NvAPI_DRS_DeleteProfileSettingEx_pfn)NvAPI_QueryInterface    (0xD20D29DFu);
+      NvAPI_DRS_RestoreProfileDefaultSettingEx =
+        (NvAPI_DRS_RestoreProfileDefaultSettingEx_pfn)
+                                                 NvAPI_QueryInterface (0x7DD5B261u);
 
       NvAPI_GPU_GetRamType =
         (NvAPI_GPU_GetRamType_pfn)NvAPI_QueryInterface            (0x57F7CAACu);
@@ -2490,8 +2918,8 @@ SK_NvAPI_SetAntiAliasingOverride ( const wchar_t** pwszPropertyList )
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
 
     // Driver's not being cooperative, we have no choice but to bail-out
@@ -2532,12 +2960,12 @@ SK_NvAPI_SetAntiAliasingOverride ( const wchar_t** pwszPropertyList )
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT ();
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, method_enum,      &method_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, replay_mode_enum, &replay_mode_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, aa_fix_enum,      &aa_fix_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, override_enum,    &override_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, autobias_enum,    &autobias_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, compat_bits_enum, &compat_bits_val));
+  NVAPI_CALL (SK_DRS_GetSetting (hSession, hProfile, method_enum,      &method_val));
+  NVAPI_CALL (SK_DRS_GetSetting (hSession, hProfile, replay_mode_enum, &replay_mode_val));
+  NVAPI_CALL (SK_DRS_GetSetting (hSession, hProfile, aa_fix_enum,      &aa_fix_val));
+  NVAPI_CALL (SK_DRS_GetSetting (hSession, hProfile, override_enum,    &override_val));
+  NVAPI_CALL (SK_DRS_GetSetting (hSession, hProfile, autobias_enum,    &autobias_val));
+  NVAPI_CALL (SK_DRS_GetSetting (hSession, hProfile, compat_bits_enum, &compat_bits_val));
   NVAPI_VERBOSE ();
 
   BOOL already_set = TRUE;
@@ -2677,8 +3105,8 @@ SK_NvAPI_SetAntiAliasingOverride ( const wchar_t** pwszPropertyList )
     NvAPI_RestartDisplayDriver ();
 #endif
 
-    NVAPI_CALL (DRS_SaveSettings   (hSession));
-  } NVAPI_CALL (DRS_DestroySession (hSession));
+    NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  } NVAPI_CALL (   DRS_DestroySession (hSession));
 
   LeaveCriticalSection (&cs_aa_override);
 
@@ -2755,8 +3183,8 @@ SK_NvAPI_SetFramerateLimit (uint32_t limit)
       app.isPredefined = false;
       app.isMetro      = false;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -2768,8 +3196,8 @@ SK_NvAPI_SetFramerateLimit (uint32_t limit)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, PS_FRAMERATE_LIMITER_ID, &fps_limiter));
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, PRERENDERLIMIT_ID,       &prerendered_frames));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, PS_FRAMERATE_LIMITER_ID, &fps_limiter));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, PRERENDERLIMIT_ID,       &prerendered_frames));
   NVAPI_VERBOSE ();
 
   NvU32 limit_mask = ( PS_FRAMERATE_LIMITER_ENABLED        |
@@ -2811,8 +3239,8 @@ SK_NvAPI_SetFramerateLimit (uint32_t limit)
 
   NVAPI_VERBOSE ();
 
-  NVAPI_CALL (DRS_SaveSettings   (hSession));
-  NVAPI_CALL (DRS_DestroySession (hSession));
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
 
   if (! already_set) {
 #ifdef WIN32
@@ -2856,16 +3284,176 @@ sk::NVAPI::SetFramerateLimit (uint32_t limit)
 
 BOOL SK_NvAPI_IsSmoothingMotion (void)
 {
-  if (SK_GetModuleHandleW (SK_RunLHIfBitness (64, L"NvPresent64.dll",
-                                                  L"NvPresent.dll")) != 0)
+  if (SK_IsModuleLoaded (SK_RunLHIfBitness (64, L"NvPresent64.dll",
+                                                L"NvPresent.dll")) != 0)
   {
     return TRUE;
   }
 
-  else
-  {
+  SK_RunOnce (sk::NVAPI::InitializeLibrary (SK_GetFullyQualifiedApp ()));
+
+  if ((! nv_hardware) || NvAPI_DRS_GetSettingEx == nullptr)
     return FALSE;
+
+  NvAPI_Status       ret       = NVAPI_ERROR;
+  NvDRSSessionHandle hSession  = { };
+
+  NVAPI_CALL (DRS_CreateSession (&hSession));
+  NVAPI_CALL (DRS_LoadSettings  ( hSession));
+
+               NvDRSProfileHandle hProfile       = { };
+  std::unique_ptr    <NVDRS_APPLICATION> app_ptr =
+    std::make_unique <NVDRS_APPLICATION> ();
+  NVDRS_APPLICATION&                     app     =
+                                        *app_ptr;
+
+  NVAPI_SILENT ();
+
+  app.version = NVDRS_APPLICATION_VER;
+  ret         = NVAPI_ERROR;
+
+  NVAPI_CALL2 ( DRS_FindApplicationByName ( hSession,
+                                              (NvU16 *)app_name.c_str (),
+                                                &hProfile,
+                                                  &app ),
+                ret );
+
+  // This is a status check only, if no profile exists, do not create one.
+  if (ret == NVAPI_EXECUTABLE_NOT_FOUND)
+  {
+    NVAPI_CALL (DRS_GetBaseProfile (hSession, &hProfile));
+
+    if (ret != NVAPI_OK)
+    {
+      NVAPI_CALL (DRS_DestroySession (hSession));
+      return FALSE;
+    }
   }
+
+  SK_NvAPI_AddMicrosoftStoreAppToProfile (hProfile, hSession);
+
+  NVDRS_SETTING smooth_motion_enable         = {               };
+                smooth_motion_enable.version = NVDRS_SETTING_VER;
+
+  static constexpr auto SMOOTH_MOTION_ENABLE_ID = 0xB0D384C0;
+
+  //// These settings may not exist, and getting back a value of 0 is okay...
+  NVAPI_SILENT  ();
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, SMOOTH_MOTION_ENABLE_ID, &smooth_motion_enable));
+  NVAPI_VERBOSE ();
+
+  //SK_LOGi0 (L"Smooth Motion: %x", smooth_motion_enable.u32CurrentValue);
+
+  BOOL bRet =
+   ( smooth_motion_enable.u32CurrentValue != 0 )
+                                          ? TRUE
+                                          : FALSE;
+
+  if (bRet)
+  {
+    // Smooth Motion requires this
+    config.nvidia.dlss.allow_flip_metering = true;
+  }
+
+  NVAPI_CALL (DRS_DestroySession (hSession));
+
+  return bRet;
+}
+
+BOOL SK_NvAPI_SetSmoothMotion (BOOL bEnable)
+{
+  if (! nv_hardware)
+    return -2;
+
+  NvAPI_Status       ret       = NVAPI_ERROR;
+  NvDRSSessionHandle hSession  = { };
+
+  NVAPI_CALL (DRS_CreateSession (&hSession));
+  NVAPI_CALL (DRS_LoadSettings  ( hSession));
+
+               NvDRSProfileHandle hProfile       = { };
+  std::unique_ptr    <NVDRS_APPLICATION> app_ptr =
+    std::make_unique <NVDRS_APPLICATION> ();
+  NVDRS_APPLICATION&                     app     =
+                                        *app_ptr;
+
+  NVAPI_SILENT ();
+
+  app.version = NVDRS_APPLICATION_VER;
+  ret         = NVAPI_ERROR;
+
+  NVAPI_CALL2 ( DRS_FindApplicationByName ( hSession,
+                                              (NvU16 *)app_name.c_str (),
+                                                &hProfile,
+                                                  &app ),
+                ret );
+
+  // If no executable exists anywhere by this name, create a profile for it
+  //   and then add the executable to it.
+  if (ret == NVAPI_EXECUTABLE_NOT_FOUND)
+  {
+    NVDRS_PROFILE custom_profile = {   };
+
+    if (friendly_name.empty ()) // Avoid NVAPI failure: NVAPI_PROFILE_NAME_EMPTY
+        friendly_name = app_name;
+
+    custom_profile.isPredefined  = FALSE;
+    lstrcpyW ((wchar_t *)custom_profile.profileName, friendly_name.c_str ());
+    custom_profile.version = NVDRS_PROFILE_VER;
+
+    // It's not necessarily wrong if this does not return NVAPI_OK, so don't
+    //   raise a fuss if it happens.
+    NVAPI_SILENT ()
+    {
+      NVAPI_CALL2 (DRS_CreateProfile (hSession, &custom_profile, &hProfile), ret);
+    }
+    NVAPI_VERBOSE ()
+
+    // Add the application name to the profile, if a profile already exists
+    if (ret == NVAPI_PROFILE_NAME_IN_USE)
+    {
+      NVAPI_CALL2 ( DRS_FindProfileByName ( hSession,
+                                              (NvU16 *)friendly_name.c_str (),
+                                                &hProfile),
+                      ret );
+    }
+
+    if (ret == NVAPI_OK)
+    {
+      RtlZeroMemory (app_ptr.get (), sizeof NVDRS_APPLICATION);
+
+      lstrcpyW ((wchar_t *)app.appName,          app_name.c_str      ());
+      lstrcpyW ((wchar_t *)app.userFriendlyName, friendly_name.c_str ());
+
+      app.version      = NVDRS_APPLICATION_VER;
+      app.isPredefined = FALSE;
+      app.isMetro      = FALSE;
+
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
+    }
+  }
+
+  NVDRS_SETTING smooth_motion_enable         = {               };
+                smooth_motion_enable.version = NVDRS_SETTING_VER;
+
+  static constexpr auto                  SMOOTH_MOTION_ENABLE_ID = 0xB0D384C0;
+  smooth_motion_enable.settingId       = SMOOTH_MOTION_ENABLE_ID;
+  smooth_motion_enable.u32CurrentValue = bEnable ? 1 : 0;
+
+  //// These settings may not exist, and getting back a value of 0 is okay...
+  NVAPI_SILENT  ();
+  NVAPI_CALL    (DRS_SetSettingEx (hSession, hProfile, &smooth_motion_enable, (uintptr_t)0, (uintptr_t)0));
+  NVAPI_VERBOSE ();
+
+  BOOL bRet =
+   ( smooth_motion_enable.u32CurrentValue != 0 ?
+                                          TRUE : FALSE );
+
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
+
+  return bRet;
 }
 
 BOOL SK_NvAPI_GetVRREnablement (void)
@@ -2913,7 +3501,7 @@ BOOL SK_NvAPI_GetVRREnablement (void)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, VRR_APP_OVERRIDE_ID, &vrr_control_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, VRR_APP_OVERRIDE_ID, &vrr_control_val));
   NVAPI_VERBOSE ();
 
   BOOL bRet =
@@ -2997,8 +3585,8 @@ BOOL SK_NvAPI_SetVRREnablement (BOOL bEnable)
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession),                 ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -3007,20 +3595,22 @@ BOOL SK_NvAPI_SetVRREnablement (BOOL bEnable)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, VRR_APP_OVERRIDE_ID, &vrr_control_val));
-  NVAPI_SET_DWORD (vrr_control_val,                  VRR_APP_OVERRIDE_ID,
-                                           bEnable ? VRR_APP_OVERRIDE_ALLOW
-                                                   : VRR_APP_OVERRIDE_FORCE_OFF);
-  NVAPI_CALL    (DRS_SetSetting (hSession, hProfile,                     &vrr_control_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, VRR_APP_OVERRIDE_ID, &vrr_control_val));
+  NVAPI_SET_DWORD (vrr_control_val,                     VRR_APP_OVERRIDE_ID,
+                                              bEnable ? VRR_APP_OVERRIDE_ALLOW
+                                                      : VRR_APP_OVERRIDE_FORCE_OFF);
+  NVAPI_CALL    (SK_DRS_SetSetting (hSession, hProfile,                     &vrr_control_val));
   NVAPI_VERBOSE ();
+
+  SK_NvAPI_AddMicrosoftStoreAppToProfile (hProfile, hSession);
 
   BOOL bRet =
    ( vrr_control_val.u32CurrentValue != VRR_APP_OVERRIDE_FORCE_OFF )
                                       ? TRUE
                                       : FALSE;
 
-  NVAPI_CALL (DRS_SaveSettings   (hSession));
-  NVAPI_CALL (DRS_DestroySession (hSession));
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
 
   return bRet;
 }
@@ -3129,8 +3719,8 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession),                 ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -3155,8 +3745,8 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, OGL_DX_PRESENT_DEBUG_ID,   &ogl_dx_present_debug_val));
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, OGL_DX_LAYERED_PRESENT_ID, &ogl_dx_present_layer_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, OGL_DX_PRESENT_DEBUG_ID,   &ogl_dx_present_debug_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, OGL_DX_LAYERED_PRESENT_ID, &ogl_dx_present_layer_val));
 
   DWORD dwLayeredPresent =
     bEnable ? OGL_DX_LAYERED_PRESENT_DXGI
@@ -3181,7 +3771,7 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
                                                    != (uiOptimalInteropFlags))
       {
         if (bPendingChanges)
-          NVAPI_CALL (DRS_SaveSettings (hSession));
+          NVAPI_CALL (SK_DRS_SaveSettings (hSession, hProfile));
 
         NVAPI_CALL (DRS_DestroySession (hSession));
 
@@ -3214,7 +3804,7 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
                                                    == ENABLE_DXVK)
       {
         if (bPendingChanges)
-          NVAPI_CALL (DRS_SaveSettings (hSession));
+          NVAPI_CALL (SK_DRS_SaveSettings (hSession, hProfile));
 
         NVAPI_CALL (DRS_DestroySession (hSession));
 
@@ -3260,7 +3850,7 @@ BOOL SK_NvAPI_EnableVulkanBridge (BOOL bEnable)
   NVAPI_VERBOSE ();
 
   if (bPendingChanges)
-    NVAPI_CALL (DRS_SaveSettings (hSession));
+    NVAPI_CALL (SK_DRS_SaveSettings (hSession, hProfile));
 
   NVAPI_CALL (DRS_DestroySession (hSession));
 
@@ -3315,7 +3905,7 @@ BOOL SK_NvAPI_GetFastSync (void)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, VSYNCMODE_ID, &vsync_mode_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, VSYNCMODE_ID, &vsync_mode_val));
   NVAPI_VERBOSE ();
 
   BOOL bRet =
@@ -3397,8 +3987,8 @@ BOOL SK_NvAPI_SetFastSync (BOOL bEnable)
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession),                 ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -3407,11 +3997,11 @@ BOOL SK_NvAPI_SetFastSync (BOOL bEnable)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT    ();
-  NVAPI_CALL      (DRS_GetSetting (hSession, hProfile, VSYNCMODE_ID, &vsync_mode_val));
-  NVAPI_SET_DWORD (vsync_mode_val,                     VSYNCMODE_ID,
-                                             bEnable ? VSYNCMODE_VIRTUAL
-                                                     : VSYNCMODE_DEFAULT);
-  NVAPI_CALL    (DRS_SetSetting (hSession, hProfile,                 &vsync_mode_val));
+  NVAPI_CALL      (SK_DRS_GetSetting (hSession, hProfile, VSYNCMODE_ID, &vsync_mode_val));
+  NVAPI_SET_DWORD (vsync_mode_val,                        VSYNCMODE_ID,
+                                                bEnable ? VSYNCMODE_VIRTUAL
+                                                        : VSYNCMODE_DEFAULT);
+  NVAPI_CALL    (SK_DRS_SetSetting (hSession, hProfile,                 &vsync_mode_val));
   NVAPI_VERBOSE ();
 
   BOOL bRet =
@@ -3419,8 +4009,8 @@ BOOL SK_NvAPI_SetFastSync (BOOL bEnable)
                                      ? TRUE
                                      : FALSE;
 
-  NVAPI_CALL (DRS_SaveSettings   (hSession));
-  NVAPI_CALL (DRS_DestroySession (hSession));
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
 
   return bRet;
 }
@@ -3495,8 +4085,8 @@ BOOL SK_NvAPI_AllowGFEOverlay (bool bAllow, wchar_t *wszAppName, wchar_t *wszExe
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession),                 ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -3509,11 +4099,11 @@ BOOL SK_NvAPI_AllowGFEOverlay (bool bAllow, wchar_t *wszAppName, wchar_t *wszExe
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, GFE_OVERLAY_ID, &gfe_overlay_val));
-  NVAPI_SET_DWORD (gfe_overlay_val,                  GFE_OVERLAY_ID,
-                                            bAllow ? GFE_OVERLAY_ALLOW
-                                                   : GFE_OVERLAY_DISALLOW);
-  NVAPI_CALL    (DRS_SetSetting (hSession, hProfile,                 &gfe_overlay_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, GFE_OVERLAY_ID, &gfe_overlay_val));
+  NVAPI_SET_DWORD (gfe_overlay_val,                     GFE_OVERLAY_ID,
+                                               bAllow ? GFE_OVERLAY_ALLOW
+                                                      : GFE_OVERLAY_DISALLOW);
+  NVAPI_CALL    (SK_DRS_SetSetting (hSession, hProfile,                 &gfe_overlay_val));
   NVAPI_VERBOSE ();
 
   BOOL bRet =
@@ -3521,8 +4111,8 @@ BOOL SK_NvAPI_AllowGFEOverlay (bool bAllow, wchar_t *wszAppName, wchar_t *wszExe
                                       ? TRUE
                                       : FALSE;
 
-  NVAPI_CALL (DRS_SaveSettings   (hSession));
-  NVAPI_CALL (DRS_DestroySession (hSession));
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
 
   return bRet;
 }
@@ -3618,7 +4208,7 @@ SK_NvAPI_DRS_GetDWORD (NvU32 setting_id)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, setting_id, &get_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, setting_id, &get_val));
   NVAPI_VERBOSE ();
 
   NVAPI_CALL (DRS_DestroySession (hSession));
@@ -3697,8 +4287,8 @@ SK_NvAPI_DRS_SetDWORD (NvU32 setting_id, DWORD dwValue)
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -3707,7 +4297,7 @@ SK_NvAPI_DRS_SetDWORD (NvU32 setting_id, DWORD dwValue)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, setting_id, &set_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, setting_id, &set_val));
   NVAPI_VERBOSE ();
 
 
@@ -3721,7 +4311,7 @@ SK_NvAPI_DRS_SetDWORD (NvU32 setting_id, DWORD dwValue)
     // This requires admin privs, and we will handle that gracefully...
     NVAPI_SILENT    ();
     NVAPI_SET_DWORD (set_val, setting_id, dwValue);
-    NVAPI_CALL2     (DRS_SetSetting (hSession, hProfile, &set_val), ret);
+    NVAPI_CALL2     (SK_DRS_SetSetting (hSession, hProfile, &set_val), ret);
     NVAPI_VERBOSE   ();
 
     already_set = FALSE;
@@ -3858,8 +4448,8 @@ RunDLL_NvAPI_SetDWORD ( HWND   hwnd,        HINSTANCE hInst,
           app.isPredefined = FALSE;
           app.isMetro      = FALSE;
 
-          NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-          NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+          NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+          NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
         }
       }
 
@@ -3874,14 +4464,14 @@ RunDLL_NvAPI_SetDWORD ( HWND   hwnd,        HINSTANCE hInst,
 
       if (! bClearSetting)
       {
-        NVAPI_CALL    (DRS_GetSetting   (hSession, hProfile, dwSettingID, &setting));
-        NVAPI_SET_DWORD (setting,                            dwSettingID, dwSettingVal);
-        NVAPI_CALL    (DRS_SetSetting   (hSession, hProfile,              &setting));
+          NVAPI_CALL      (SK_DRS_GetSetting (hSession, hProfile, dwSettingID, &setting));
+          NVAPI_SET_DWORD (setting,                            dwSettingID, dwSettingVal);
+          NVAPI_CALL      (SK_DRS_SetSetting (hSession, hProfile,              &setting));
       }
 
       else
       {
-        NVAPI_CALL (DRS_DeleteProfileSetting (hSession, hProfile, dwSettingID));
+        NVAPI_CALL (SK_DRS_DeleteProfileSetting (hSession, hProfile, dwSettingID));
       }
 
       if (ret != NVAPI_OK)
@@ -3889,7 +4479,7 @@ RunDLL_NvAPI_SetDWORD ( HWND   hwnd,        HINSTANCE hInst,
         printf ("NvAPI_DRS_SetSetting (...) Failed: %x", ret);
       }
 
-      NVAPI_CALL    (DRS_SaveSettings (hSession));
+      NVAPI_CALL (SK_DRS_SaveSettings (hSession, hProfile));
     }
 
     else
@@ -4002,9 +4592,9 @@ SK_NvAPI_GetAnselEnablement (DLL_ROLE role)
 
   // These settings may not exist, and getting back a value of 0 is okay...
   NVAPI_SILENT  ();
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, ansel_allow_enum,       &ansel_allow_val));
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, ansel_enable_enum,      &ansel_enable_val));
-  NVAPI_CALL    (DRS_GetSetting (hSession, hProfile, ansel_allowlisted_enum, &ansel_allowlisted_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, ansel_allow_enum,       &ansel_allow_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, ansel_enable_enum,      &ansel_enable_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, ansel_allowlisted_enum, &ansel_allowlisted_val));
   NVAPI_VERBOSE ();
 
   INT iRet =
@@ -4115,8 +4705,8 @@ SK_NvAPI_SetAnselEnablement (DLL_ROLE role, bool enabled)
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -4130,10 +4720,10 @@ SK_NvAPI_SetAnselEnablement (DLL_ROLE role, bool enabled)
                 ansel_allowlisted_val.version = NVDRS_SETTING_VER;
 
   // These settings may not exist, and getting back a value of 0 is okay...
-  NVAPI_SILENT ();
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, ansel_allow_enum,       &ansel_allow_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, ansel_enable_enum,      &ansel_enable_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, ansel_allowlisted_enum, &ansel_allowlisted_val));
+  NVAPI_SILENT  ();
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, ansel_allow_enum,       &ansel_allow_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, ansel_enable_enum,      &ansel_enable_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, ansel_allowlisted_enum, &ansel_allowlisted_val));
   NVAPI_VERBOSE ();
 
 
@@ -4150,7 +4740,7 @@ SK_NvAPI_SetAnselEnablement (DLL_ROLE role, bool enabled)
     // This requires admin privs, and we will handle that gracefully...
     NVAPI_SILENT    ();
     NVAPI_SET_DWORD (ansel_allow_val, ansel_allow_enum, ansel_allow_to_set);
-    NVAPI_CALL2     (DRS_SetSetting (hSession, hProfile, &ansel_allow_val), ret);
+    NVAPI_CALL2     (SK_DRS_SetSetting (hSession, hProfile, &ansel_allow_val), ret);
     NVAPI_VERBOSE   ();
 
     already_set = FALSE;
@@ -4162,7 +4752,7 @@ SK_NvAPI_SetAnselEnablement (DLL_ROLE role, bool enabled)
     ansel_enable_val.version = NVDRS_SETTING_VER;
 
     NVAPI_SET_DWORD (ansel_enable_val, ansel_enable_enum, ansel_enable_to_set);
-    NVAPI_CALL      (DRS_SetSetting (hSession, hProfile, &ansel_enable_val));
+    NVAPI_CALL      (SK_DRS_SetSetting (hSession, hProfile, &ansel_enable_val));
 
     already_set = FALSE;
   }
@@ -4175,7 +4765,7 @@ SK_NvAPI_SetAnselEnablement (DLL_ROLE role, bool enabled)
     ansel_allowlisted_val.version = NVDRS_SETTING_VER;
 
     NVAPI_SET_DWORD (ansel_allowlisted_val, ansel_allowlisted_enum, ansel_allowlisted_to_set);
-    NVAPI_CALL      (DRS_SetSetting (hSession, hProfile, &ansel_allowlisted_val));
+    NVAPI_CALL      (SK_DRS_SetSetting (hSession, hProfile, &ansel_allowlisted_val));
 
     already_set = FALSE;
   }
@@ -4185,8 +4775,8 @@ SK_NvAPI_SetAnselEnablement (DLL_ROLE role, bool enabled)
 
   if (! already_set)
   {
-    NVAPI_CALL (DRS_SaveSettings   (hSession));
-  } NVAPI_CALL (DRS_DestroySession (hSession));
+    NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  } NVAPI_CALL (   DRS_DestroySession (hSession));
 
 
   // We turned off the remaining Ansel profile flags, but it was already not allowlisted.
@@ -4347,8 +4937,8 @@ sk::NVAPI::SetSLIOverride    (       DLL_ROLE role,
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   }
 
@@ -4362,10 +4952,10 @@ sk::NVAPI::SetSLIOverride    (       DLL_ROLE role,
                 compat_bits_val.version = NVDRS_SETTING_VER;
 
   // These settings may not exist, and getting back a value of 0 is okay...
-  NVAPI_SILENT ();
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, render_mode_enum, &mode_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, gpu_count_enum,   &gpu_count_val));
-  NVAPI_CALL (DRS_GetSetting (hSession, hProfile, compat_bits_enum, &compat_bits_val));
+  NVAPI_SILENT  ();
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, render_mode_enum, &mode_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, gpu_count_enum,   &gpu_count_val));
+  NVAPI_CALL    (SK_DRS_GetSetting (hSession, hProfile, compat_bits_enum, &compat_bits_val));
   NVAPI_VERBOSE ();
 
   BOOL already_set = TRUE;
@@ -4381,7 +4971,7 @@ sk::NVAPI::SetSLIOverride    (       DLL_ROLE role,
     // This requires admin privs, and we will handle that gracefully...
     NVAPI_SILENT    ();
     NVAPI_SET_DWORD (compat_bits_val, compat_bits_enum, compat_bits);
-    NVAPI_CALL2     (DRS_SetSetting (hSession, hProfile, &compat_bits_val), ret);
+    NVAPI_CALL2     (SK_DRS_SetSetting (hSession, hProfile, &compat_bits_val), ret);
     NVAPI_VERBOSE   ();
 
     // Not running as admin, don't do the override!
@@ -4414,7 +5004,7 @@ sk::NVAPI::SetSLIOverride    (       DLL_ROLE role,
     mode_val.version = NVDRS_SETTING_VER;
 
     NVAPI_SET_DWORD (mode_val, render_mode_enum, render_mode);
-    NVAPI_CALL      (DRS_SetSetting (hSession, hProfile, &mode_val));
+    NVAPI_CALL      (SK_DRS_SetSetting (hSession, hProfile, &mode_val));
 
     already_set = FALSE;
   }
@@ -4425,13 +5015,13 @@ sk::NVAPI::SetSLIOverride    (       DLL_ROLE role,
     gpu_count_val.version = NVDRS_SETTING_VER;
 
     NVAPI_SET_DWORD (gpu_count_val, gpu_count_enum, gpu_count);
-    NVAPI_CALL      (DRS_SetSetting (hSession, hProfile, &gpu_count_val));
+    NVAPI_CALL      (SK_DRS_SetSetting (hSession, hProfile, &gpu_count_val));
 
     already_set = FALSE;
   }
 
   if (! already_set)
-    NVAPI_CALL (DRS_SaveSettings (hSession));
+    NVAPI_CALL (SK_DRS_SaveSettings (hSession, hProfile));
 
   NVAPI_CALL (DRS_DestroySession (hSession));
 
@@ -4550,8 +5140,8 @@ SK_NvAPI_AddLauncherToProf (void)
       app.isPredefined = FALSE;
       app.isMetro      = FALSE;
 
-      NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-      NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+      NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+      NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
     }
   } else {
     RtlZeroMemory (app_ptr.get (), sizeof (NVDRS_APPLICATION));
@@ -4564,12 +5154,12 @@ SK_NvAPI_AddLauncherToProf (void)
     app.isPredefined = FALSE;
     app.isMetro      = FALSE;
 
-    NVAPI_CALL2 (DRS_CreateApplication (hSession, hProfile, &app), ret);
-    NVAPI_CALL2 (DRS_SaveSettings      (hSession), ret);
+    NVAPI_CALL2 (   DRS_CreateApplication (hSession, hProfile, &app), ret);
+    NVAPI_CALL2 (SK_DRS_SaveSettings      (hSession, hProfile),       ret);
   }
 
-  NVAPI_CALL (DRS_SaveSettings   (hSession));
-  NVAPI_CALL (DRS_DestroySession (hSession));
+  NVAPI_CALL (SK_DRS_SaveSettings   (hSession, hProfile));
+  NVAPI_CALL (   DRS_DestroySession (hSession));
 
 #if 0
   if (! already_set) {
