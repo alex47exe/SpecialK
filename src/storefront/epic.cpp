@@ -1661,6 +1661,10 @@ SK::EOS::AppName (void)
       }
 
       if (config.platform.equivalent_steam_app == -1)
+        SK_RunOnce (SK_LoadConfig ());
+
+      if (config.platform.equivalent_steam_app == -1)
+      SK_RunOnce(
       {
         std::wstring url =
           SK_FormatStringW (
@@ -1722,7 +1726,7 @@ SK::EOS::AppName (void)
             } ),
           true
         );
-      }
+      });
 
       app_cache_mgr->saveAppCache       ();
       app_cache_mgr->loadAppCacheForExe (SK_GetFullyQualifiedApp ());
@@ -1736,6 +1740,16 @@ SK::EOS::AppName (void)
       epic_log->Log (L"App Name Parse Failure: %hs", e.what ());
     }
   }
+
+  // The manifest may be for DLC rather than the game...
+  //   fallback to SKIF's defined name for the executable path if neeeded.
+  if (name.empty ()) SK_RunOnce
+  (
+    name =
+      SK_WideCharToUTF8 (
+        app_cache_mgr->getAppNameFromPath (SK_GetFullyQualifiedApp ())
+      );
+  );
 
   return
     name;
